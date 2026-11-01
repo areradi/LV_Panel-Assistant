@@ -1,0 +1,113 @@
+{
+  "_comment": "Selectivity rules from Siemens coordination tables. Edit to extend the verified combinations.",
+  "rules": [
+    {
+      "upstream_series": "SENTRON 3VA2",
+      "upstream_min_in_a": 160.0,
+      "downstream_series": "SIRIUS 3RV20",
+      "downstream_max_in_a": 65.0,
+      "selectivity_limit_is_ka": 55.0,
+      "is_total_up_to_icu": true,
+      "catalog_reference": "Siemens Selectivity Manual 3VA/3RV2 - Table 5-2 (Total up to 55kA)"
+    },
+    {
+      "upstream_series": "SENTRON 3VA2",
+      "upstream_min_in_a": 160.0,
+      "downstream_series": "SENTRON 3VA1",
+      "downstream_max_in_a": 63.0,
+      "selectivity_limit_is_ka": 25.0,
+      "is_total_up_to_icu": false,
+      "catalog_reference": "Siemens Selectivity Manual 3VA1/3VA2 - Table 3-4 (Is = 25kA)"
+    },
+    {
+      "upstream_series": "SENTRON 3VA2",
+      "upstream_min_in_a": 250.0,
+      "downstream_series": "SENTRON 3VA1",
+      "downstream_max_in_a": 100.0,
+      "selectivity_limit_is_ka": 36.0,
+      "is_total_up_to_icu": true,
+      "catalog_reference": "Siemens Selectivity Manual 3VA1/3VA2 - Table 3-5 (Total 36kA)"
+    },
+    {
+      "upstream_series": "SENTRON 3VA1",
+      "upstream_min_in_a": 125.0,
+      "downstream_series": "SIRIUS 3RV20",
+      "downstream_max_in_a": 32.0,
+      "selectivity_limit_is_ka": 15.0,
+      "is_total_up_to_icu": false,
+      "catalog_reference": "Siemens Selectivity Manual 3VA1/3RV2 - Table 5-1 (Partial Is = 15kA)"
+    },
+    {
+      "upstream_series": "SENTRON 3VA1",
+      "upstream_min_in_a": 125.0,
+      "downstream_series": "SENTRON 3VA1",
+      "downstream_max_in_a": 50.0,
+      "selectivity_limit_is_ka": 10.0,
+      "is_total_up_to_icu": false,
+      "catalog_reference": "Siemens Selectivity Manual 3VA1/3VA1 - Table 3-1 (Partial Is = 10kA)"
+    },
+    {
+      "upstream_series": "SENTRON 3VA1",
+      "upstream_min_in_a": 100.0,
+      "downstream_series": "SENTRON 5SY4",
+      "downstream_max_in_a": 32.0,
+      "selectivity_limit_is_ka": 10.0,
+      "is_total_up_to_icu": true,
+      "catalog_reference": "Siemens Selectivity Manual 3VA/5SY - Table 2-1 (Is = 10kA)"
+    },
+    {
+      "upstream_series": "SENTRON 3VA2",
+      "upstream_min_in_a": 160.0,
+      "downstream_series": "SENTRON 5SY4",
+      "downstream_max_in_a": 32.0,
+      "selectivity_limit_is_ka": 15.0,
+      "is_total_up_to_icu": true,
+      "catalog_reference": "Siemens Selectivity Manual 3VA2/5SY - Table 2-2 (Is = 15kA)"
+    },
+    {
+      "upstream_series": "ABB Tmax XT2",
+      "upstream_min_in_a": 160.0,
+      "downstream_series": "ABB MS132",
+      "downstream_max_in_a": 16.0,
+      "selectivity_limit_is_ka": 30.0,
+      "is_total_up_to_icu": true,
+      "catalog_reference": "ABB Tmax XT2 / MS132 selectivity tables (Tech. paper QT1)"
+    },
+    {
+      "upstream_series": "ABB Tmax XT1",
+      "upstream_min_in_a": 100.0,
+      "downstream_series": "ABB S200",
+      "downstream_max_in_a": 63.0,
+      "selectivity_limit_is_ka": 6.0,
+      "is_total_up_to_icu": true,
+      "catalog_reference": "ABB XT1 / S200 coordination tables"
+    },
+    {
+      "upstream_series": "Schneider NSX160",
+      "upstream_min_in_a": 125.0,
+      "downstream_series": "Schneider GV2ME",
+      "downstream_max_in_a": 32.0,
+      "selectivity_limit_is_ka": 36.0,
+      "is_total_up_to_icu": true,
+      "catalog_reference": "Schneider Selectivity & Cascading Guide (LVPED310004)"
+    },
+    {
+      "upstream_series": "Schneider NSX100",
+      "upstream_min_in_a": 80.0,
+      "downstream_series": "Schneider Acti9 iC60",
+      "downstream_max_in_a": 63.0,
+      "selectivity_limit_is_ka": 6.0,
+      "is_total_up_to_icu": true,
+      "catalog_reference": "Schneider NSX / Acti9 iC60 coordination tables"
+    },
+    {
+      "upstream_series": "Eaton NZM1",
+      "upstream_min_in_a": 100.0,
+      "downstream_series": "Eaton FAZ",
+      "downstream_max_in_a": 63.0,
+      "selectivity_limit_is_ka": 10.0,
+      "is_total_up_to_icu": true,
+      "catalog_reference": "Eaton Moeller NZM / FAZ selectivity tables"
+    }
+  ]
+}

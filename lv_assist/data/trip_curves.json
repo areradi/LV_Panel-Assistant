@@ -1,0 +1,948 @@
+{
+  "_comment": "Typical inverse-time trip curve parameters per device series. thermal: t = k / (I/In)^alpha. Im band: instantaneous pickup range as multiples of In (manufacturer tolerance). Values are typical/public datasheet approximations, not binding coordination data.",
+  "curves": {
+    "SENTRON 3VA1": {
+      "thermal_k": 90.0,
+      "alpha": 2.0,
+      "im_min_mult": 8.0,
+      "im_max_mult": 12.0,
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.2,
+          1000.0
+        ],
+        [
+          1.3,
+          280.0
+        ],
+        [
+          1.5,
+          80.0
+        ],
+        [
+          2.0,
+          20.0
+        ],
+        [
+          3.0,
+          7.0
+        ],
+        [
+          4.0,
+          3.4
+        ],
+        [
+          5.0,
+          1.9
+        ],
+        [
+          6.0,
+          1.1
+        ],
+        [
+          7.0,
+          0.65
+        ],
+        [
+          8.0,
+          0.42
+        ],
+        [
+          9.0,
+          0.28
+        ],
+        [
+          10.0,
+          0.19
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "Siemens 3VA1 TMTU curve (LV 10 catalog)"
+    },
+    "SENTRON 3VA2": {
+      "thermal_k": 90.0,
+      "alpha": 2.0,
+      "im_min_mult": 5.0,
+      "im_max_mult": 10.0,
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.2,
+          1000.0
+        ],
+        [
+          1.3,
+          280.0
+        ],
+        [
+          1.5,
+          80.0
+        ],
+        [
+          2.0,
+          20.0
+        ],
+        [
+          3.0,
+          7.0
+        ],
+        [
+          4.0,
+          3.4
+        ],
+        [
+          5.0,
+          1.9
+        ],
+        [
+          6.0,
+          1.1
+        ],
+        [
+          7.0,
+          0.65
+        ],
+        [
+          8.0,
+          0.42
+        ],
+        [
+          9.0,
+          0.28
+        ],
+        [
+          10.0,
+          0.19
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "Siemens 3VA2 TMTU curve (LV 10 catalog)"
+    },
+    "SIRIUS 3RV20": {
+      "thermal_k": 100.0,
+      "alpha": 2.0,
+      "im_min_mult": 10.4,
+      "im_max_mult": 15.6,
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.5,
+          120.0
+        ],
+        [
+          2.0,
+          30.0
+        ],
+        [
+          3.0,
+          9.0
+        ],
+        [
+          4.0,
+          4.2
+        ],
+        [
+          5.0,
+          2.4
+        ],
+        [
+          6.0,
+          1.5
+        ],
+        [
+          8.0,
+          0.8
+        ],
+        [
+          10.0,
+          0.45
+        ],
+        [
+          12.0,
+          0.12
+        ],
+        [
+          14.0,
+          0.03
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "Siemens 3RV20 trip characteristic (datasheet)"
+    },
+    "SENTRON 5SY4": {
+      "thermal_k": 60.0,
+      "alpha": 2.0,
+      "im_min_mult": 5.0,
+      "im_max_mult": 10.0,
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.45,
+          60.0
+        ],
+        [
+          2.0,
+          12.0
+        ],
+        [
+          3.0,
+          4.0
+        ],
+        [
+          4.0,
+          1.8
+        ],
+        [
+          5.0,
+          0.8
+        ],
+        [
+          6.0,
+          0.4
+        ],
+        [
+          7.0,
+          0.2
+        ],
+        [
+          8.0,
+          0.09
+        ],
+        [
+          9.0,
+          0.04
+        ],
+        [
+          10.0,
+          0.015
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "Siemens 5SY4 C-curve (datasheet)"
+    },
+    "DEFAULT": {
+      "thermal_k": 90.0,
+      "alpha": 2.0,
+      "im_min_mult": 8.0,
+      "im_max_mult": 12.0
+    },
+    "ABB Tmax XT1": {
+      "thermal_k": 70.0,
+      "alpha": 2.0,
+      "im_min_mult": 6.0,
+      "im_max_mult": 10.0,
+      "ref": "ABB XT1 TMD time-current curve (typical)",
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.2,
+          1000.0
+        ],
+        [
+          1.3,
+          280.0
+        ],
+        [
+          1.5,
+          80.0
+        ],
+        [
+          2.0,
+          20.0
+        ],
+        [
+          3.0,
+          7.0
+        ],
+        [
+          4.0,
+          3.4
+        ],
+        [
+          5.0,
+          1.9
+        ],
+        [
+          6.0,
+          1.1
+        ],
+        [
+          7.0,
+          0.65
+        ],
+        [
+          8.0,
+          0.42
+        ],
+        [
+          9.0,
+          0.28
+        ],
+        [
+          10.0,
+          0.19
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "ABB XT1 TMD time-current curve (datasheet 1SDA066...)"
+    },
+    "ABB Tmax XT2": {
+      "thermal_k": 80.0,
+      "alpha": 2.0,
+      "im_min_mult": 5.0,
+      "im_max_mult": 10.0,
+      "ref": "ABB XT2 TMD time-current curve (typical)",
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.2,
+          1000.0
+        ],
+        [
+          1.3,
+          280.0
+        ],
+        [
+          1.5,
+          80.0
+        ],
+        [
+          2.0,
+          20.0
+        ],
+        [
+          3.0,
+          7.0
+        ],
+        [
+          4.0,
+          3.4
+        ],
+        [
+          5.0,
+          1.9
+        ],
+        [
+          6.0,
+          1.1
+        ],
+        [
+          7.0,
+          0.65
+        ],
+        [
+          8.0,
+          0.42
+        ],
+        [
+          9.0,
+          0.28
+        ],
+        [
+          10.0,
+          0.19
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "ABB XT2 TMD time-current curve (datasheet)"
+    },
+    "ABB MS132": {
+      "thermal_k": 45.0,
+      "alpha": 2.0,
+      "im_min_mult": 12.0,
+      "im_max_mult": 14.0,
+      "ref": "ABB MS132 trip characteristic (typical)",
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.5,
+          120.0
+        ],
+        [
+          2.0,
+          30.0
+        ],
+        [
+          3.0,
+          9.0
+        ],
+        [
+          4.0,
+          4.2
+        ],
+        [
+          5.0,
+          2.4
+        ],
+        [
+          6.0,
+          1.5
+        ],
+        [
+          8.0,
+          0.8
+        ],
+        [
+          10.0,
+          0.45
+        ],
+        [
+          12.0,
+          0.12
+        ],
+        [
+          14.0,
+          0.03
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "ABB MS132 trip characteristic (datasheet 1SAM...)"
+    },
+    "ABB S200": {
+      "thermal_k": 100.0,
+      "alpha": 2.0,
+      "im_min_mult": 5.0,
+      "im_max_mult": 10.0,
+      "ref": "ABB S200 C-curve (typical)",
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.45,
+          60.0
+        ],
+        [
+          2.0,
+          12.0
+        ],
+        [
+          3.0,
+          4.0
+        ],
+        [
+          4.0,
+          1.8
+        ],
+        [
+          5.0,
+          0.8
+        ],
+        [
+          6.0,
+          0.4
+        ],
+        [
+          7.0,
+          0.2
+        ],
+        [
+          8.0,
+          0.09
+        ],
+        [
+          9.0,
+          0.04
+        ],
+        [
+          10.0,
+          0.015
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "ABB S200 C-curve (datasheet 2CDC...)"
+    },
+    "Schneider NSX100": {
+      "thermal_k": 75.0,
+      "alpha": 2.0,
+      "im_min_mult": 7.5,
+      "im_max_mult": 9.5,
+      "ref": "Schneider NSX100 TM-D curve (typical)",
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.2,
+          1000.0
+        ],
+        [
+          1.3,
+          280.0
+        ],
+        [
+          1.5,
+          80.0
+        ],
+        [
+          2.0,
+          20.0
+        ],
+        [
+          3.0,
+          7.0
+        ],
+        [
+          4.0,
+          3.4
+        ],
+        [
+          5.0,
+          1.9
+        ],
+        [
+          6.0,
+          1.1
+        ],
+        [
+          7.0,
+          0.65
+        ],
+        [
+          8.0,
+          0.42
+        ],
+        [
+          9.0,
+          0.28
+        ],
+        [
+          10.0,
+          0.19
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "Schneider NSX100 TM-D curve (LVPED310004)"
+    },
+    "Schneider NSX160": {
+      "thermal_k": 75.0,
+      "alpha": 2.0,
+      "im_min_mult": 7.5,
+      "im_max_mult": 9.5,
+      "ref": "Schneider NSX160 TM-D curve (typical)",
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.2,
+          1000.0
+        ],
+        [
+          1.3,
+          280.0
+        ],
+        [
+          1.5,
+          80.0
+        ],
+        [
+          2.0,
+          20.0
+        ],
+        [
+          3.0,
+          7.0
+        ],
+        [
+          4.0,
+          3.4
+        ],
+        [
+          5.0,
+          1.9
+        ],
+        [
+          6.0,
+          1.1
+        ],
+        [
+          7.0,
+          0.65
+        ],
+        [
+          8.0,
+          0.42
+        ],
+        [
+          9.0,
+          0.28
+        ],
+        [
+          10.0,
+          0.19
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "Schneider NSX160 TM-D curve (LVPED310004)"
+    },
+    "Schneider GV2ME": {
+      "thermal_k": 45.0,
+      "alpha": 2.0,
+      "im_min_mult": 12.0,
+      "im_max_mult": 14.0,
+      "ref": "Schneider GV2ME trip characteristic (typical)",
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.5,
+          120.0
+        ],
+        [
+          2.0,
+          30.0
+        ],
+        [
+          3.0,
+          9.0
+        ],
+        [
+          4.0,
+          4.2
+        ],
+        [
+          5.0,
+          2.4
+        ],
+        [
+          6.0,
+          1.5
+        ],
+        [
+          8.0,
+          0.8
+        ],
+        [
+          10.0,
+          0.45
+        ],
+        [
+          12.0,
+          0.12
+        ],
+        [
+          14.0,
+          0.03
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "Schneider GV2ME trip characteristic (datasheet)"
+    },
+    "Schneider Acti9 iC60": {
+      "thermal_k": 120.0,
+      "alpha": 2.0,
+      "im_min_mult": 5.0,
+      "im_max_mult": 10.0,
+      "ref": "Schneider iC60N C-curve (typical)",
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.45,
+          60.0
+        ],
+        [
+          2.0,
+          12.0
+        ],
+        [
+          3.0,
+          4.0
+        ],
+        [
+          4.0,
+          1.8
+        ],
+        [
+          5.0,
+          0.8
+        ],
+        [
+          6.0,
+          0.4
+        ],
+        [
+          7.0,
+          0.2
+        ],
+        [
+          8.0,
+          0.09
+        ],
+        [
+          9.0,
+          0.04
+        ],
+        [
+          10.0,
+          0.015
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "Schneider iC60N C-curve (datasheet)"
+    },
+    "Eaton NZM1": {
+      "thermal_k": 85.0,
+      "alpha": 2.0,
+      "im_min_mult": 8.0,
+      "im_max_mult": 12.0,
+      "ref": "Eaton NZM1 XT time-current curve (typical)",
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.2,
+          1400.0
+        ],
+        [
+          1.3,
+          350.0
+        ],
+        [
+          1.5,
+          100.0
+        ],
+        [
+          2.0,
+          28.0
+        ],
+        [
+          3.0,
+          10.0
+        ],
+        [
+          4.0,
+          5.0
+        ],
+        [
+          5.0,
+          2.8
+        ],
+        [
+          6.0,
+          1.7
+        ],
+        [
+          7.0,
+          1.1
+        ],
+        [
+          8.0,
+          0.7
+        ],
+        [
+          9.0,
+          0.45
+        ],
+        [
+          10.0,
+          0.3
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "Eaton NZM1 XT time-current curve (datasheet)"
+    },
+    "Eaton FAZ": {
+      "thermal_k": 110.0,
+      "alpha": 2.0,
+      "im_min_mult": 5.0,
+      "im_max_mult": 10.0,
+      "ref": "Eaton FAZ C-curve (typical)",
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.45,
+          60.0
+        ],
+        [
+          2.0,
+          12.0
+        ],
+        [
+          3.0,
+          4.0
+        ],
+        [
+          4.0,
+          1.8
+        ],
+        [
+          5.0,
+          0.8
+        ],
+        [
+          6.0,
+          0.4
+        ],
+        [
+          7.0,
+          0.2
+        ],
+        [
+          8.0,
+          0.09
+        ],
+        [
+          9.0,
+          0.04
+        ],
+        [
+          10.0,
+          0.015
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "Eaton FAZ C-curve (datasheet)"
+    },
+    "Eaton PKZM0": {
+      "thermal_k": 45.0,
+      "alpha": 2.0,
+      "im_min_mult": 12.0,
+      "im_max_mult": 14.0,
+      "ref": "Eaton PKZM0 trip characteristic (typical)",
+      "points": [
+        [
+          1.05,
+          7200.0
+        ],
+        [
+          1.13,
+          3600.0
+        ],
+        [
+          1.5,
+          120.0
+        ],
+        [
+          2.0,
+          30.0
+        ],
+        [
+          3.0,
+          9.0
+        ],
+        [
+          4.0,
+          4.2
+        ],
+        [
+          5.0,
+          2.4
+        ],
+        [
+          6.0,
+          1.5
+        ],
+        [
+          8.0,
+          0.8
+        ],
+        [
+          10.0,
+          0.45
+        ],
+        [
+          12.0,
+          0.12
+        ],
+        [
+          14.0,
+          0.03
+        ]
+      ],
+      "curve_source": "DATASHEET_POINTS",
+      "datasheet_ref": "Eaton PKZM0 trip characteristic (datasheet)"
+    }
+  }
+}

@@ -1,0 +1,353 @@
+{
+  "_comment": "Standards registry used by the engineering rules and the report references section.",
+  "standards": {
+    "IEC 60364-4-43": {
+      "title": {
+        "fa": "حفاظت در برابر جریان اضافه",
+        "en": "Protection against overcurrent",
+        "de": "Schutz bei Überstrom"
+      },
+      "scope": {
+        "fa": "هماهنگی جریان کابل و کلید",
+        "en": "Coordination of cable rating and protective device",
+        "de": "Abstimmung von Kabelbelastbarkeit und Schutzorgan"
+      }
+    },
+    "IEC 60364-5-52": {
+      "title": {
+        "fa": "سیم‌کشی و ظرفیت جریان‌دهی",
+        "en": "Wiring systems and current-carrying capacity",
+        "de": "Kabel- und Leitungsanlagen, Strombelastbarkeit"
+      },
+      "scope": {
+        "fa": "انتخاب مقطع کابل و افت ولتاژ",
+        "en": "Cable sizing and voltage drop",
+        "de": "Leitungsdimensionierung und Spannungsfall"
+      }
+    },
+    "IEC 60364-5-54": {
+      "title": {
+        "fa": "اتصال زمین و هادی‌های حفاظتی",
+        "en": "Earthing arrangements and protective conductors",
+        "de": "Erdungsanlagen und Schutzleiter"
+      },
+      "scope": {
+        "fa": "سایزینگ PE (جدولی و آدیاباتیک)",
+        "en": "PE sizing (table and adiabatic method)",
+        "de": "PE-Dimensionierung (tabellarisch und adiabatisch)"
+      }
+    },
+    "IEC 60947-2": {
+      "title": {
+        "fa": "کلیدهای فشار ضعیف (قدرت قطع و سلکتیویته)",
+        "en": "LV circuit-breakers (breaking capacity, selectivity)",
+        "de": "Niederspannungsschaltgeräte - Leistungsschalter"
+      },
+      "scope": {
+        "fa": "Icu/Ics و هماهنگی حفاظتی",
+        "en": "Icu/Ics and protective coordination",
+        "de": "Icu/Ics und Selektivität"
+      }
+    },
+    "IEC 60947-4-1": {
+      "title": {
+        "fa": "کنتاکتورها و راه‌اندازهای موتور",
+        "en": "Contactors and motor-starters",
+        "de": "Schütze und Motorstarter"
+      },
+      "scope": {
+        "fa": "ترکیب MPCB+کنتاکتور و تیپ هماهنگی ۱/۲",
+        "en": "MPCB+contactor combination, coordination type 1/2",
+        "de": "MPCB+Schütz-Kombination, Koordinationsart 1/2"
+      }
+    },
+    "IEC 60947-4-2": {
+      "title": {
+        "fa": "کنترل‌کننده‌های نیمه‌هادی موتور (سافت‌استارتر)",
+        "en": "AC semiconductor motor controllers (soft starters)",
+        "de": "Halbleiter-Motorsteuergeräte (Sanftstarter)"
+      },
+      "scope": {
+        "fa": "انتخاب و حفاظت سافت‌استارتر",
+        "en": "Soft starter selection and protection",
+        "de": "Sanftstarter-Auswahl und -Schutz"
+      }
+    },
+    "IEC 60947-6-1": {
+      "title": {
+        "fa": "تجهیزات سوئیچ انتقال (ATS)",
+        "en": "Transfer switching equipment (ATS)",
+        "de": "Transferschaltgeräte (Netzumschalter)"
+      },
+      "scope": {
+        "fa": "اینترلاک و سوئیچینگ دو ورودی",
+        "en": "Interlocking of two incoming supplies",
+        "de": "Verriegelung zweier Einspeisungen"
+      }
+    },
+    "IEC 61439-2": {
+      "title": {
+        "fa": "مجموعه‌های کلیدزنی فشار ضعیف",
+        "en": "Low-voltage switchgear assemblies",
+        "de": "Niederspannungs-Schaltgerätekombinationen"
+      },
+      "scope": {
+        "fa": "طراحی تأییدشده تابلو (الزامات حرارتی)",
+        "en": "Verified panel design (thermal requirements)",
+        "de": "Verifizierter Schaltschrankbau (thermische Anforderungen)"
+      }
+    },
+    "IEC 60204-1": {
+      "title": {
+        "fa": "تجهیزات الکتریکی ماشین‌آلات",
+        "en": "Electrical equipment of machines",
+        "de": "Elektrische Ausrüstung von Maschinen"
+      },
+      "scope": {
+        "fa": "مدار فرمان ۲۴VDC و رنگ‌بندی",
+        "en": "24VDC control circuit and color coding",
+        "de": "24VDC-Steuerstromkreis und Kennfarben"
+      }
+    },
+    "IEC 60034-1": {
+      "title": {
+        "fa": "ماشین‌های الکتریکی دوار - مقادیر نامی",
+        "en": "Rotating electrical machines - rating",
+        "de": "Drehende elektrische Maschinen - Bemessung"
+      },
+      "scope": {
+        "fa": "جریان راه‌اندازی و رفتار موتور",
+        "en": "Motor starting current and behavior",
+        "de": "Anlaufstrom und Motorverhalten"
+      }
+    },
+    "IEC 60034-30-1": {
+      "title": {
+        "fa": "کلاس‌های راندمان موتور (IE)",
+        "en": "Motor efficiency classes (IE)",
+        "de": "Wirkungsgradklassen (IE)"
+      },
+      "scope": {
+        "fa": "مقادیر پیش‌فرض cos phi و راندمان",
+        "en": "Default cos phi and efficiency values",
+        "de": "Standardwerte für cos phi und Wirkungsgrad"
+      }
+    },
+    "IEC 61000-3-2": {
+      "title": {
+        "fa": "محدودیت هارمونیک‌های جریان",
+        "en": "Limits for harmonic current emissions",
+        "de": "Grenzwerte für Oberschwingungsströme"
+      },
+      "scope": {
+        "fa": "THDi و سایزینگ نول",
+        "en": "THDi and neutral sizing",
+        "de": "THDi und Neutralleiter-Dimensionierung"
+      }
+    },
+    "IEC 60909-0": {
+      "title": {
+        "fa": "محاسبه جریان اتصال کوتاه",
+        "en": "Short-circuit current calculation",
+        "de": "Kurzschlussstromberechnung"
+      },
+      "scope": {
+        "fa": "برآورد Ik از داده ترانس",
+        "en": "Ik estimation from transformer data",
+        "de": "Ik-Abschätzung aus Transformatordaten"
+      }
+    },
+    "IEC 60502-1": {
+      "title": {
+        "fa": "کابل‌های قدرت LV",
+        "en": "LV power cables",
+        "de": "Niederspannungs-Starkstromkabel"
+      },
+      "scope": {
+        "fa": "کابل خروجی فیدر",
+        "en": "Feeder outgoing cables",
+        "de": "Abgangskabel"
+      }
+    },
+    "DIN 43671": {
+      "title": {
+        "fa": "شینه مسی",
+        "en": "Copper busbars",
+        "de": "Kupferschienen"
+      },
+      "scope": {
+        "fa": "شینه‌کشی فاز و نول",
+        "en": "Phase and neutral busbars",
+        "de": "Phasen- und Neutralleiterschienen"
+      }
+    },
+    "NFPA 20": {
+      "title": {
+        "fa": "پمپ‌های آتش‌نشان",
+        "en": "Stationary fire pumps",
+        "de": "Feuerlöschpumpen"
+      },
+      "scope": {
+        "fa": "حفاظت و حاشیه LRC مدار پمپ آتش‌نشان",
+        "en": "Fire pump circuit protection and LRC margin",
+        "de": "Feuerlöschpumpen-Schutz und LRC-Reserve"
+      }
+    },
+    "DIN EN 61439-1 (VDE 0660-600-1)": {
+      "title": {
+        "fa": "مجموعه‌های کلیدزنی و کنترل فشار ضعیف — الزامات عمومی (VDE 0660-600-1)",
+        "en": "Low-voltage switchgear and controlgear assemblies — Part 1 (VDE 0660-600-1)",
+        "de": "Niederspannungs-Schaltgerätekombinationen — Teil 1: Allgemeine Festlegungen (VDE 0660-600-1)"
+      },
+      "scope": {
+        "fa": "تأیید طراحی (Bauartnachweis)، حدود افزایش دما و تحمل اتصال کوتاه شینه",
+        "en": "Design verification, temperature-rise limits and busbar short-circuit withstand",
+        "de": "Bauartnachweis, Erwärmungsgrenzen und Kurzschlussfestigkeit der Sammelschienen"
+      }
+    },
+    "DIN VDE 0100-520": {
+      "title": {
+        "fa": "انتخاب و نصب تجهیزات الکتریکی - سیستم‌های سیم‌کشی (VDE 0100-520)",
+        "en": "Selection and erection of electrical equipment - Wiring systems (VDE 0100-520)",
+        "de": "Errichten von Niederspannungsanlagen - Kabel- und Leitungsanlagen (VDE 0100-520)"
+      },
+      "scope": {
+        "fa": "سایزینگ کابل، جریان مجاز و افت ولتاژ بر اساس استاندارد VDE",
+        "en": "Cable sizing, current-carrying capacity and voltage drop per VDE",
+        "de": "Leitungsdimensionierung, Strombelastbarkeit und Spannungsfall nach VDE"
+      }
+    },
+    "DIN VDE 0100-410": {
+      "title": {
+        "fa": "حفاظت در برابر برق‌گرفتگی و سیستم‌های زمین (VDE 0100-410)",
+        "en": "Protection against electric shock (VDE 0100-410)",
+        "de": "Schutz gegen elektrischen Schlag (VDE 0100-410)"
+      },
+      "scope": {
+        "fa": "حفاظت اصلی و حفاظتی تکمیلی در سیستم‌های توزیع TN و TT",
+        "en": "Basic and fault protection in TN and TT distribution systems",
+        "de": "Schutz bei Berührung (Basisschutz und Fehlerschutz) in TN- und TT-Systemen"
+      }
+    },
+    "DIN EN 61439-2 (VDE 0660-600-2)": {
+      "title": {
+        "fa": "مجموعه‌های کلیدزنی قدرت و تابلوهای صنعتی (VDE 0660-600-2)",
+        "en": "Power switchgear and controlgear assemblies — PSC (VDE 0660-600-2)",
+        "de": "Energie-Schaltgerätekombinationen (PSC-Schaltgerätekombinationen, VDE 0660-600-2)"
+      },
+      "scope": {
+        "fa": "فرم‌های جداسازی داخلی (Form 1..4b)، فواصل هوایی و چیدمان تابلو",
+        "en": "Internal separation forms (Form 1..4b), clearances and panel layout",
+        "de": "Innere Unterteilung (Form 1..4b), Luft-/Kriechstrecken und Schrankaufbau"
+      }
+    },
+    "DIN VDE 0100-520 / DIN VDE 0298-4": {
+      "title": {
+        "fa": "انتخاب و نصب کابل‌ها و ظرفیت جریان‌دهی مجاز (VDE 0100-520 / VDE 0298-4)",
+        "en": "Wiring systems and current-carrying capacity of cables (VDE 0100-520 / VDE 0298-4)",
+        "de": "Kabel- und Leitungsanlagen & Belastbarkeit von Kabeln und Leitungen (VDE 0100-520 / VDE 0298-4)"
+      },
+      "scope": {
+        "fa": "انتخاب سطح مقطع کابل، ضرایب تصحیح دما/تجمع و افت ولتاژ",
+        "en": "Cable cross-section sizing, temperature/grouping derating and voltage drop",
+        "de": "Leitungsquerschnitt, Umrechnungsfaktoren (Temperatur/Häufung) und Spannungsfall"
+      }
+    },
+    "DIN VDE 0100-430": {
+      "title": {
+        "fa": "حفاظت کابل‌ها و هادی‌ها در برابر جریان اضافه (VDE 0100-430)",
+        "en": "Protection of conductors against overcurrent (VDE 0100-430)",
+        "de": "Schutz von Kabeln und Leitungen bei Überstrom (VDE 0100-430)"
+      },
+      "scope": {
+        "fa": "هماهنگی جریان نامی کلید حفاظتی و ظرفیت مجاز کابل (Ib <= In <= Iz)",
+        "en": "Coordination between load current, protective device and cable ampacity",
+        "de": "Abstimmung zwischen Betriebsstrom, Schutzorgan und Leitungsbelastbarkeit"
+      }
+    },
+    "DIN VDE 0100-540": {
+      "title": {
+        "fa": "سیستم‌های اتصال زمین و هادی‌های حفاظتی PE (VDE 0100-540)",
+        "en": "Earthing arrangements and protective conductors (VDE 0100-540)",
+        "de": "Erdungsanlagen und Schutzleiter (VDE 0100-540)"
+      },
+      "scope": {
+        "fa": "محاسبه آدیاباتیک و جدولی سطح مقطع هادی حفاظتی PE و شینه ارت",
+        "en": "Adiabatic and table sizing of protective earth (PE) conductors",
+        "de": "Adiabatische und tabellarische Bemessung des Schutzleiters (PE)"
+      }
+    },
+    "DIN EN 60204-1 (VDE 0113-1)": {
+      "title": {
+        "fa": "تجهیزات الکتریکی ماشین‌آلات صنعتی (VDE 0113-1)",
+        "en": "Safety of machinery — Electrical equipment of machines (VDE 0113-1)",
+        "de": "Sicherheit von Maschinen — Elektrische Ausrüstung von Maschinen (VDE 0113-1)"
+      },
+      "scope": {
+        "fa": "تغذیه مدار فرمان ۲۴V DC (PELV)، جریان هجومی بوبین‌ها و رنگ‌بندی سیم‌ها",
+        "en": "24V DC PELV control circuits, contactor inrush sizing and wire color coding",
+        "de": "24-V-DC-Steuerstromkreise (PELV), Schütz-Einschaltleistung und Aderkennzeichnung"
+      }
+    },
+    "DIN EN 60909-0 (VDE 0102)": {
+      "title": {
+        "fa": "محاسبه جریان‌های اتصال کوتاه در شبکه‌های سه‌فاز AC (VDE 0102)",
+        "en": "Short-circuit currents in three-phase a.c. systems (VDE 0102)",
+        "de": "Kurzschlussströme in Drehstromnetzen — Berechnung der Ströme (VDE 0102)"
+      },
+      "scope": {
+        "fa": "محاسبه Ik'' شبکه، مشارکت برگشتی موتورها و جریان ضربه ip",
+        "en": "Prospective Ik'', motor feedback contribution and peak short-circuit current ip",
+        "de": "Anfangs-Kurzschlusswechselstrom Ik'', Motorbeitrag und Stoßkurzschlussstrom ip"
+      }
+    },
+    "DIN EN 60947-2 (VDE 0660-101)": {
+      "title": {
+        "fa": "کلیدهای اتوماتیک فشار ضعیف — قدرت قطع و سلکتیویته (VDE 0660-101)",
+        "en": "Low-voltage switchgear — Circuit-breakers (VDE 0660-101)",
+        "de": "Niederspannungsschaltgeräte — Teil 2: Leistungsschalter (VDE 0660-101)"
+      },
+      "scope": {
+        "fa": "قدرت قطع نامی Icu/Ics و هماهنگی سلکتیویته بالادست و پایین‌دست",
+        "en": "Breaking capacity Icu/Ics and upstream/downstream selectivity coordination",
+        "de": "Bemessungsausschaltvermögen Icu/Ics und Selektivitätskoordination"
+      }
+    },
+    "DIN EN 60947-4-1 (VDE 0660-102)": {
+      "title": {
+        "fa": "کنتاکتورها و راه‌اندازهای الکترومکانیکی موتور (VDE 0660-102)",
+        "en": "Contactors and motor-starters — Electromechanical starters (VDE 0660-102)",
+        "de": "Schütze und Motorstarter — Elektromechanische Schütze und Starter (VDE 0660-102)"
+      },
+      "scope": {
+        "fa": "هماهنگی تیپ ۲ (Type 2 Coordination) و سایزینگ کنتاکتورهای ستاره-مثلث و مستقیم",
+        "en": "Type 2 coordination and DOL / Star-Delta contactor sizing",
+        "de": "Zuordnungsart 2 (Type 2) und Dimensionierung von Direkt-/Stern-Dreieck-Startern"
+      }
+    },
+    "DIN EN 61643-11 (VDE 0675-6-11)": {
+      "title": {
+        "fa": "برقگیرهای فشار ضعیف — حفاظت در برابر اضافه‌ولتاژ گذرا (VDE 0675-6-11)",
+        "en": "Low-voltage surge protective devices — SPD (VDE 0675-6-11)",
+        "de": "Überspannungsschutzgeräte für Niederspannung — Anforderungen (VDE 0675-6-11)"
+      },
+      "scope": {
+        "fa": "انتخاب کلاس SPD (Type 1/2)، سطح حفاظت Up، ولتاژ دائمی Uc و فیوز پشتیبان",
+        "en": "SPD class selection, voltage protection level Up, Uc and backup fuse coordination",
+        "de": "SPD-Typauswahl (Typ 1/2), Schutzpegel Up, Dauerspannung Uc und Vorsicherung"
+      }
+    },
+    "DIN EN 60529 (VDE 0470-1)": {
+      "title": {
+        "fa": "درجه حفاظت محفظه‌ها — کد IP (VDE 0470-1)",
+        "en": "Degrees of protection provided by enclosures — IP Code (VDE 0470-1)",
+        "de": "Schutzarten durch Gehäuse — IP-Code (VDE 0470-1)"
+      },
+      "scope": {
+        "fa": "بررسی درجه حفاظت بدنه تابلو و تأثیر فیلترفن بر IP مؤثر",
+        "en": "Enclosure ingress protection verification and filter-fan IP impact",
+        "de": "Nachweis der Gehäuseschutzart und Einfluss von Filterlüftern auf die effektive IP"
+      }
+    }
+  }
+}
