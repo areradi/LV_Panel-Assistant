@@ -61,6 +61,8 @@ from lv_assist.gui_helpers import (
 )
 from lv_assist.summary_workflow import format_summary_cards
 
+from lv_assist.catalog_smart_search import open_smart_search
+
 LANG_SEGMENT_TO_CODE = {"FA": "fa", "EN": "en", "DE": "de"}
 
 
@@ -1516,17 +1518,48 @@ class LVAssistApp(ctk.CTk):
         self.tree_catalog.pack(fill="both", expand=True, padx=12, pady=6)
         self._prices_cache = CatalogRepository().list_prices()
 
+    def _smart_catalog_search_ids(self, query: str) -> set:
+        """Priority 6: return set of matched device_ids (empty on error)."""
+        try:
+            if not hasattr(self, "_smart_catalog_search"):
+                self._smart_catalog_search = open_smart_search()
+            result = self._smart_catalog_search.search(query)
+        except Exception:
+            return set()
+        ids = set()
+        for group in result.values():
+            for row in group:
+                did = row.get("device_id")
+                if did:
+                    ids.add(str(did))
+        return ids
+
     def _refresh_catalog_tree(self):
         if not hasattr(self, "tree_catalog"):
             return
-        query = (self.ent_cat_search.get() or "").strip().lower() if hasattr(self, "ent_cat_search") else ""
+        query = (self.ent_cat_search.get() or "").strip() if hasattr(self, "ent_cat_search") else ""
         for item in self.tree_catalog.get_children():
             self.tree_catalog.delete(item)
         self._prices_cache = CatalogRepository().list_prices()
-        for d in self.catalog_repo_devices():
-            if query and query not in d.part_number.lower() and query not in d.series.lower() \
-                    and query not in d.manufacturer.lower():
-                continue
+
+        devices = self.catalog_repo_devices()
+
+        # Priority 6: SmartCatalogSearch (Persian normalization + numeric guard
+        # + fuzzy matching). Falls back to naive substring if unavailable.
+        if query:
+            matched_ids = self._smart_catalog_search_ids(query)
+            if not matched_ids:
+                ql = query.lower()
+                devices = [
+                    d for d in devices
+                    if ql in d.part_number.lower()
+                    or ql in d.series.lower()
+                    or ql in d.manufacturer.lower()
+                ]
+            else:
+                devices = [d for d in devices if d.part_number in matched_ids]
+
+        for d in devices:
             price = self._prices_cache.get(d.part_number)
             price_txt = f"{price['unit_price']:g} {price['currency']}" if price else "-"
             self.tree_catalog.insert("", "end", values=(
