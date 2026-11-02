@@ -1753,8 +1753,11 @@ class LVAssistApp(ctk.CTk):
             default_text = base_colors[1] if ctk.get_appearance_mode() == "Dark" else base_colors[0]
             self.kpi_labels["thermal"].configure(text=tint_text, text_color=default_text)
         self.kpi_labels["cooling"].configure(text=f"{summary.selected_fan.part_number if summary.selected_fan else tr('fan_natural')}")
+        # Priority 7: W/H/D from _cards["enclosure"] (proper units, نامشخص when missing)
+        _enc_cards = _cards["enclosure"]
         _enc_pn = summary.selected_enclosure.part_number if summary.selected_enclosure else "-"
-        self.kpi_labels["enclosure"].configure(text=f"{_enc_pn}\n({int(summary.estimated_panel_width_mm)}x{int(summary.estimated_panel_height_mm)})")
+        enc_txt = f"{_enc_pn}\nW:{_enc_cards['width']} H:{_enc_cards['height']} D:{_enc_cards['depth']}"
+        self.kpi_labels["enclosure"].configure(text=enc_txt)
         if summary.cap_bank_installed_kvar > 0:
             detuned = f" p={summary.cap_bank_detuned_pct:g}%" if summary.cap_bank_detuned_pct > 0 else ""
             self.kpi_labels["cap_bank"].configure(text=f"{summary.cap_bank_installed_kvar:g} kvar{detuned}")
