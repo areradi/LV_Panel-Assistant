@@ -71,3 +71,6 @@ htmlcov/
 Thumbs.db
 Desktop.ini
 .DS_Store
+# Local SQLite databases (rebuildable from JSON via migrate_to_sqlite.py)
+lv_assist/data/*.db
+lv_assist/data/*.db-journal
