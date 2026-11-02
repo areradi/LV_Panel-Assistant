@@ -6,6 +6,8 @@ from lv_assist.models import (
     PanelSummaryOutput, LoadType, ValidationStatus, SelectivityEvalState, SpecialScenario, DataQuality, SpdClass,
     DesignVerificationItem, DesignVerificationReport, VerificationMethod, VerificationStatus
 )
+
+from lv_assist.pe_spd_engine import evaluate_spd_requirements
 from lv_assist.catalog import SiemensSelectivityRepository, TripCurveRepository, catalog_repo
 from lv_assist.busbar import BusbarEngine
 from lv_assist.i18n import tr
@@ -1029,6 +1031,30 @@ class EngineeringEngine:
                 status=ValidationStatus.INSUFFICIENT_DATA, description=tr("val_enc_ip_desc", a=project.target_ip),
                 supporting_evidence=tr("val_enc_ip_ev", a=project.target_ip), consequence=tr("val_enc_ip_cons"),
                 recommended_action=tr("val_enc_ip_action")))
+
+        # ---------- Priority 8: SPD pre-check via pe_spd_engine ----------
+        if project.spd_class != SpdClass.NONE:
+            try:
+                _has_lps = project.spd_class in (SpdClass.T1, SpdClass.T1_T2)
+                _spd_diag = evaluate_spd_requirements(
+                    earthing_system=getattr(project.earthing_system, "value", str(project.earthing_system)),
+                    nominal_voltage_ln_v=u0_v,
+                    has_external_lps=_has_lps,
+                    is_sensitive_terminal_load=False,
+                    prospective_ik_ka=ik_ka,
+                    candidates=[],
+                )
+                if _spd_diag.engineering_status.value == "insufficient_data" and _spd_diag.missing_parameters:
+                    vals.append(ValidationResult(
+                        rule_id="RULE-SPD-035", feeder_id="PANEL", standard_ref="IEC 61643-11",
+                        status=ValidationStatus.WARNING,
+                        description="SPD pre-check: missing data (" + ", ".join(_spd_diag.missing_parameters) + ")",
+                        supporting_evidence="pe_spd_engine.evaluate_spd_requirements",
+                        consequence="SPD sufficiency cannot be fully verified.",
+                        recommended_action="Complete missing inputs: " + ", ".join(_spd_diag.missing_parameters),
+                    ))
+            except Exception:
+                pass
 
         # ---------- Phase 6: صحت‌سنجی شینه اصلی طبق IEC 61439-1 ----------
         # فاز ۱۱: Ik و Ipk کل (شبکه + موتورها) مبنای تحمل اتصال کوتاه؛ امپدانس شینه → افت ولتاژ
