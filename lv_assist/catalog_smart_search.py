@@ -56,6 +56,9 @@ def normalize_search_text(text: str) -> str:
         return ""
     s = text.translate(_PERSIAN_DIGITS).translate(_CHAR_MAP).lower().strip()
     s = re.sub(r"(\d+(?:\.\d+)?)\s*(a|ka|v|kv|kw|kva|kvar|mm2)\b", r"\1 \2", s)
+    # Strip trailing .0 so that e.g. "25.0 a" == "25 a" (In values are whole
+    # numbers in the catalog but float-formatted as "25.0a" in full_text).
+    s = re.sub(r"\.0+(?=\s|$)", "", s)
     return re.sub(r"\s+", " ", s)
 
 
