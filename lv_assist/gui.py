@@ -54,6 +54,11 @@ from lv_assist.field_wizard_engine import (
     AutomationSignalType, FieldInstrumentInput, IndustrialAutomationEngine,
 )
 from lv_assist import web_catalog
+from lv_assist.gui_helpers import (
+    AsyncWebSearchManager,
+    FieldValidationError,
+    parse_cable_length_input,
+)
 
 LANG_SEGMENT_TO_CODE = {"FA": "fa", "EN": "en", "DE": "de"}
 
@@ -865,16 +870,30 @@ class WebSearchDialog(ctk.CTkToplevel):
         spec = self._build_spec()
         for item in self.tree_results.get_children():
             self.tree_results.delete(item)
-        self._results = web_catalog.fetch_web_results(spec)
-        if not self._results:
-            messagebox.showinfo(tr("msg_warn"), tr("web_no_results"), parent=self)
-            return
-        for r in self._results:
-            self.tree_results.insert("", "end", values=(r.title[:90], r.url, r.snippet[:120]))
-        if self._results and not self.ent_part.get().strip():
-            tokens = [t for t in self._results[0].title.replace("-", " ").split() if any(ch.isdigit() for ch in t)]
-            if tokens:
-                self.ent_part.insert(0, tokens[0][:24])
+
+        def _on_success(results):
+            self._results = results or []
+            if not self._results:
+                messagebox.showinfo(tr("msg_warn"), tr("web_no_results"), parent=self)
+                return
+            for r in self._results:
+                self.tree_results.insert("", "end", values=(r.title[:90], r.url, r.snippet[:120]))
+            if not self.ent_part.get().strip():
+                tokens = [t for t in self._results[0].title.replace("-", " ").split() if any(ch.isdigit() for ch in t)]
+                if tokens:
+                    self.ent_part.insert(0, tokens[0][:24])
+
+        def _on_error(msg):
+            messagebox.showerror(tr("msg_warn"), msg, parent=self)
+
+        if not hasattr(self, "_web_search_mgr"):
+            self._web_search_mgr = AsyncWebSearchManager(self, web_catalog.fetch_web_results)
+        self._web_search_mgr.start_search(
+            spec,
+            on_start_ui=lambda: None,
+            on_success_ui=_on_success,
+            on_error_ui=_on_error,
+        )
 
     def _open_sources(self):
         for name, url in web_catalog.source_urls(self._build_spec())[:4]:
@@ -1267,9 +1286,14 @@ class LVAssistApp(ctk.CTk):
             return
         len_raw = (self.f_entries["wiz_f_len"].get() or "").strip()
         try:
-            cable_len = float(len_raw) if len_raw else 30.0
-        except ValueError:
-            cable_len = 30.0
+            cable_len, _len_warn = parse_cable_length_input(
+                len_raw,
+                field_key="feeder_cable_length_m",
+                default_if_empty=30.0,
+            )
+        except FieldValidationError as exc:
+            messagebox.showwarning(tr("msg_warn"), exc.message, parent=self)
+            return
         # UX مینیمال: هیچ پاپ‌آپ مسدودکننده‌ای برای افزودن فیدر باز نمی‌شود؛
         # cos φ خالی = پیش‌فرض IEC 60034 IE3 (در ستون «ملاحظات» نمایش داده می‌شود).
         cos_phi_raw = None
@@ -1345,9 +1369,14 @@ class LVAssistApp(ctk.CTk):
         desc = (self.i_entries["wiz_i_desc"].get() or "").strip() or f"Instrument {tag}"
         sig = AutomationSignalType(self.cmb_i_type.get())
         try:
-            c_len = float((self.i_entries["wiz_i_len"].get() or "").strip() or 35.0)
-        except ValueError:
-            c_len = 35.0
+            c_len, _ = parse_cable_length_input(
+                (self.i_entries["wiz_i_len"].get() or "").strip(),
+                field_key="instrument_cable_length_m",
+                default_if_empty=35.0,
+            )
+        except FieldValidationError as exc:
+            messagebox.showwarning(tr("msg_warn"), exc.message, parent=self)
+            return
         inst = FieldInstrumentInput(
             tag_id=tag,
             higher_func=(self.wiz_entries["wiz_higher_func"].get() or "").strip() or "==PROCESS",
