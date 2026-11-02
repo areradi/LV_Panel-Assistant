@@ -54,6 +54,7 @@ from lv_assist.field_wizard_engine import (
     AutomationSignalType, FieldInstrumentInput, IndustrialAutomationEngine,
 )
 from lv_assist import web_catalog
+from lv_assist.summary_workflow import format_summary_cards
 
 LANG_SEGMENT_TO_CODE = {"FA": "fa", "EN": "en", "DE": "de"}
 
@@ -1659,7 +1660,20 @@ class LVAssistApp(ctk.CTk):
         return True
 
     def _refresh_results_views(self, f_outs, summary, validations):
-        self.kpi_labels["main_current"].configure(text=f"{summary.design_main_current_a}A\n{summary.main_breaker.part_number if summary.main_breaker else '-'}")
+        # Priority 3: separate real In from design current (was: design shown as In)
+        _cards = format_summary_cards(
+            summary.main_breaker,
+            summary.selected_enclosure,
+            design_current_a=summary.design_main_current_a,
+        )
+        _mp = _cards["main_protection"]
+        _warn = ""
+        if summary.main_breaker and summary.main_breaker.rated_current_in_a:
+            if summary.main_breaker.rated_current_in_a < summary.design_main_current_a:
+                _warn = " ⚠"
+        _pn = summary.main_breaker.part_number if summary.main_breaker else "-"
+        main_txt = f"In: {_mp['rated_current_in']} | Id: {_mp['design_current']}{_warn}\n{_pn}"
+        self.kpi_labels["main_current"].configure(text=main_txt)
         bus_txt = f"{summary.recommended_busbar_spec}\n{tr('kpi_bus_icw', a=summary.busbar_icw_1s_ka, b=summary.busbar_required_supports)}\nΔU={summary.busbar_du_v}V ({summary.busbar_du_pct}%)"
         if summary.motor_contribution_ka is not None:
             bus_txt += f" | I''kM={summary.motor_contribution_ka}kA"
@@ -1677,7 +1691,8 @@ class LVAssistApp(ctk.CTk):
             default_text = base_colors[1] if ctk.get_appearance_mode() == "Dark" else base_colors[0]
             self.kpi_labels["thermal"].configure(text=tint_text, text_color=default_text)
         self.kpi_labels["cooling"].configure(text=f"{summary.selected_fan.part_number if summary.selected_fan else tr('fan_natural')}")
-        self.kpi_labels["enclosure"].configure(text=f"{summary.selected_enclosure.part_number}\n({int(summary.estimated_panel_width_mm)}x{int(summary.estimated_panel_height_mm)})")
+        _enc_pn = summary.selected_enclosure.part_number if summary.selected_enclosure else "-"
+        self.kpi_labels["enclosure"].configure(text=f"{_enc_pn}\n({int(summary.estimated_panel_width_mm)}x{int(summary.estimated_panel_height_mm)})")
         if summary.cap_bank_installed_kvar > 0:
             detuned = f" p={summary.cap_bank_detuned_pct:g}%" if summary.cap_bank_detuned_pct > 0 else ""
             self.kpi_labels["cap_bank"].configure(text=f"{summary.cap_bank_installed_kvar:g} kvar{detuned}")
