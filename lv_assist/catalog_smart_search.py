@@ -81,11 +81,23 @@ def has_conflicting_technical_rating(query_text: str, candidate_text: str) -> bo
 
 
 def _fuzzy_score(a: str, b: str) -> float:
-    """Similarity in [0, 100]."""
+    """Similarity in [0, 100]. rapidfuzz if available, else sliding-window difflib."""
     if HAS_RAPIDFUZZ:
         return float(_fuzz.partial_ratio(a, b))
+    if not a or not b:
+        return 0.0
     from difflib import SequenceMatcher
-    return SequenceMatcher(None, a, b).ratio() * 100.0
+    if len(a) > len(b):
+        a, b = b, a
+    la = len(a)
+    best = 0.0
+    for i in range(len(b) - la + 1):
+        r = SequenceMatcher(None, a, b[i:i + la]).ratio() * 100.0
+        if r > best:
+            best = r
+            if best >= 100.0:
+                break
+    return best
 
 
 class SmartCatalogSearch:
