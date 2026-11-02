@@ -403,3 +403,96 @@ class DesignVerificationReport(BaseModel):
     conclusion_status: VerificationStatus
     conclusion_text: str
     generated_by: str = "LV-PanelAssist"
+
+
+
+# ============================================================
+# Priority 1 additions — Audit fixes
+# ------------------------------------------------------------
+# NOTE: The original audit guide proposed an enum named
+# "VerificationStatus" for catalog provenance. But that name is
+# already in use in this file for IEC 61439 design verification
+# (PASS/WARNING/FAIL/NOT_VERIFIED). To avoid breaking existing
+# code, the new enum is named CatalogProvenance.
+# ============================================================
+
+class CatalogProvenance(str, Enum):
+    """Trust level of catalog data (distinct from design VerificationStatus)."""
+    VERIFIED_CATALOG = "verified_catalog"
+    UNVERIFIED_WEB = "unverified_web"
+    USER_ESTIMATED = "user_estimated"
+
+
+class StepExecState(str, Enum):
+    """Execution state of a workflow step."""
+    PENDING = "pending"
+    RUNNING = "running"
+    CALCULATED = "calculated"
+    FAILED = "failed"
+    STALE = "stale"
+
+
+class StepEngStatus(str, Enum):
+    """Engineering review status of a workflow step."""
+    OK = "ok"
+    WARNING = "warning"
+    ERROR = "error"
+    INSUFFICIENT_DATA = "insufficient_data"
+
+
+class MainBreakerSpec(BaseModel):
+    """Real selected main breaker spec (distinct from panel design current)."""
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    device_type: Optional[str] = None
+    model_name: Optional[str] = None
+    part_number: Optional[str] = None
+    in_a: Optional[float] = None
+    poles: Optional[int] = None
+    rated_voltage_v: Optional[float] = None
+    icu_ka: Optional[float] = None
+    ics_ka: Optional[float] = None
+    icn_ka: Optional[float] = None
+    icw_ka_1s: Optional[float] = None
+    ir_setting_a: Optional[float] = None
+    isd_setting_a: Optional[float] = None
+    im_setting_a: Optional[float] = None
+    ig_setting_a: Optional[float] = None
+    verification_status: CatalogProvenance = CatalogProvenance.VERIFIED_CATALOG
+
+
+class EnclosureSpec(BaseModel):
+    """Explicit enclosure dimensions for summary card."""
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    width_mm: Optional[int] = None
+    height_mm: Optional[int] = None
+    depth_mm: Optional[int] = None
+    mounting_type: Optional[str] = None
+    ip_rating: Optional[str] = None
+
+
+class SPDType(str, Enum):
+    """IEC 61643-11 SPD type (distinct from existing SpdClass)."""
+    TYPE_1 = "Type 1"
+    TYPE_2 = "Type 2"
+    TYPE_3 = "Type 3"
+    TYPE_1_2 = "Type 1+2"
+    TYPE_2_3 = "Type 2+3"
+
+
+class SPDSelectionResult(BaseModel):
+    """SPD pre-selection result with explicit engineering status."""
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    spd_type: Optional[SPDType] = None
+    model_name: Optional[str] = None
+    uc_v: Optional[float] = None
+    up_kv: Optional[float] = None
+    iimp_ka: Optional[float] = None
+    in_ka: Optional[float] = None
+    imax_ka: Optional[float] = None
+    backup_fuse_a: Optional[float] = None
+    engineering_status: StepEngStatus = StepEngStatus.INSUFFICIENT_DATA
+    missing_parameters: List[str] = Field(default_factory=list)
+    review_notes: List[str] = Field(default_factory=list)
