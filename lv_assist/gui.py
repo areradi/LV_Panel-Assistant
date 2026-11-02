@@ -59,7 +59,7 @@ from lv_assist.gui_helpers import (
     FieldValidationError,
     parse_cable_length_input,
 )
-from lv_assist.summary_workflow import format_summary_cards
+from lv_assist.summary_workflow import format_summary_cards, CalculationWorkflowEngine
 
 from lv_assist.catalog_smart_search import open_smart_search
 
@@ -976,6 +976,8 @@ class LVAssistApp(ctk.CTk):
         self.engine = EngineeringEngine(self.catalog)
         self.current_project, self.current_feeders, self.last_results = None, None, None
         self._stale = False
+        # Priority 10: workflow engine (additive; boolean _stale still authoritative)
+        self._workflow = CalculationWorkflowEngine()
         self._project_form_loading = False
         self._project_form_values = {}
         self._project_input_data = {}
@@ -1717,6 +1719,12 @@ class LVAssistApp(ctk.CTk):
         self.lbl_project_title.configure(text=tr("lbl_project", name=project.project_name, tag=project.panel_tag))
         self._refresh_results_views(f_outs, summary, validations)
         self._stale = False
+        # Priority 10: mark all downstream workflow steps as calculated (additive)
+        for _step_id in (
+            "project_inputs", "grid_sc", "feeders", "aggregation_spd",
+            "main_breaker", "enclosure_ctrl", "busbar_thermal", "final_report",
+        ):
+            self._workflow_step_done(_step_id)
         self._last_calc_time = datetime.now().strftime("%H:%M:%S")
         self._apply_status()
         return True
@@ -1805,6 +1813,14 @@ class LVAssistApp(ctk.CTk):
             messagebox.showwarning(tr("msg_warn"), tr("msg_load_with_errors", n=len(errors)) + "\n\n" + "\n".join(errors[:15]) + "\n\n" + tr("msg_load_stale_hint"))
         else:
             messagebox.showinfo(tr("msg_success"), tr("msg_load_stale_hint"))
+
+    def _workflow_step_done(self, step_id: str) -> None:
+        """Priority 10: mark a workflow step as calculated (additive, never raises)."""
+        if hasattr(self, "_workflow"):
+            try:
+                self._workflow.mark_calculated(step_id)
+            except Exception:
+                pass
 
     def _mark_stale(self):
         self._stale = True
