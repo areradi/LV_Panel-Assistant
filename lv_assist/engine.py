@@ -7,7 +7,7 @@ from lv_assist.models import (
     DesignVerificationItem, DesignVerificationReport, VerificationMethod, VerificationStatus
 )
 
-from lv_assist.pe_spd_engine import evaluate_spd_requirements
+from lv_assist.pe_spd_engine import evaluate_spd_requirements, select_pe_k_factor
 from lv_assist.catalog import SiemensSelectivityRepository, TripCurveRepository, catalog_repo
 from lv_assist.busbar import BusbarEngine
 from lv_assist.i18n import tr
@@ -135,12 +135,23 @@ class CableSizingEngine:
         return round((delta_u / u_base) * 100.0, 2)
 
     @classmethod
-    def calculate_pe_section(cls, phase_section_mm2: float, fault_current_ka: float = 10.0, clear_time_s: float = 0.02) -> Optional[float]:
+    def calculate_pe_section(
+        cls,
+        phase_section_mm2: float,
+        fault_current_ka: float = 10.0,
+        clear_time_s: float = 0.02,
+        material: str = "Cu",
+        insulation: str = "PVC",
+        arrangement: str = "separate",
+    ) -> Optional[float]:
+        # Priority 9: k-factor from IEC 60364-5-54 (default Cu/PVC/separate -> 143,
+        # identical to the previous hardcoded 143.0). Callers may override.
+        _k, _ = select_pe_k_factor(material, insulation, arrangement)
         if phase_section_mm2 <= 16.0: s_table = phase_section_mm2
         elif phase_section_mm2 <= 35.0: s_table = 16.0
         else: s_table = phase_section_mm2 / 2.0
         i_fault_a = fault_current_ka * 1000.0 * 0.5
-        s_adiabatic = (i_fault_a * math.sqrt(clear_time_s)) / 143.0
+        s_adiabatic = (i_fault_a * math.sqrt(clear_time_s)) / float(_k)
         req_pe = max(s_table, s_adiabatic)
         # اولین مقطع استاندارد از جدول PE دیتابیس؛ فراتر از جدول → None (F-005، بدون سقف ساختگی)
         return catalog_repo.get_standard_pe_section(req_pe)
