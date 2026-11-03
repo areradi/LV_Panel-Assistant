@@ -53,6 +53,7 @@ class ExcelExporter:
             (tr("rpt_s_voltage"), f"{project.nominal_voltage_v} V / {project.earthing_system.value}", "V / Hz", f"{project.frequency_hz} Hz"),
             (tr("rpt_ik"), summary.ik_used_ka if summary.ik_used_ka is not None else "-", "kA", summary.ik_source_str),
             (tr("rpt_scenario"), f"{project.panel_type.value} / {project.special_scenario.value}", "-", "-"),
+            (tr('wiz_mounting'), tr('mount_' + project.enclosure_mounting.value), '-', 'IEC 62208 / IEC 61439-1'),
             (tr("rpt_dip"), f"{summary.max_motor_starting_dip_pct}%" if summary.max_motor_starting_dip_pct is not None else "-", "%", summary.max_starting_dip_motor),
             (tr("rpt_s_temp"), f"{project.ambient_temp_c} / {project.max_internal_temp_c}", "°C", "Derating"),
             (tr("rpt_s_power"), f"{summary.total_active_kw} kW / {summary.total_reactive_kvar} kvar", "kW / kvar", f"cos_phi = {summary.overall_cos_phi}"),
@@ -188,6 +189,12 @@ class ExcelExporter:
                 for c in range(1, 9): ws6.cell(row=ws6.max_row, column=c).fill = fill
         _append_safe(ws6, ["", tr("dv_conclusion_title"), "", tr(f"dv_status_{dv_report.conclusion_status.value.lower()}"),
                            dv_report.conclusion_text, tr("dv_note_scope"), "", dv_report.standard_ref])
+
+        scenario_sheet = wb.create_sheet('Scenario_Inputs')
+        _append_safe(scenario_sheet, ['Field', 'Value'])
+        for name, value in project.scenario_inputs.model_dump().items():
+            if value is not None:
+                _append_safe(scenario_sheet, [name, value])
 
         try:
             from lv_assist.commercial import CommercialEngine
@@ -427,7 +434,8 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <tr><th>{tr("html_param")}</th><th>{tr("html_value")}</th></tr>
 <tr><td>{_h(tr("html_voltage"))}</td><td dir="ltr"><b>{_h(project.nominal_voltage_v)}V / {_h(project.earthing_system.value)}</b></td></tr>
 <tr><td>{_h(tr("rpt_ik"))}</td><td dir="ltr"><b>{_h(ik_cell)}</b><br><small>{_h(ik_note)}</small></td></tr>
-<tr><td>{_h(tr("rpt_scenario"))}</td><td dir="ltr"><b>{_h(project.panel_type.value)} / {_h(project.special_scenario.value)}</b></td></tr>
+<tr><td>{_h(tr("rpt_scenario"))}</td><td><b>{_h(tr('panel_' + project.panel_type.value))} / {_h(tr('scenario_' + project.special_scenario.value))}</b></td></tr>
+<tr><td>{_h(tr('wiz_mounting'))}</td><td>{_h(tr('mount_' + project.enclosure_mounting.value))}</td></tr>
 <tr><td>{_h(tr("rpt_dip"))}</td><td dir="ltr"><b>{_h(dip_cell)}</b> <small>{_h(summary.max_starting_dip_motor)}</small></td></tr>
 <tr><td>{_h(tr("html_budget"))}</td><td dir="ltr"><b>{_h(summary.ctrl_24v_total_continuous_w)} W ({_h(summary.ctrl_24v_design_current_with_spare_a)} A)</b></td></tr>
 <tr><td>{_h(tr("html_psu"))}</td><td dir="ltr"><b>{_h(summary.selected_psu_24v.part_number if summary.selected_psu_24v else summary.suggested_psu_str)}</b></td></tr>

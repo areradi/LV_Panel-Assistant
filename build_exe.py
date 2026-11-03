@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-APP_NAME = "LV-PanelAssist"
+APP_NAME = "PanelCalc-Pro"
 ENTRY_SCRIPT = ROOT / "main.py"
 
 
@@ -52,11 +52,13 @@ def build():
         "--windowed",
         "--onefile",
         f"--name={APP_NAME}",
+        f"--specpath={ROOT / 'build' / 'spec'}",
         "--hidden-import=openpyxl",
         "--hidden-import=pydantic",
         "--hidden-import=defusedxml",
         "--hidden-import=sqlite3",
         "--hidden-import=customtkinter",
+        "--collect-all=rapidfuzz",
         *data_args,
         str(ENTRY_SCRIPT),
     ]

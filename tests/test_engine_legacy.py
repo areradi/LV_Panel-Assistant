@@ -192,8 +192,8 @@ class TestExcelIO:
         ExcelExporter.export_to_excel(str(out_path), project, outs, summary, validations)
         wb = openpyxl.load_workbook(str(out_path))
         assert wb.sheetnames == ["01_Project_Summary", "02_Feeder_Cable_Schedule",
-                                 "03_Validation_Log", "04_BOM_and_EPLAN", "05_Control_Circuits",
-                                 "06_Design_Verification"]
+                                 "03_Validation_Log", "04_BOM", "05_Control_Circuits",
+                                 "06_Design_Verification", "Scenario_Inputs", "07_Commercial_Quote"]
 
     def test_altitude_loaded_from_excel(self, tmp_path):
         path = tmp_path / "input.xlsx"
@@ -244,10 +244,11 @@ class TestI18n:
     def test_unknown_key_returns_key(self):
         assert tr("no_such_key_xyz") == "no_such_key_xyz"
 
-    def test_fa_digits_are_persian(self):
+    def test_fa_calculated_numbers_are_latin(self):
         i18n.set_language("fa")
         text = tr("rpt_ref_ks", ks=0.85, spare=20.0)
-        assert "۰" in text
+        assert "0.85" in text and "20.0" in text
+        assert not any(c in text for c in '۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩')
         i18n.set_language("en")
         assert "0" in tr("rpt_ref_ks", ks=0.85, spare=20.0)
 
@@ -400,12 +401,13 @@ class TestPhase2SoftStarterAndScenarios:
         coord = next(v for v in validations if v.rule_id == "RULE-COORD-002")
         assert coord.status in (ValidationStatus.COMPLETED, ValidationStatus.WARNING)
 
-    def test_fire_pump_scenario_main_upsized(self):
+    def test_fire_pump_requires_real_starting_data_instead_of_fixed_multiplier(self):
         project = make_project(special_scenario="FIRE_PUMP")
         fp = make_feeder("FP1", power_kw=30.0, cos_phi=0.8, efficiency=0.9, fire_pump_service=True)
         _, summary, validations = EngineeringEngine(CATALOG).process_project(project, [fp])
-        assert summary.design_main_current_a > 100.0
-        assert any(v.rule_id.startswith("RULE-SCEN-FP") for v in validations)
+        assert summary.design_main_current_a > 0
+        assert not any(v.rule_id == 'RULE-SCEN-FP-021' for v in validations)
+        assert any(v.rule_id == 'SCEN-FIRE-START' and v.status == ValidationStatus.INSUFFICIENT_DATA for v in validations)
 
     def test_suggested_spec_when_catalog_short(self):
         small_catalog = [d for d in CATALOG if d.device_type in ("MCB", "CONTACTOR")]
@@ -720,27 +722,27 @@ class TestPhase4Scenarios:
         project = make_project(special_scenario=SpecialScenario.ATS_MAINS_MAINS)
         feeders = [make_feeder("F01", load_type=LoadType.SUB_FEEDER)]
         _, _, validations = EngineeringEngine(CATALOG).process_project(project, feeders)
-        assert "RULE-SCEN-ATS2-025" in _rule_ids(validations)
+        assert 'SCEN-ATS-INTERLOCK' in _rule_ids(validations)
 
     def test_ups_critical_rule(self):
         project = make_project(special_scenario=SpecialScenario.UPS_CRITICAL)
         feeders = [make_feeder("F01", load_type=LoadType.SUB_FEEDER)]
         _, _, validations = EngineeringEngine(CATALOG).process_project(project, feeders)
-        assert "RULE-SCEN-UPS-026" in _rule_ids(validations)
+        assert 'SCEN-UPS-KW' in _rule_ids(validations)
 
     def test_emergency_lighting_warns_without_fr(self):
         project = make_project(special_scenario=SpecialScenario.EMERGENCY_LIGHTING)
         feeders = [make_feeder("F01", load_type=LoadType.LIGHTING_SOCKET, power_kw=5.0, has_socket_outlets=False)]
         _, _, validations = EngineeringEngine(CATALOG).process_project(project, feeders)
-        eml = [v for v in validations if v.rule_id == "RULE-SCEN-EML-027"]
-        assert eml and eml[0].status == ValidationStatus.WARNING
+        eml = [v for v in validations if v.rule_id == 'SCEN-BATTERY-ENERGY']
+        assert eml and eml[0].status == ValidationStatus.INSUFFICIENT_DATA
 
-    def test_emergency_lighting_ok_with_fr(self):
+    def test_emergency_lighting_not_approved_from_fire_resistance_alone(self):
         project = make_project(special_scenario=SpecialScenario.EMERGENCY_LIGHTING)
         feeders = [make_feeder("F01", load_type=LoadType.LIGHTING_SOCKET, power_kw=5.0, has_socket_outlets=False, fire_resistant=True)]
         _, _, validations = EngineeringEngine(CATALOG).process_project(project, feeders)
-        eml = [v for v in validations if v.rule_id == "RULE-SCEN-EML-027"]
-        assert eml and eml[0].status == ValidationStatus.COMPLETED
+        eml = [v for v in validations if v.rule_id == 'SCEN-BATTERY-ENERGY']
+        assert eml and eml[0].status == ValidationStatus.INSUFFICIENT_DATA
 
 
 class TestPhase4CurveSelectivity:
@@ -838,7 +840,7 @@ class TestPhase4Exports:
         path = tmp_path / "out.xlsx"
         ExcelExporter.export_to_excel(str(path), project, outs, summary, validations)
         wb = openpyxl.load_workbook(str(path))
-        bom = wb["04_BOM_and_EPLAN"]
+        bom = wb["04_BOM"]
         tags = [str(c.value) for row in bom.iter_rows(min_row=2) for c in row]
         assert any("-Kcap" in t for t in tags)
         ws1 = wb["01_Project_Summary"]
@@ -1606,19 +1608,15 @@ class TestPhase7GuiFeatures:
         f_outs, summary, validations = EngineeringEngine(CATALOG).process_project(project, feeders)
         zpath = str(tmp_path / "bundle.zip")
         n = LVAssistApp.build_document_bundle(zpath, project, f_outs, summary, validations, include_pdf=False)
-        assert n == 41  # 12 پایه + 5 ema + 5 emp + 2 field kit + 17 بسته EPLAN
+        assert n == 8
         with zipfile.ZipFile(zpath) as zf:
             names = zf.namelist()
         for expected in ("01_Design_Output.xlsx", "02_Engineering_Report.html",
                          "02_Design_Verification_Report.html", "03_Single_Line_Diagram.svg",
-                         "04_Time_Current_Curves.svg", "05_Control_Circuits.svg", "06_Control_Connections_EPLAN.csv",
-                         "07_Panel_Layout.svg", "08_Control_Circuits.dxf", "09_EPLAN_Parts_Import.csv",
-                         "10_EPLAN_Parts_Management.csv", "11_EPLAN_Generate_Pages.cs"):
+                         "04_Time_Current_Curves.svg", "05_Control_Circuits.svg",
+                         "06_Panel_Layout.svg", "07_Commercial_Quotation.html"):
             assert expected in names
-        assert "12_EPLAN_Macros/LV_SLD_Main.ema" in names
-        assert len([x for x in names if x.startswith("12_EPLAN_Macros/")]) == 5
-        assert "13_EPLAN_Page_Macros/LV_SLD_Main.emp" in names
-        assert len([x for x in names if x.startswith("13_EPLAN_Page_Macros/")]) == 5
+        assert not any('EPLAN' in name or name.endswith(('.dxf', '.ema', '.emp')) for name in names)
         assert not any(name.endswith(".pdf") for name in names)
         with zipfile.ZipFile(zpath) as zf:
             assert zf.read("01_Design_Output.xlsx")[:2] == b"PK"
@@ -1635,9 +1633,9 @@ class TestPhase7Template:
         ws_f = wb["Feeders_List"]
         p_formulas = " ".join(str(dv.formula1) for dv in ws_p.data_validations.dataValidation)
         f_formulas = " ".join(str(dv.formula1) for dv in ws_f.data_validations.dataValidation)
-        for expected in ("TN-S", "MCC", "FIRE_PUMP_BYPASS", "IP66", "Form 4b"):
+        for expected in ("TN-S", "MCC", "Choices_2", "IP66", "Form 4b"):
             assert expected in p_formulas
-        for expected in ("MOTOR_VFD", "TRUE,FALSE", "XLPE", "C,B1,E,F"):
+        for expected in ("MOTOR_VFD", "TRUE,FALSE", "XLPE", "A1,A2,B1,B2,C,E,F,D"):
             assert expected in f_formulas
         assert len(ws_f.data_validations.dataValidation) >= 8
 
@@ -1655,551 +1653,11 @@ class TestPhase7Template:
         assert project.earthing_system.value == "TN-S"
 
 
-class TestPhase8EplanMacro:
-    @staticmethod
-    def _demo_results():
-        from lv_assist.gui import build_demo_project
-        project, feeders = build_demo_project()
-        f_outs, summary, validations = EngineeringEngine(CATALOG).process_project(project, feeders)
-        return project, f_outs, summary
-
-    def test_generate_script_structure(self):
-        from lv_assist.eplan_macro import EplanMacroExporter
-        project, f_outs, summary = self._demo_results()
-        s = EplanMacroExporter.generate_script(project, f_outs, summary)
-        for expected in ("[Start]", "public void Start()", "EXPECTED_PROJECT", "Refusing to write",
-                         "LockingStep", "GetCurrentProject", "FUNC_DEVICETAG_FULL",
-                         "FUNC_ARTICLE_PARTNR", "IEC_symbol", "SymbolVariant", "Function"):
-            assert expected in s
-        # صفحه‌های تولیدشده: SLD + مشترک + یک صفحه به ازای هر فیدر موتوری
-        assert '"001"' in s and '"100"' in s
-        assert '"101"' in s and '"102"' in s and '"103"' in s
-        # تگ‌های دستگاه مطابق ControlCircuitGenerator
-        for tag in ('"-Q0"', '"-Q01"', '"-G1"', '"-F0"', '"-X1"', '"-X2"',
-                    '"-K1"', '"-S10"', '"-S11"', '"-H11"', '"-U3"', '"-F2"',
-                    '"-K2Y"', '"-K2D"', '"-K2T"', '"-H22"'):
-            assert tag in s
-        # شماره قطعه کلید اصلی در اسکریپت درج شده
-        assert summary.main_breaker is not None
-        assert summary.main_breaker.part_number in s
-        # نگاشت سیمبل قابل ویرایش در اسکریپت است
-        assert "MAP_SYMBOL" in s and '"Q_2L"' in s and '"F2"' in s
-
-    def test_csharp5_syntax_compliance(self):
-        import re
-        from lv_assist.eplan_macro import EplanMacroExporter
-        project, f_outs, summary = self._demo_results()
-        s = EplanMacroExporter.generate_script(project, f_outs, summary)
-        assert "?." not in s
-        assert "$\"" not in s
-        assert "nameof(" not in s
-        assert "=>" not in s
-        assert s.count("{") == s.count("}")
-        assert s.count("(") == s.count(")")
-        assert not re.search(r"__[A-Z_]+__", s)
-        for line in s.splitlines():
-            code = line.split("//", 1)[0]
-            assert all(ord(ch) < 128 for ch in code), "non-ASCII in code line: " + line
-
-    def test_export_file_utf8(self, tmp_path):
-        from lv_assist.eplan_macro import EplanMacroExporter
-        project, f_outs, summary = self._demo_results()
-        p = tmp_path / "EPLAN_Generate_Pages.cs"
-        EplanMacroExporter.export_file(str(p), project, f_outs, summary)
-        raw = p.read_bytes()
-        assert raw.startswith(b"\xef\xbb\xbf")
-        assert p.read_text(encoding="utf-8-sig") == EplanMacroExporter.generate_script(project, f_outs, summary)
-
-    def test_device_rows_match_generators(self):
-        from lv_assist.eplan_macro import EplanMacroExporter
-        project, f_outs, summary = self._demo_results()
-        rows = EplanMacroExporter._devices(project, f_outs, summary)
-        pages = {r[0] for r in rows}
-        assert "001" in pages and "100" in pages
-        # SLD: کلید اصلی + یک کلید به ازای هر فیدر
-        sld = [r for r in rows if r[0] == "001"]
-        tags = [r[1] for r in sld]
-        assert tags[0] == "-Q0"
-        for i, f in enumerate(f_outs, start=1):
-            assert "-Q%d" % i in tags
-            row = [r for r in sld if r[1] == "-Q%d" % i][0]
-            expected = f.selected_protection.part_number if f.selected_protection else ""
-            assert row[3] == expected
-        # صفحه مدار کنترلی DOL: تگ‌ها و شماره قطعه کنتاکتور
-        idx = next(i for i, f in enumerate(f_outs, start=1) if f.load_type == LoadType.MOTOR_DOL)
-        ctrl = [r for r in rows if r[0] == "1%02d" % idx]
-        ctags = {r[1] for r in ctrl}
-        for t in ("-Q%d" % idx, "-S%d0" % idx, "-S%d1" % idx, "-K%d" % idx, "-H%d1" % idx):
-            assert t in ctags
-        k_row = [r for r in ctrl if r[1] == "-K%d" % idx][0]
-        f_dol = f_outs[idx - 1]
-        assert k_row[3] == (f_dol.selected_contactor_main.part_number
-                            if f_dol.selected_contactor_main else "")
-        # فیدر غیرموتوری صفحه کنترل ندارد اما در SLD هست
-        non_motor_pages = {r[0] for r in rows if r[1].startswith("-Q") and r[0] != "001"}
-        motor_idx_pages = {"1%02d" % (i + 1) for i, f in enumerate(f_outs)
-                           if f.load_type in (LoadType.MOTOR_DOL, LoadType.MOTOR_STAR_DELTA,
-                                              LoadType.MOTOR_SOFT_STARTER, LoadType.MOTOR_VFD)}
-        assert non_motor_pages <= {"100"} | motor_idx_pages
-
-    def test_helpers_escaping(self):
-        from lv_assist.eplan_macro import _cstr, _struct_safe
-        assert _cstr('a"b\\c') == 'a\\"b\\\\c'
-        assert _cstr("پمپ") == r"\u067e\u0645\u067e"
-        assert _cstr("x\ny") == r"x\ny"
-        assert _struct_safe("+MCC1") == "MCC1"
-        assert _struct_safe("=A/B&C D") == "A_B_C_D"
-
-    def test_script_compiles_with_csharp5(self, tmp_path):
-        """اگر کامپایلر C# 5 موجود باشد، اسکریپت تولیدشده واقعاً کامپایل می‌شود."""
-        import os
-        import subprocess
-        from lv_assist.eplan_macro import EplanMacroExporter
-        csc = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-        if not os.path.exists(csc):
-            import pytest
-            pytest.skip("csc.exe (C# 5 compiler) not available")
-        project, f_outs, summary = self._demo_results()
-        cs_path = tmp_path / "gen.cs"
-        EplanMacroExporter.export_file(str(cs_path), project, f_outs, summary)
-        stub = tmp_path / "stub.cs"
-        stub.write_text(
-            "namespace Eplan.EplApi.Base {\n"
-            "  public enum MessageLevel { Message=0, Warning=1, Error=2, FatalError=3 }\n"
-            "  public class BaseException : System.Exception {\n"
-            "    public BaseException(string m):base(m){}\n"
-            "    public BaseException(string m, MessageLevel l):base(m){}\n"
-            "    public void FixMessage(){}\n"
-            "  }\n"
-            "}\n"
-            "namespace Eplan.EplApi.Scripting {\n"
-            "  [System.AttributeUsage(System.AttributeTargets.Method)]\n"
-            "  public class StartAttribute : System.Attribute {}\n"
-            "}\n"
-            "namespace Eplan.EplApi.ApplicationFramework {\n"
-            "  public class ActionCallingContext { public void AddParameter(string k, string v){} }\n"
-            "  public class CommandLineInterpreter { public void Execute(string a){} public void Execute(string a, ActionCallingContext c){} }\n"
-            "}\n",
-            encoding="utf-8",
-        )
-        out = tmp_path / "gen.dll"
-        proc = subprocess.run(
-            [csc, "-nologo", "-t:library", "-out:" + str(out), str(stub), str(cs_path)],
-            capture_output=True, text=True, timeout=180,
-        )
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-        assert out.exists()
 
 
 
-class TestPhase9EplanMacroFiles:
-    """فاز ۹: ماکروهای واقعی EPLAN (.ema) — ساختار PXF تأییدشده از نمونه‌های EPLAN 1.9 تا 2.7"""
-
-    def _demo_results(self):
-        from lv_assist.gui import build_demo_project
-        project, feeders = build_demo_project()
-        f_outs, summary, validations = EngineeringEngine(CATALOG).process_project(project, feeders)
-        return project, f_outs, summary
-
-    def test_export_library_files_and_names(self, tmp_path):
-        import os
-        from lv_assist.eplan_macro_files import EplanMacroFileExporter
-        project, f_outs, summary = self._demo_results()
-        paths = EplanMacroFileExporter.export_library(str(tmp_path), project, f_outs, summary)
-        names = [os.path.basename(p) for p in paths]
-        assert names == ["LV_SLD_Main.ema", "LV_Control_PSU.ema", "LV_Control_DOL.ema",
-                         "LV_Control_StarDelta.ema", "LV_Control_VFD.ema"]
-        for p in paths:
-            assert os.path.exists(p) and os.path.getsize(p) > 500
-
-    def test_ema_structure_clones_verified_templates(self, tmp_path):
-        import os
-        import xml.etree.ElementTree as ET
-        from lv_assist.eplan_macro_files import EplanMacroFileExporter, ELEMENT_WHITELIST
-        project, f_outs, summary = self._demo_results()
-        for p in EplanMacroFileExporter.export_library(str(tmp_path), project, f_outs, summary):
-            tree = ET.parse(p)
-            root = tree.getroot()
-            assert root.tag == "EplanPxfRoot"
-            assert root.get("Type") == "WindowMacro"
-            assert root.get("Version") == "2.4.8366"
-            assert root.get("PxfVersion") == "1.23"
-            variant = root.find("MacroVariant")
-            assert variant is not None
-            assert variant.get("MacroFuncType") == "1"
-            assert variant.get("DocumentType") == "1"
-            assert "/" in variant.get("ReferencePoint", "")
-            # فقط عناصر الگوی تأییدشده
-            assert {el.tag for el in root.iter()} <= set(ELEMENT_WHITELIST)
-            # یک صفحه و یک قاب ماکرو
-            assert len([el for el in root.iter() if el.tag == "O4"]) == 1
-            o37s = [el for el in root.iter() if el.tag == "O37"]
-            assert len(o37s) == 1
-            # هر O70 سه قطب با ارجاع R7 به شناسه خودش
-            for o70 in root.iter():
-                if o70.tag != "O70":
-                    continue
-                poles = [c for c in o70 if c.tag == "S53x5"]
-                assert len(poles) == 3
-                for i, pole in enumerate(poles, start=1):
-                    assert pole.get("R7") == o70.get("A1")
-                    assert pole.get("A4") == str(i)
-            # قاب ماکرو به همه فرزندان ارجاع دارد
-            o37 = o37s[0]
-            refs = o37.get("A683").split(";")
-            s109 = [c.get("R1906") for c in o37 if c.tag == "S109x692"]
-            assert refs == s109
-            # شناسه‌های یکتا
-            ids = [el.get("A1") for el in root.iter()
-                   if el.tag in ("O4", "O30", "O31", "O70", "O37")]
-            assert len(ids) == len(set(ids))
-
-    def test_real_dts_and_parts_in_macros(self, tmp_path):
-        import os
-        import xml.etree.ElementTree as ET
-        from lv_assist.eplan_macro_files import EplanMacroFileExporter
-        project, f_outs, summary = self._demo_results()
-        expected = {
-            "LV_SLD_Main.ema": ["-Q0", "-Q1", "-Q2", "-Q3", "-Q4", "-Qcap"],
-            "LV_Control_PSU.ema": ["-Q01", "-G1", "-F0", "-X1", "-X2"],
-            "LV_Control_DOL.ema": ["-Q1", "-S10", "-S11", "-K1", "-H11"],
-            "LV_Control_StarDelta.ema": ["-F2", "-S20", "-S21", "-K2T", "-K2Y", "-K2D", "-H21", "-H22"],
-            "LV_Control_VFD.ema": ["-S30", "-S31", "-U3", "-H31", "-H32"],
-        }
-        parts_by_file = {}
-        for p in EplanMacroFileExporter.export_library(str(tmp_path), project, f_outs, summary):
-            name = os.path.basename(p)
-            root = ET.parse(p).getroot()
-            o70s = [el for el in root.iter() if el.tag == "O70"]
-            dts = []
-            for o70 in o70s:
-                p144 = o70.find("P144")
-                p150 = o70.find("P150")
-                assert p144 is not None and p150 is not None
-                assert p144.get("P20013") == p150.get("P20013")
-                dts.append(p144.get("P20013"))
-                p11 = o70.find("P11")
-                if p11 is not None and p11.get("P20100_1"):
-                    parts_by_file.setdefault(name, []).append(p11.get("P20100_1"))
-            assert dts == expected[name], name
-        # شماره قطعه کلید اصلی در SLD و کنتاکتور خط در DOL درج شده
-        assert summary.main_breaker is not None
-        assert summary.main_breaker.part_number in parts_by_file["LV_SLD_Main.ema"]
-        dol = next(f for f in f_outs if f.load_type == LoadType.MOTOR_DOL)
-        assert dol.selected_contactor_main is not None
-        assert dol.selected_contactor_main.part_number in parts_by_file["LV_Control_DOL.ema"]
-
-    def test_potential_rails_and_names(self, tmp_path):
-        import os
-        import xml.etree.ElementTree as ET
-        from lv_assist.eplan_macro_files import EplanMacroFileExporter
-        project, f_outs, summary = self._demo_results()
-        for p in EplanMacroFileExporter.export_library(str(tmp_path), project, f_outs, summary):
-            name = os.path.basename(p)
-            root = ET.parse(p).getroot()
-            o30s = [el for el in root.iter() if el.tag == "O30"]
-            names = [el.get("A511") for el in o30s]
-            if name == "LV_SLD_Main.ema":
-                assert names == ["??_??@L1;", "??_??@L2;", "??_??@L3;", "??_??@N;", "??_??@PE;"]
-            else:
-                assert names == ["??_??@L+;", "??_??@M;"]
-            o31s = [el for el in root.iter() if el.tag == "O31"]
-            assert len(o31s) == len(o30s)
-            for o31 in o31s:
-                assert o31.get("A531") and o31.get("A532")
-
-    def test_skip_absent_motor_types(self, tmp_path):
-        import os
-        from lv_assist.eplan_macro_files import EplanMacroFileExporter
-        project = make_project()
-        feeders = [make_feeder(feeder_id="F01", load_type=LoadType.SUB_FEEDER)]
-        f_outs, summary, _ = EngineeringEngine(CATALOG).process_project(project, feeders)
-        names = [os.path.basename(p) for p in
-                 EplanMacroFileExporter.export_library(str(tmp_path), project, f_outs, summary)]
-        assert names == ["LV_SLD_Main.ema", "LV_Control_PSU.ema"]
-
-    def test_xml_escaping_roundtrip(self):
-        import xml.etree.ElementTree as ET
-        from lv_assist.eplan_macro_files import _build_macro
-        row = ("001", "-Q0", "BREAKER", "PART&<X>", 'Text "quoted" & <esc>', 50.0, 250.0)
-        root = ET.fromstring(_build_macro("EscTest", "desc", ["L1"], [row]))
-        o70 = next(el for el in root.iter() if el.tag == "O70")
-        p11 = o70.find("P11")
-        assert p11.get("P20011") == 'Text "quoted" & <esc>'
-        assert p11.get("P20100_1") == "PART&<X>"
-        assert o70.find("P144").get("P20013") == "-Q0"
-
-    def test_gui_action_and_bundle_include_macros(self, tmp_path):
-        import zipfile
-        from lv_assist.gui import LVAssistApp
-        assert hasattr(LVAssistApp, "action_export_eplan_macros")
-        project, f_outs, summary = self._demo_results()
-        zpath = str(tmp_path / "bundle9.zip")
-        n = LVAssistApp.build_document_bundle(zpath, project, f_outs, summary, [], include_pdf=False)
-        with zipfile.ZipFile(zpath) as zf:
-            names = zf.namelist()
-        macros = [x for x in names if x.startswith("12_EPLAN_Macros/") and x.endswith(".ema")]
-        assert len(macros) == 5
-        assert "12_EPLAN_Macros/LV_SLD_Main.ema" in names
-        assert n == 41  # 12 پایه + 5 ema + 5 emp + 2 field kit + 17 بسته EPLAN
-
-    def test_translation_key_parity_and_new_keys(self):
-        import json
-        base = PROJECT_ROOT / "lv_assist" / "translations"
-        data = {}
-        for lang in ("fa", "en", "de"):
-            with open(base / (lang + ".json"), encoding="utf-8") as fh:
-                data[lang] = json.load(fh)
-        assert set(data["fa"]) == set(data["en"]) == set(data["de"])
-        for key in ("btn_eplan_macros", "tip_eplan_macros", "msg_macros_done"):
-            assert all(key in data[lang] for lang in ("fa", "en", "de"))
 
 
-class TestPhase10EplanPageMacros:
-    """فاز ۱۰: ماکروهای صفحه EPLAN (.emp) — ساختار PXF تأییدشده از نمونه واقعی EPLAN 2024"""
-
-    def _demo_results(self):
-        from lv_assist.gui import build_demo_project
-        project, feeders = build_demo_project()
-        f_outs, summary, validations = EngineeringEngine(CATALOG).process_project(project, feeders)
-        return project, f_outs, summary
-
-    def test_export_library_files_and_names(self, tmp_path):
-        import os
-        from lv_assist.eplan_macro_files import EplanPageMacroExporter
-        project, f_outs, summary = self._demo_results()
-        paths = EplanPageMacroExporter.export_library(str(tmp_path), project, f_outs, summary, ts=1724679797)
-        names = [os.path.basename(p) for p in paths]
-        assert names == ["LV_SLD_Main.emp", "LV_Control_PSU.emp", "LV_Control_DOL.emp",
-                         "LV_Control_StarDelta.emp", "LV_Control_VFD.emp"]
-        for p in paths:
-            assert os.path.exists(p) and os.path.getsize(p) > 500
-
-    def test_page_structure_clones_verified_2024_sample(self, tmp_path):
-        import os
-        import xml.etree.ElementTree as ET
-        from lv_assist.eplan_macro_files import (
-            EplanPageMacroExporter, ELEMENT_WHITELIST,
-            EMP_VERSION, EMP_BUILD, EMP_CONFIGURATION_FLAGS, STREAM_SCHEMA)
-        project, f_outs, summary = self._demo_results()
-        for p in EplanPageMacroExporter.export_library(str(tmp_path), project, f_outs, summary, ts=1724679797):
-            text = open(p, encoding="utf-8").read()
-            assert text.startswith('<?xml version="1.0" encoding="utf-8" ?>')
-            root = ET.fromstring(text)
-            assert root.tag == "EplanPxfRoot"
-            assert root.get("Type") == "PageMacro"
-            assert root.get("Version") == EMP_VERSION
-            assert root.get("SchemaVersion") == "1.7.21408"
-            assert root.get("ConfigurationFlags") == EMP_CONFIGURATION_FLAGS
-            assert root.get("StreamSchema") == STREAM_SCHEMA
-            assert root.get("NumMainObjects") == "1"
-            # EplPxfDir/EplPxfDirEntry مانند هر دو نمونه واقعی
-            pxf_dir = root.find("EplPxfDir")
-            assert pxf_dir is not None
-            entry = pxf_dir.find("EplPxfDirEntry")
-            assert entry.get("MacroFuncType") == "-1" and entry.get("VariantId") == "-1"
-            # MacroVariant بدون ویژگی، با ESymLib/O14/O6/O4 به ترتیب نمونه
-            variant = root.find("MacroVariant")
-            assert variant is not None and not variant.attrib
-            tags = [c.tag for c in variant]
-            libs = [c.get("Name") for c in variant if c.tag == "ESymLib"]
-            assert libs == ["SPECIAL", "IEC_symbol", "IEC_single_symbol", "GRAPHICS", "OS_SYM_ESS"]
-            assert tags.count("O14") == 1
-            assert tags.count("O6") == 3
-            assert tags.count("O4") == 1
-            assert tags[5] == "O14" and tags[6] == "O6" and tags[9] == "O4"
-            # صفحه مدار A47="1" با A699/A700 و Build نمونه 2024
-            page = [c for c in variant if c.tag == "O4"][0]
-            assert page.get("A47") == "1"
-            assert page.get("Build") == EMP_BUILD
-            assert page.get("A699") == "00000000000000000000000000000000"
-            assert page.get("A700") == "00000000-0000-0000-0000-000000000000"
-            # فقط عناصر الگوی تأییدشده + شناسه‌های یکتا
-            assert {el.tag for el in root.iter()} <= set(ELEMENT_WHITELIST)
-            ids = [el.get("A1") for el in root.iter() if el.get("A1")]
-            assert len(ids) == len(set(ids))
-
-    def test_page_name_in_a1101_and_p49(self, tmp_path):
-        import os
-        import xml.etree.ElementTree as ET
-        from lv_assist.eplan_macro_files import EplanPageMacroExporter
-        project, f_outs, summary = self._demo_results()
-        expected = {"LV_SLD_Main.emp": "001", "LV_Control_PSU.emp": "100",
-                    "LV_Control_DOL.emp": "101", "LV_Control_StarDelta.emp": "102",
-                    "LV_Control_VFD.emp": "103"}
-        for p in EplanPageMacroExporter.export_library(str(tmp_path), project, f_outs, summary, ts=1):
-            name = os.path.basename(p)
-            page = ET.parse(p).getroot().find("MacroVariant").find("O4")
-            assert page.get("A1101") == expected[name]
-            assert page.find("P49").get("P11012") == expected[name]
-
-    def test_device_pole_counts_and_parts(self, tmp_path):
-        import os
-        import xml.etree.ElementTree as ET
-        from lv_assist.eplan_macro_files import EplanPageMacroExporter
-        project, f_outs, summary = self._demo_results()
-        poles_by_file = {}
-        for p in EplanPageMacroExporter.export_library(str(tmp_path), project, f_outs, summary, ts=1):
-            name = os.path.basename(p)
-            page = ET.parse(p).getroot().find("MacroVariant").find("O4")
-            by_tag = {}
-            for o70 in page.findall("O70"):
-                p144 = o70.find("P144")
-                by_tag.setdefault(p144.get("P20013"), []).append(p144.get("P20014"))
-            poles_by_file[name] = by_tag
-        sld, psu = poles_by_file["LV_SLD_Main.emp"], poles_by_file["LV_Control_PSU.emp"]
-        dol, sd, vfd = (poles_by_file["LV_Control_DOL.emp"],
-                        poles_by_file["LV_Control_StarDelta.emp"],
-                        poles_by_file["LV_Control_VFD.emp"])
-        # دستگاه‌های سه‌قطبی: سه O70 با P20014=1..3
-        assert sld["-Q0"] == ["1", "2", "3"]
-        assert sd["-F2"] == ["1", "2", "3"]
-        assert dol["-K1"] == ["1", "2", "3"]
-        assert vfd["-U3"] == ["1", "2", "3"]
-        # دستگاه‌های تک‌قطبی: یک O70 بدون P20014
-        assert psu["-G1"] == [None]
-        assert psu["-X1"] == [None]
-        assert dol["-H11"] == [None]
-        assert dol["-S10"] == [None]
-        # پتانسیل‌ها: L سه‌قطبی (دو ستون)، N/PE/L+/M تک‌قطبی
-        assert sorted(sld["L"]) == ["1", "1", "2", "2", "3", "3"]
-        assert sld["N"] == [None, None]
-        assert sld["PE"] == [None, None]
-        assert psu["L+"] == [None, None]
-        assert psu["M"] == [None, None]
-
-    def test_real_dts_and_parts_in_page_macros(self, tmp_path):
-        import os
-        import xml.etree.ElementTree as ET
-        from lv_assist.eplan_macro_files import EplanPageMacroExporter
-        project, f_outs, summary = self._demo_results()
-        expected = {
-            "LV_SLD_Main.emp": ["-Q0", "-Q1", "-Q2", "-Q3", "-Q4", "-Qcap"],
-            "LV_Control_PSU.emp": ["-Q01", "-G1", "-F0", "-X1", "-X2"],
-            "LV_Control_DOL.emp": ["-Q1", "-S10", "-S11", "-K1", "-H11"],
-            "LV_Control_StarDelta.emp": ["-F2", "-S20", "-S21", "-K2T", "-K2Y", "-K2D", "-H21", "-H22"],
-            "LV_Control_VFD.emp": ["-S30", "-S31", "-U3", "-H31", "-H32"],
-        }
-        parts_by_file = {}
-        for p in EplanPageMacroExporter.export_library(str(tmp_path), project, f_outs, summary, ts=1):
-            name = os.path.basename(p)
-            page = ET.parse(p).getroot().find("MacroVariant").find("O4")
-            dts = []
-            for o70 in page.findall("O70"):
-                p144 = o70.find("P144")
-                dt = p144.get("P20013")
-                if dt.startswith("-") and dt not in dts:
-                    dts.append(dt)
-                p11 = o70.find("P11")
-                if p11 is not None and p11.get("P20100_1"):
-                    parts_by_file.setdefault(name, []).append(
-                        (p144.get("P20013"), p11.get("P20100_1")))
-            # ترتیب پل 1 هر دستگاه اول است → لیست DTها بدون تکرار
-            assert dts == expected[name]
-        # شماره قطعه روی پل 1: کلید اصلی در SLD و کنتاکتور در DOL
-        assert parts_by_file["LV_SLD_Main.emp"][0][0] == "-Q0"
-        assert parts_by_file["LV_SLD_Main.emp"][0][1] == summary.main_breaker.part_number
-        dol_parts = dict(parts_by_file["LV_Control_DOL.emp"])
-        assert dol_parts["-Q1"] == f_outs[0].selected_protection.part_number
-        assert dol_parts["-K1"] == f_outs[0].selected_contactor_main.part_number
-
-    def test_potential_rail_style_matches_2024_sample(self, tmp_path):
-        import os
-        import xml.etree.ElementTree as ET
-        from lv_assist.eplan_macro_files import EplanPageMacroExporter
-        project, f_outs, summary = self._demo_results()
-        for p in EplanPageMacroExporter.export_library(str(tmp_path), project, f_outs, summary, ts=1):
-            name = os.path.basename(p)
-            page = ET.parse(p).getroot().find("MacroVariant").find("O4")
-            n_left = n_right = 0
-            for o70 in page.findall("O70"):
-                p144 = o70.find("P144")
-                tag = p144.get("P20013")
-                if tag not in ("L", "N", "PE", "L+", "M"):
-                    continue
-                if tag == "L":
-                    # L سه‌قطبی: P20012="2" و A145 سه‌خاصیتی (نمونه 2024 عینی)
-                    assert p144.get("P20012") == "2"
-                    assert o70.get("A145") == "<20012><20013><20014>"
-                else:
-                    assert o70.get("A145") == "<20013>"
-                x = o70.find("S40x1201").get("A762")
-                if o70.get("A792") == "9":
-                    n_left += 1
-                    assert x.startswith("28/")
-                elif o70.get("A792") == "0":
-                    n_right += 1
-                    assert x.startswith("392/")
-            if name == "LV_SLD_Main.emp":
-                assert n_left == 5 and n_right == 5
-            else:
-                assert n_left == 2 and n_right == 2
-
-    def test_skip_absent_motor_types(self, tmp_path):
-        import os
-        from lv_assist.gui import build_demo_project
-        from lv_assist.eplan_macro_files import EplanPageMacroExporter
-        from lv_assist.models import LoadType
-        project, feeders = build_demo_project()
-        feeders = [f for f in feeders if f.load_type == LoadType.SUB_FEEDER]
-        f_outs, summary, validations = EngineeringEngine(CATALOG).process_project(project, feeders)
-        paths = EplanPageMacroExporter.export_library(str(tmp_path), project, f_outs, summary, ts=1)
-        names = [os.path.basename(p) for p in paths]
-        assert names == ["LV_SLD_Main.emp", "LV_Control_PSU.emp"]
-
-    def test_xml_escaping_roundtrip(self, tmp_path):
-        import os
-        import xml.etree.ElementTree as ET
-        from lv_assist.eplan_macro_files import EplanPageMacroExporter
-        project, f_outs, summary = self._demo_results()
-        out = str(tmp_path)
-        for p in EplanPageMacroExporter.export_library(out, project, f_outs, summary, ts=1):
-            ET.fromstring(open(p, encoding="utf-8").read())
-        # متن‌های دارای کاراکترهای خاص XML سالم رندر و دوباره خوانده می‌شوند
-        from lv_assist.eplan_macro_files import _build_page_macro, POWER_RAILS
-        row = ("001", "-Q9", "BREAKER", 'PART&<X>', 'Text "quoted" & <esc>', 50.0, 250.0)
-        text = _build_page_macro("T_ESCAPE", "desc & <d>", "001", POWER_RAILS, [row], 1)
-        root = ET.fromstring(text)
-        page = root.find("MacroVariant").find("O4")
-        o70s = page.findall("O70")
-        first = [o for o in o70s if o.find("P144").get("P20013") == "-Q9"][0]
-        p11 = first.find("P11")
-        assert p11.get("P20100_1") == "PART&<X>"
-        assert p11.get("P20011") == 'Text "quoted" & <esc>'
-
-    def test_gui_action_and_bundle_include_page_macros(self, tmp_path):
-        import zipfile
-        from lv_assist.gui import LVAssistApp, build_demo_project
-        project, feeders = build_demo_project()
-        f_outs, summary, validations = EngineeringEngine(CATALOG).process_project(project, feeders)
-        app = LVAssistApp
-        assert hasattr(app, "action_export_eplan_page_macros")
-        zpath = str(tmp_path / "bundle10.zip")
-        n = app.build_document_bundle(zpath, project, f_outs, summary, validations, include_pdf=False)
-        assert n == 41  # 12 پایه + 5 ema + 5 emp + 2 field kit + 17 بسته EPLAN
-        with zipfile.ZipFile(zpath) as zf:
-            names = zf.namelist()
-        pages = [x for x in names if x.startswith("13_EPLAN_Page_Macros/") and x.endswith(".emp")]
-        assert len(pages) == 5
-        assert "13_EPLAN_Page_Macros/LV_SLD_Main.emp" in names
-        with zipfile.ZipFile(zpath) as zf:
-            body = zf.read("13_EPLAN_Page_Macros/LV_SLD_Main.emp").decode("utf-8")
-        assert body.startswith('<?xml version="1.0" encoding="utf-8" ?>')
-
-    def test_translation_key_parity_and_new_keys(self):
-        import json
-        import os
-        base = str(PROJECT_ROOT / "lv_assist" / "translations")
-        data = {}
-        for lang in ("fa", "en", "de"):
-            with open(base + "/" + lang + ".json", encoding="utf-8") as fh:
-                data[lang] = json.load(fh)
-        assert set(data["fa"]) == set(data["en"]) == set(data["de"])
-        for key in ("btn_eplan_page_macros", "tip_eplan_page_macros", "msg_page_macros_done"):
-            assert all(key in data[lang] for lang in ("fa", "en", "de"))
-        # پیام با پارامتر n در هر سه زبان
-        for lang in ("fa", "en", "de"):
-            assert "{n}" in data[lang]["msg_page_macros_done"]
 
 
 class TestPhase11BusbarAndMotorIk:
@@ -2302,7 +1760,7 @@ class TestPhase11BusbarAndMotorIk:
         for lang in ("fa", "en", "de"):
             with open(base + "/" + lang + ".json", encoding="utf-8") as fh:
                 data[lang] = json.load(fh)
-        assert len(data["fa"]) == len(data["en"]) == len(data["de"]) == 1002
+        assert set(data["fa"]) == set(data["en"]) == set(data["de"])
         for key in ("val_bus_028_desc", "val_bus_028_warn_desc", "val_bus_028_ev",
                     "val_bus_028_cons", "val_bus_028_action", "val_mot_029_desc",
                     "val_mot_029_noik_desc", "val_mot_029_ev", "val_mot_029_cons",
@@ -2416,7 +1874,7 @@ class TestPhase12DesignVerification:
         project, outs, summary, validations = self._demo()
         zpath = str(tmp_path / "p12.zip")
         n = LVAssistApp.build_document_bundle(zpath, project, outs, summary, validations, include_pdf=False)
-        assert n == 41  # 12 پایه + 5 ema + 5 emp + 2 field kit + 17 بسته EPLAN
+        assert n == 8
         with zipfile.ZipFile(zpath) as zf:
             assert "02_Design_Verification_Report.html" in zf.namelist()
 
@@ -2428,7 +1886,7 @@ class TestPhase12DesignVerification:
         for lang in ("fa", "en", "de"):
             with open(base + "/" + lang + ".json", encoding="utf-8") as fh:
                 data[lang] = json.load(fh)
-        assert len(data["fa"]) == len(data["en"]) == len(data["de"]) == 1002
+        assert set(data["fa"]) == set(data["en"]) == set(data["de"])
         for key in ("btn_dv", "tip_dv", "dv_title", "dv_subtitle", "dv_h_clause",
                     "dv_h_item", "dv_h_req", "dv_h_method", "dv_h_value", "dv_h_evidence",
                     "dv_h_rules", "dv_h_status", "dv_h_proj", "dv_h_items", "dv_gen_by",
@@ -2524,7 +1982,7 @@ class TestPhase13Spd:
         wb = openpyxl.load_workbook(path)
         labels = [str(r[0].value) for r in wb["01_Project_Summary"].iter_rows()]
         assert tr("rpt_spd") in labels
-        ws4 = wb["04_BOM_and_EPLAN"]
+        ws4 = wb["04_BOM"]
         bom_rows = [[str(c.value) for c in r] for r in ws4.iter_rows(min_row=2)]
         assert any("-F9" in r[0] and summary.selected_spd.part_number in r[6] for r in bom_rows)
         assert any("-F9F" in r[0] and "gG" in r[6] for r in bom_rows)
@@ -2580,7 +2038,7 @@ class TestPhase13Spd:
         for lang in ("fa", "en", "de"):
             with open(base / f"{lang}.json", encoding="utf-8") as fh:
                 data[lang] = json.load(fh)
-        assert len(data["fa"]) == len(data["en"]) == len(data["de"]) == 1002
+        assert set(data["fa"]) == set(data["en"]) == set(data["de"])
         for key in ("val_spd_none_desc", "val_spd_none_cons", "val_spd_none_action",
                     "val_spd_030_desc", "val_spd_030_ev", "val_spd_030_cons",
                     "val_spd_030_err_desc", "val_spd_030_err_ev", "val_spd_030_err_cons",
@@ -2596,138 +2054,6 @@ class TestPhase13Spd:
             assert all(key in data[lang] for lang in ("fa", "en", "de")), key
 
 
-class TestPhase14EplanFieldTest:
-    def _demo(self):
-        from lv_assist.gui import build_demo_project
-        project, feeders = build_demo_project()
-        outs, summary, validations = EngineeringEngine(CATALOG).process_project(project, feeders)
-        return project, outs, summary, validations
-
-    def test_kit_creates_guide_and_checklist(self, tmp_path):
-        from lv_assist.eplan_field_test import EplanFieldTestKit
-        project, outs, summary, _ = self._demo()
-        folder = str(tmp_path / "kit")
-        written = EplanFieldTestKit.export_kit(folder, project, outs, summary)
-        assert [os.path.basename(p) for p in written] == [
-            EplanFieldTestKit.GUIDE_FILE, EplanFieldTestKit.CHECKLIST_FILE]
-        assert all(os.path.getsize(p) > 0 for p in written)
-
-    def test_expected_files_cover_ema_and_emp(self):
-        from lv_assist.eplan_field_test import EplanFieldTestKit
-        project, outs, summary, _ = self._demo()
-        files = EplanFieldTestKit.expected_files(project, outs, summary)
-        names = [f[0] for f in files]
-        assert names.count("LV_SLD_Main.ema") == 1
-        assert names.count("LV_SLD_Main.emp") == 1
-        assert len(names) == 10
-        assert sum(1 for f in files if f[1] == "EMA") == 5
-        assert sum(1 for f in files if f[1] == "EMP") == 5
-        assert all(f[2] for f in files)
-
-    def test_checklist_rows_follow_real_devices(self):
-        from lv_assist.eplan_field_test import EplanFieldTestKit
-        project, outs, summary, _ = self._demo()
-        rows = EplanFieldTestKit.checklist_rows(project, outs, summary)
-        assert [r["step"] for r in rows] == list(range(1, len(rows) + 1))
-        first = rows[0]
-        assert first["file"] == "LV_SLD_Main.ema"
-        assert first["tag"] == "-Q0"
-        assert first["part"] == summary.main_breaker.part_number
-        assert any(r["tag"] == "-Qcap" for r in rows)
-
-    def test_guide_has_steps_and_scope(self, tmp_path):
-        from lv_assist.eplan_field_test import EplanFieldTestKit
-        project, outs, summary, _ = self._demo()
-        written = EplanFieldTestKit.export_kit(str(tmp_path / "kit"), project, outs, summary)
-        content = open(written[0], encoding="utf-8").read()
-        assert project.project_name in content
-        for token in ("12_EPLAN_Macros", "13_EPLAN_Page_Macros", ".ema", ".emp"):
-            assert token in content
-        assert content.count("<li>") >= 8
-        assert tr("eft_s3_t") in content and tr("eft_s5_t") in content
-
-    def test_checklist_dropdown_and_headers(self, tmp_path):
-        from lv_assist.eplan_field_test import EplanFieldTestKit
-        project, outs, summary, _ = self._demo()
-        written = EplanFieldTestKit.export_kit(str(tmp_path / "kit"), project, outs, summary)
-        wb = openpyxl.load_workbook(written[1])
-        assert wb.sheetnames == ["Checklist", "README"]
-        ws = wb["Checklist"]
-        headers = [c.value for c in ws[1]]
-        assert headers[0] == tr("eft_cl_step") and headers[6] == tr("eft_cl_result")
-        dvs = ws.data_validations.dataValidation
-        assert len(dvs) == 1
-        assert "PASS" in dvs[0].formula1 and "BLOCKED" in dvs[0].formula1
-        assert ws.max_row == len(EplanFieldTestKit.checklist_rows(project, outs, summary)) + 1
-
-    def test_validate_all_pass_then_fail(self, tmp_path):
-        from lv_assist.eplan_field_test import EplanFieldTestKit
-        project, outs, summary, _ = self._demo()
-        written = EplanFieldTestKit.export_kit(str(tmp_path / "kit"), project, outs, summary)
-        path = written[1]
-        wb = openpyxl.load_workbook(path)
-        ws = wb["Checklist"]
-        for r in range(2, ws.max_row + 1):
-            ws.cell(row=r, column=7).value = "PASS"
-        wb.save(path)
-        res = EplanFieldTestKit.validate_checklist(path)
-        assert res["ok"] is True and res["PASS"] == res["total"] and not res["pending"]
-
-        wb = openpyxl.load_workbook(path)
-        ws = wb["Checklist"]
-        ws.cell(row=2, column=7).value = "FAIL"
-        ws.cell(row=2, column=8).value = "symbol mismatch"
-        wb.save(path)
-        res = EplanFieldTestKit.validate_checklist(path)
-        assert res["ok"] is False and res["FAIL"] == 1
-        assert res["failures"][0]["tag"] == "-Q0"
-        assert res["failures"][0]["note"] == "symbol mismatch"
-
-    def test_validate_reports_pending_rows(self, tmp_path):
-        from lv_assist.eplan_field_test import EplanFieldTestKit
-        project, outs, summary, _ = self._demo()
-        written = EplanFieldTestKit.export_kit(str(tmp_path / "kit"), project, outs, summary)
-        res = EplanFieldTestKit.validate_checklist(written[1])
-        assert res["ok"] is False
-        assert len(res["pending"]) == res["total"] > 0
-        assert all(res[k] == 0 for k in ("PASS", "FAIL", "BLOCKED", "N/A"))
-
-    def test_bundle_includes_field_test_kit(self, tmp_path):
-        import zipfile
-        from lv_assist.gui import LVAssistApp
-        project, outs, summary, validations = self._demo()
-        zpath = str(tmp_path / "p14.zip")
-        n = LVAssistApp.build_document_bundle(zpath, project, outs, summary, validations, include_pdf=False)
-        assert n == 41  # 12 پایه + 5 ema + 5 emp + 2 field kit + 17 بسته EPLAN
-        with zipfile.ZipFile(zpath) as zf:
-            names = zf.namelist()
-        assert "14_EPLAN_FieldTest/EPLAN_FieldTest_Guide.html" in names
-        assert "14_EPLAN_FieldTest/EPLAN_FieldTest_Checklist.xlsx" in names
-
-    def test_gui_has_field_test_action(self):
-        from lv_assist.gui import LVAssistApp
-        assert hasattr(LVAssistApp, "action_export_eplan_test_kit")
-
-    def test_translation_key_parity_phase14(self):
-        base = PROJECT_ROOT / "lv_assist" / "translations"
-        data = {}
-        for lang in ("fa", "en", "de"):
-            with open(base / f"{lang}.json", encoding="utf-8") as fh:
-                data[lang] = json.load(fh)
-        assert len(data["fa"]) == len(data["en"]) == len(data["de"]) == 1002
-        keys = ["btn_eplan_test_kit", "tip_eplan_test_kit", "msg_test_kit_done",
-                "eft_title", "eft_subtitle", "eft_project", "eft_date", "eft_kit_files",
-                "eft_devices", "eft_s1_t", "eft_s1_p1", "eft_s1_p2", "eft_s2_t",
-                "eft_s2_p1", "eft_s2_p2", "eft_s2_p3", "eft_s3_t", "eft_s4_t",
-                "eft_h_file", "eft_h_type", "eft_h_page", "eft_h_devices",
-                "eft_checklist_note", "eft_s5_t", "eft_s5_p1", "eft_s5_p2", "eft_s5_p3",
-                "eft_footer", "eft_cl_step", "eft_cl_file", "eft_cl_page", "eft_cl_tag",
-                "eft_cl_part", "eft_cl_item", "eft_cl_result", "eft_cl_notes",
-                "eft_cl_result_hint", "eft_item_tag", "eft_item_part", "eft_item_tag_only",
-                "eft_readme_t", "eft_readme_p1", "eft_readme_p2", "eft_readme_p3"]
-        keys += ["eft_step%d" % i for i in range(1, 9)]
-        for key in keys:
-            assert all(key in data[lang] for lang in ("fa", "en", "de")), key
 
 
 class TestPhase15SpdInstallation:
@@ -2816,7 +2142,7 @@ class TestPhase15SpdInstallation:
         for lang in ("fa", "en", "de"):
             with open(base / f"{lang}.json", encoding="utf-8") as fh:
                 data[lang] = json.load(fh)
-        assert len(data["fa"]) == len(data["en"]) == len(data["de"]) == 1002
+        assert set(data["fa"]) == set(data["en"]) == set(data["de"])
         for key in ("xl_g_spd_inst",
                     "val_spd_032_warn_desc", "val_spd_032_warn_ev", "val_spd_032_warn_cons",
                     "val_spd_032_warn_action", "val_spd_032_err_desc", "val_spd_032_err_ev",

@@ -20,6 +20,7 @@ PLC → محاسبات و نتایج → نقشه‌ها → خروجی‌ها �
 """
 import os
 import math
+from pathlib import Path
 import sys
 import webbrowser
 import zipfile
@@ -37,7 +38,7 @@ from lv_assist.paths import get_app_working_dir, config_file_path, get_output_di
 from lv_assist.models import (
     ProjectSpec, FeederInput, EarthingSystem, LoadType, ValidationStatus,
     PanelType, SpecialScenario, ConductorMaterial, InsulationType, InstallationMethod, SpdClass,
-    CatalogDevice, DataQuality
+    CatalogDevice, DataQuality, EnclosureMounting, ScenarioInputs
 )
 from lv_assist.catalog import CatalogRepository
 from lv_assist.engine import EngineeringEngine, build_design_verification
@@ -54,6 +55,10 @@ from lv_assist.field_wizard_engine import (
     AutomationSignalType, FieldInstrumentInput, IndustrialAutomationEngine,
 )
 from lv_assist import web_catalog
+from lv_assist.precision_ui import PrecisionShell
+from lv_assist.ui_direction import (align_persian_text, align_persian_table,
+                                   DirectionalOptionMenu, DirectionalComboBox)
+from lv_assist.scenario_dialog import ScenarioDialog
 from lv_assist.gui_helpers import (
     AsyncWebSearchManager,
     FieldValidationError,
@@ -62,11 +67,12 @@ from lv_assist.gui_helpers import (
 from lv_assist.summary_workflow import format_summary_cards, CalculationWorkflowEngine
 
 from lv_assist.catalog_smart_search import open_smart_search
+from lv_assist.catalog import DB_PATH
 
 LANG_SEGMENT_TO_CODE = {"FA": "fa", "EN": "en", "DE": "de"}
 
 
-class LocalizedOptionMenu(ctk.CTkOptionMenu):
+class LocalizedOptionMenu(DirectionalOptionMenu):
     """Display translated labels while keeping stable model values at the UI boundary."""
 
     def __init__(self, master, *, values, translation_prefix, command=None, **kwargs):
@@ -114,7 +120,7 @@ GUIDE_PROJECT_ROWS = [
     ("panel_type", "نوع تابلو", "Panel type", "Schaltschranktyp", "MCC | DISTRIBUTION | CONTROL | PUMP_STATION", "MCC"),
     ("special_scenario", "سناریوی ویژه پروژه (پمپ آتش، ATS و ...)", "Special project scenario (fire pump, ATS, ...)",
      "Sonderprojektszenario (Feuerlöschpumpe, ATS, ...)",
-     "NONE | FIRE_PUMP | ATS_MAINS_GEN | FIRE_PUMP_BYPASS | ATS_MAINS_MAINS | UPS_CRITICAL | EMERGENCY_LIGHTING", "NONE"),
+     ' | '.join(item.value for item in SpecialScenario), "NONE"),
     ("prospective_ik_ka", "جریان اتصال کوتاه احتمالی در محل نصب (kA)؛ خالی = برآورد از ترانس",
      "Prospective short-circuit current at installation point (kA); empty = estimated from transformer",
      "Prospektiver Kurzschlussstrom am Einbauort (kA); leer = aus Transformator geschätzt", "kA", "22"),
@@ -202,6 +208,10 @@ class ExcelInputManager:
             ("nominal_voltage_v", 400.0, tr("xl_g_voltage")),
             ("earthing_system", "TN-S", tr("xl_g_earthing")),
             ("panel_type", "MCC", tr("xl_g_panel_type")),
+            ('enclosure_mounting', 'UNSPECIFIED', tr('wiz_mounting')),
+            ('enclosure_width_mm', None, tr('wiz_enc_width')),
+            ('enclosure_height_mm', None, tr('wiz_enc_height')),
+            ('enclosure_depth_mm', None, tr('wiz_enc_depth')),
             ("special_scenario", "NONE", tr("xl_g_scenario")),
             ("prospective_ik_ka", 22.0, tr("xl_g_ik")),
             ("transformer_kva", 1600.0, tr("xl_g_trafo")),
@@ -242,7 +252,19 @@ class ExcelInputManager:
 
         # TECH-05: لیست‌های کشویی برای ستون‌های Enum و بولی
         def _dv(sheet, values, cell_range):
-            dv = DataValidation(type="list", formula1='"' + values + '"', allow_blank=True, showDropDown=False)
+            formula = '"' + values + '"'
+            if len(values) > 250:
+                from openpyxl.workbook.defined_name import DefinedName
+                choices = wb['_Choices'] if '_Choices' in wb.sheetnames else wb.create_sheet('_Choices')
+                choices.sheet_state = 'hidden'
+                column = choices.max_column + 1
+                for row, value in enumerate(values.split(','), start=1):
+                    choices.cell(row, column, value)
+                letter = openpyxl.utils.get_column_letter(column)
+                name = f'Choices_{column}'
+                wb.defined_names.add(DefinedName(name, attr_text=f"'_Choices'!${letter}$1:${letter}${len(values.split(','))}"))
+                formula = name
+            dv = DataValidation(type="list", formula1=formula, allow_blank=True, showDropDown=False)
             dv.error = tr("xl_dv_error")
             dv.errorTitle = tr("xl_dv_error_title")
             sheet.add_data_validation(dv)
@@ -257,7 +279,8 @@ class ExcelInputManager:
         for key, values in [
             ("earthing_system", "TN-S,TN-C-S,TT,IT"),
             ("panel_type", "MCC,DISTRIBUTION,CONTROL,PUMP_STATION"),
-            ("special_scenario", "NONE,FIRE_PUMP,ATS_MAINS_GEN,FIRE_PUMP_BYPASS,ATS_MAINS_MAINS,UPS_CRITICAL,EMERGENCY_LIGHTING"),
+            ("special_scenario", ','.join(scenario.value for scenario in SpecialScenario)),
+            ('enclosure_mounting', ','.join(mount.value for mount in EnclosureMounting)),
             ("target_ip", "IP54,IP55,IP66"),
             ("internal_separation_form", "Form 1,Form 2b,Form 3b,Form 4b"),
             ("spd_class", "NONE,T1,T2,T1_T2"),
@@ -276,6 +299,13 @@ class ExcelInputManager:
         ]:
             _dv(ws_feed, values, f"{col}2:{col}2000")
 
+        ws_feed.cell(1, 20, 'locked_rotor_current_a')
+        scenario_sheet = wb.create_sheet('Scenario_Inputs')
+        scenario_sheet.append([tr('xl_h_key'), tr('xl_h_value'), tr('xl_h_guide')])
+        from lv_assist.scenario_rules import FIELD_LABELS, localized
+        for name in ScenarioInputs.model_fields:
+            scenario_sheet.append([name, None, localized(FIELD_LABELS[name])])
+        scenario_sheet.freeze_panes = 'A2'
         for ws in wb.worksheets:
             for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal="center")
             for col in ws.columns: ws.column_dimensions[col[0].column_letter].width = 25
@@ -332,6 +362,13 @@ class ExcelInputManager:
                 nominal_voltage_v=_f("nominal_voltage_v", 400.0),
                 earthing_system=_enum(EarthingSystem, "earthing_system", EarthingSystem.TN_S),
                 panel_type=_enum(PanelType, "panel_type", PanelType.MCC),
+                enclosure_mounting=_enum(EnclosureMounting, 'enclosure_mounting', EnclosureMounting.UNSPECIFIED),
+                enclosure_width_mm=_f_opt('enclosure_width_mm'),
+                enclosure_height_mm=_f_opt('enclosure_height_mm'),
+                enclosure_depth_mm=_f_opt('enclosure_depth_mm'),
+                scenario_inputs=ScenarioInputs.model_validate({str(row[0]): row[1]
+                    for row in wb['Scenario_Inputs'].iter_rows(min_row=2, values_only=True)
+                    if row[0] and row[1] not in (None, '')}) if 'Scenario_Inputs' in wb.sheetnames else ScenarioInputs(),
                 special_scenario=_enum(SpecialScenario, "special_scenario", SpecialScenario.NONE),
                 prospective_ik_ka=_f_opt("prospective_ik_ka"),
                 transformer_kva=_f_opt("transformer_kva"),
@@ -406,6 +443,7 @@ class ExcelInputManager:
                     fire_resistant=ExcelInputManager._parse_bool(_cell(16)),
                     thdi_pct=thdi,
                     fire_pump_service=ExcelInputManager._parse_bool(_cell(18)),
+                    locked_rotor_current_a=_num(19, 'locked_rotor_current_a'),
                 ))
             if not feeders and not errors:
                 raise ExcelImportError(tr("err_excel_generic"))
@@ -431,7 +469,7 @@ class ToolTip:
         self.tip = tk.Toplevel(self.widget)
         self.tip.wm_overrideredirect(True)
         self.tip.wm_geometry(f"+{x}+{y}")
-        tk.Label(self.tip, text=self.text, justify="left", background="#FFFFE0",
+        tk.Label(self.tip, text=self.text, justify="right" if i18n.direction() == "rtl" else "left", background="#FFFFE0",
                  foreground="#1C2833", relief="solid", borderwidth=1,
                  font=("Tahoma", 9), padx=6, pady=3).pack()
 
@@ -502,8 +540,11 @@ class FeederEditDialog(ctk.CTkToplevel):
         row("edt_eff", "efficiency", _opt_float)
         row("edt_kd", "demand_factor_kd", float)
         row("edt_length", "cable_length_m", _opt_float)
+        row("edt_lrc", "locked_rotor_current_a", _opt_float)
+        self._fire_pump = ctk.BooleanVar(value=feeder.fire_pump_service)
+        ctk.CTkCheckBox(self, text=tr('edt_fire_pump'), variable=self._fire_pump, font=font).pack(fill='x', padx=20, pady=6)
 
-        self.geometry("440x590")
+        self.geometry("440x680")
         type_row = ctk.CTkFrame(self); type_row.pack(fill="x", padx=14, pady=5)
         ctk.CTkLabel(type_row, text=tr("edt_type"), width=150, anchor="w", font=font).pack(side="left", padx=6)
         self._type_menu = LocalizedOptionMenu(type_row, values=[e.value for e in LoadType],
@@ -513,13 +554,13 @@ class FeederEditDialog(ctk.CTkToplevel):
 
         meth_row = ctk.CTkFrame(self); meth_row.pack(fill="x", padx=14, pady=5)
         ctk.CTkLabel(meth_row, text=tr("xl_h_method"), width=150, anchor="w", font=font).pack(side="left", padx=6)
-        self._method_menu = ctk.CTkOptionMenu(meth_row, values=[m.value for m in InstallationMethod], width=190, font=font)
+        self._method_menu = DirectionalOptionMenu(meth_row, values=[m.value for m in InstallationMethod], width=190, font=font)
         self._method_menu.set(feeder.installation_method.value)
         self._method_menu.pack(side="right", padx=6)
 
         ins_row = ctk.CTkFrame(self); ins_row.pack(fill="x", padx=14, pady=5)
         ctk.CTkLabel(ins_row, text=tr("xl_h_insulation"), width=150, anchor="w", font=font).pack(side="left", padx=6)
-        self._ins_menu = ctk.CTkOptionMenu(ins_row, values=[ins.value for ins in InsulationType], width=190, font=font)
+        self._ins_menu = DirectionalOptionMenu(ins_row, values=[ins.value for ins in InsulationType], width=190, font=font)
         self._ins_menu.set(feeder.insulation.value)
         self._ins_menu.pack(side="right", padx=6)
 
@@ -528,6 +569,9 @@ class FeederEditDialog(ctk.CTkToplevel):
                       command=self._save).pack(side="left", padx=8, expand=True)
         ctk.CTkButton(btn_row, text=tr("dlg_cancel"), fg_color="#566573", font=font,
                       command=self.destroy).pack(side="left", padx=8, expand=True)
+        align_persian_text(self)
+        if i18n.direction() == "rtl":
+            self._entries['description'][0].configure(justify='right')
 
     def _save(self):
         f = self.feeder
@@ -545,7 +589,8 @@ class FeederEditDialog(ctk.CTkToplevel):
                 cable_section_mm2=f.cable_section_mm2, has_socket_outlets=f.has_socket_outlets,
                 conductor_material=f.conductor_material, insulation=InsulationType(self._ins_menu.get()),
                 installation_method=InstallationMethod(self._method_menu.get()), fire_resistant=f.fire_resistant,
-                thdi_pct=f.thdi_pct, fire_pump_service=f.fire_pump_service,
+                thdi_pct=f.thdi_pct, fire_pump_service=self._fire_pump.get(),
+                locked_rotor_current_a=self._entries['locked_rotor_current_a'][1](self._entries['locked_rotor_current_a'][0].get()),
             )
         except Exception as ex:
             messagebox.showerror(tr("msg_error"), str(ex), parent=self)
@@ -636,7 +681,7 @@ class DeviceEditDialog(ctk.CTkToplevel):
         type_fr = ctk.CTkFrame(body, fg_color="transparent")
         type_fr.pack(fill="x", pady=3)
         ctk.CTkLabel(type_fr, text=tr("dlg_type"), width=180, anchor="w", font=self.font).pack(side="left", padx=4)
-        self._type_menu = ctk.CTkOptionMenu(
+        self._type_menu = DirectionalOptionMenu(
             type_fr, values=DEVICE_TYPE_OPTIONS, width=210, font=self.font,
             command=self._on_type_changed
         )
@@ -680,6 +725,7 @@ class DeviceEditDialog(ctk.CTkToplevel):
                       command=self.destroy).pack(side="left", padx=8, expand=True)
 
         self._on_type_changed(init_type)
+        align_persian_text(self)
 
     def _on_type_changed(self, dtype: str):
         for w in self.dynamic_frame.winfo_children():
@@ -698,6 +744,17 @@ class DeviceEditDialog(ctk.CTkToplevel):
             entry.insert(0, str(val if val not in (None, 0.0, 0) else ""))
             entry.pack(side="right", padx=4)
             self._entries[attr] = entry
+
+        self._enclosure_mounting_menu = None
+        if dtype == 'ENCLOSURE':
+            row = ctk.CTkFrame(self.dynamic_frame, fg_color='transparent')
+            row.pack(fill='x', pady=3)
+            ctk.CTkLabel(row, text=tr('wiz_mounting'), width=180, font=self.font).pack(side='left', padx=4)
+            self._enclosure_mounting_menu = LocalizedOptionMenu(row, values=[item.value for item in EnclosureMounting],
+                translation_prefix='mount_', width=210, font=self.font)
+            self._enclosure_mounting_menu.set(self.device.enclosure_mounting.value if self.device else 'UNSPECIFIED')
+            self._enclosure_mounting_menu.pack(side='right', padx=4)
+        align_persian_text(self.dynamic_frame)
 
     def _save(self):
         def _num(attr, default=0.0):
@@ -730,6 +787,7 @@ class DeviceEditDialog(ctk.CTkToplevel):
                 depth_mm=_num("depth_mm"),
                 airflow_m3h=_num("airflow_m3h"),
                 ip_rating=ip_val,
+                enclosure_mounting=self._enclosure_mounting_menu.get() if self._enclosure_mounting_menu else 'UNSPECIFIED',
                 data_quality=DataQuality(self._quality_menu.get()),
             )
             price_raw = (self._price_entry.get() or "").strip()
@@ -760,7 +818,7 @@ class WebSearchDialog(ctk.CTkToplevel):
         spec_bar.pack(fill="x", padx=12, pady=4)
 
         ctk.CTkLabel(spec_bar, text=tr("dlg_type"), font=self.font).pack(side="right", padx=6, pady=6)
-        self.cmb_type = ctk.CTkOptionMenu(
+        self.cmb_type = DirectionalOptionMenu(
             spec_bar, values=DEVICE_TYPE_OPTIONS, width=170, font=self.font,
             command=self._on_type_change
         )
@@ -812,6 +870,8 @@ class WebSearchDialog(ctk.CTkToplevel):
                       command=self._add_to_catalog).pack(side="left", padx=6, pady=6)
 
         self._on_type_change("MCCB")
+        align_persian_text(self)
+        align_persian_table(self.tree_results, ('title', 'snippet'))
 
     def _on_type_change(self, dtype: str):
         for w in self.dynamic_spec_frame.winfo_children():
@@ -834,6 +894,7 @@ class WebSearchDialog(ctk.CTkToplevel):
             ent = ctk.CTkEntry(self.add_dynamic_frame, width=110, font=self.font, placeholder_text=label)
             ent.pack(side="right", padx=3, pady=6)
             self.add_dyn_entries[attr_name] = ent
+        align_persian_text(self.dynamic_spec_frame)
 
     def _build_spec(self) -> web_catalog.DeviceSearchSpec:
         def _opt(name):
@@ -963,13 +1024,14 @@ class WebSearchDialog(ctk.CTkToplevel):
         self.destroy()
 
 
-class LVAssistApp(ctk.CTk):
+class LVAssistApp(PrecisionShell, ctk.CTk):
     NAV_KEYS = ("nav_step1", "nav_step2", "nav_step3", "nav_step4", "nav_step5_merged", "nav_step7")
 
     def __init__(self):
         super().__init__()
         i18n.set_config_path(config_file_path())
-        self.geometry("1400x820")
+        self.geometry("1440x820")
+        self.minsize(1280, 740)
         ctk.set_default_color_theme("blue")
         ctk.set_appearance_mode(i18n.get_theme())
         self.catalog = CatalogRepository.get_default_catalog()
@@ -994,63 +1056,23 @@ class LVAssistApp(ctk.CTk):
 
     # ================================================================= ناوبری
     def _build_ui(self):
-        for w in self.winfo_children(): w.destroy()
-        self.title(tr("app_title"))
-        font_family = i18n.font_family()
-        rtl = i18n.direction() == "rtl"
-        self._nav_side = "right" if rtl else "left"
-
-        header = ctk.CTkFrame(self, height=54, corner_radius=8)
-        header.pack(fill="x", padx=12, pady=(10, 4))
-        ctk.CTkLabel(header, text=tr("app_title"),
-                     font=ctk.CTkFont(family=font_family, size=16, weight="bold")).pack(side="left", padx=14)
-        self.lbl_project_title = ctk.CTkLabel(header, text="-",
-                                              font=ctk.CTkFont(family=font_family, size=12, weight="bold"))
-        self.lbl_project_title.pack(side="left", padx=12)
-        theme_switch = ctk.CTkSwitch(header, text=tr("lbl_theme"),
-                                     font=ctk.CTkFont(family=font_family, size=12), onvalue="light",
-                                     offvalue="dark", command=self._on_theme_change)
-        theme_switch.pack(side="right", padx=8)
-        if i18n.get_theme() == "light": theme_switch.select()
-        lang_seg = ctk.CTkSegmentedButton(header, values=["FA", "EN", "DE"],
-                                          font=ctk.CTkFont(family=font_family, size=12),
-                                          command=self._on_language_change)
-        lang_seg.set(i18n.get_language().upper())
-        lang_seg.pack(side="right", padx=8)
-
-        self._status_lbl = ctk.CTkLabel(self, text="", font=ctk.CTkFont(family=font_family, size=12, weight="bold"))
-        self._status_lbl.pack(fill="x", padx=18, pady=(0, 2))
-
-        body = ctk.CTkFrame(self, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=12, pady=(2, 10))
-        nav = ctk.CTkFrame(body, width=190, corner_radius=8)
-        nav.pack(side=self._nav_side, fill="y", padx=(0, 6) if rtl else (0, 0), pady=0)
-        self._nav_buttons = []
-        for idx, key in enumerate(self.NAV_KEYS):
-            btn = ctk.CTkButton(nav, text=tr(key), height=42, anchor="w",
-                                font=ctk.CTkFont(family=font_family, size=12),
-                                fg_color="#1F4E78", hover_color="#2E86C1",
-                                command=lambda i=idx: self._switch_view(i))
-            btn.pack(fill="x", padx=8, pady=4)
-            self._nav_buttons.append(btn)
-
-        self.views = [ctk.CTkFrame(body, corner_radius=8) for _ in range(6)]
-        self._build_view_project(self.views[0])
-        self._build_view_feeders(self.views[1])
-        self._build_view_instruments(self.views[2])
-        self._build_view_results(self.views[3])
-        self._build_view_exports(self.views[4])
-        self._build_view_catalog(self.views[5])
-        self._apply_tree_style(font_family)
-        self._switch_view(0)
-        self._apply_status()
+        self._build_precision_ui()
 
     def _switch_view(self, idx: int):
+        self._active_view = idx
         for i, view in enumerate(self.views):
             view.pack_forget()
         self.views[idx].pack(fill="both", expand=True)
         for i, btn in enumerate(self._nav_buttons):
-            btn.configure(fg_color="#1F4E78" if i == idx else "#34495E")
+            btn.configure(fg_color="#1763C0" if i == idx else ("#E7EEF6", "#203246"),
+                          text_color="#FFFFFF" if i == idx else ("#203449", "#DFEAF6"))
+        if hasattr(self, '_step_buttons'):
+            active_step = {0: 0, 1: 0, 2: 1, 3: 2, 4: 3, 5: 1}[idx]
+            if idx == 3:
+                active_step = 2 if self._results_tabs.get() == tr('tab_busbars') else 1
+            for i, button in enumerate(self._step_buttons):
+                button.configure(fg_color='#1763C0' if i == active_step else ('#DEE9F4', '#24394F'),
+                                 text_color='#FFFFFF' if i == active_step else ('#183B5D', '#E3F1FF'))
         if idx == 4 and self.last_results and not self._stale:
             self.action_refresh_schematic_preview()
         if idx == 5:
@@ -1059,13 +1081,17 @@ class LVAssistApp(ctk.CTk):
     # ================================================================= گام ۱: پروژه
     def _build_view_project(self, parent):
         font_family = i18n.font_family()
-        font = ctk.CTkFont(family=font_family, size=12)
+        font = ctk.CTkFont(family=font_family, size=14)
         rtl = i18n.direction() == "rtl"
         ctk.CTkLabel(parent, text=tr("wiz_s1_hint"), font=font, wraplength=1050,
                      justify="right" if rtl else "left", text_color=("#244A66", "#AED6F1")).pack(
                          anchor="e" if rtl else "w", padx=14, pady=(10, 4))
 
-        form = ctk.CTkFrame(parent, fg_color="transparent")
+        ctk.CTkButton(parent, text=self._shell_copy[6], height=34,
+                      command=self._toggle_advanced_fields).pack(anchor="e", padx=14, pady=4)
+        ctk.CTkButton(parent, text=tr('scenario_settings'), height=34,
+                      command=self.action_scenario_settings).pack(anchor='e', padx=14, pady=4)
+        form = ctk.CTkScrollableFrame(parent, fg_color="transparent")
         form.pack(fill="both", expand=True, padx=14, pady=6)
         self.wiz_entries = {}
         fields = [
@@ -1081,50 +1107,65 @@ class LVAssistApp(ctk.CTk):
             ("wiz_internal", "entry", "50"),
             ("wiz_earthing", "combo", ["TN-S", "TN-C-S", "TT", "IT"]),
             ("wiz_panel_type", "combo", [t.value for t in PanelType]),
+            ("wiz_mounting", "combo", [t.value for t in EnclosureMounting]),
+            ("wiz_enc_width", "entry", ""),
+            ("wiz_enc_height", "entry", ""),
+            ("wiz_enc_depth", "entry", ""),
             ("wiz_scenario", "combo", [s.value for s in SpecialScenario]),
             ("wiz_ip", "combo", ["IP54", "IP55", "IP66"]),
             ("wiz_spare", "entry", "0.20"),
             ("wiz_ks", "entry", "0.85"),
             ("wiz_plc_base", "entry", "55"),
         ]
+        primary = {"wiz_project_name", "wiz_voltage", "wiz_ks", "wiz_ambient", "wiz_internal", "wiz_mounting", "wiz_scenario"}
+        fields.sort(key=lambda field: field[0] not in primary)
+        self._advanced_widgets = []
+        self._advanced_fields_visible = False
         for i, (key, kind, default) in enumerate(fields):
-            r, c = divmod(i, 2)
+            r, c = i, 0
             label_column = c * 2 + (1 if rtl else 0)
             input_column = c * 2 + (0 if rtl else 1)
             lbl = ctk.CTkLabel(form, text=tr(key), font=font, anchor="e" if rtl else "w")
             lbl.grid(row=r, column=label_column, padx=(12, 8), pady=6, sticky="ew")
             if kind == "entry":
                 variable = ctk.StringVar(value=default)
-                ent = ctk.CTkEntry(form, width=210, font=font, textvariable=variable)
+                ent = ctk.CTkEntry(form, width=210, height=40, font=font, textvariable=variable,
+                                   fg_color=('#F6F9FC', '#203246'), border_color=('#8198AE', '#4A6580'))
                 variable.trace_add("write", self._on_project_input_change)
                 ent.grid(row=r, column=input_column, padx=(8, 16), pady=6, sticky="ew")
                 self.wiz_entries[key] = ent
             else:
-                prefix = {"wiz_panel_type": "panel_", "wiz_scenario": "scenario_"}.get(key)
-                menu_class = LocalizedOptionMenu if prefix else ctk.CTkOptionMenu
+                prefix = {"wiz_panel_type": "panel_", "wiz_scenario": "scenario_", "wiz_mounting": "mount_"}.get(key)
+                menu_class = LocalizedOptionMenu if prefix else DirectionalOptionMenu
                 localized = {"translation_prefix": prefix} if prefix else {}
-                menu = menu_class(form, values=default, width=210, font=font, dynamic_resizing=False,
+                menu = menu_class(form, values=default, width=210, height=40, font=font, dynamic_resizing=False,
                                   command=self._on_project_input_change, **localized)
                 menu.set(default[0])
                 menu.grid(row=r, column=input_column, padx=(8, 16), pady=6, sticky="ew")
                 self.wiz_entries[key] = menu
-        for cidx in range(4):
+            if key not in primary:
+                self._advanced_widgets.extend((lbl, self.wiz_entries[key]))
+                lbl.grid_remove()
+                self.wiz_entries[key].grid_remove()
+        for cidx in range(2):
             is_input = cidx % 2 == (0 if rtl else 1)
             form.grid_columnconfigure(cidx, weight=1 if is_input else 0,
                                       uniform="project_inputs" if is_input else "project_labels")
 
         row2 = ctk.CTkFrame(form, fg_color="transparent")
-        row2.grid(row=(len(fields) + 1) // 2 + 1, column=0, columnspan=4, pady=8, sticky="ew")
+        row2.grid(row=len(fields), column=0, columnspan=2, pady=8, sticky="ew")
+        self._advanced_widgets.append(row2)
+        row2.grid_remove()
         self.mfg_values = ["ANY"] + sorted({d.manufacturer for d in self.catalog})
         self.mfg_display = [tr("gui_mfg_any")] + self.mfg_values[1:]
-        self.mfg_menu = ctk.CTkOptionMenu(row2, values=self.mfg_display, width=170, font=font,
+        self.mfg_menu = DirectionalOptionMenu(row2, values=self.mfg_display, width=170, font=font,
                                           command=self._on_mfg_change)
         self.mfg_menu.pack(side="right", padx=6)
         self.mfg_menu.set(self.mfg_display[0])
         ToolTip(self.mfg_menu, tr("tip_mfg"))
         self.spd_values = [c.value for c in SpdClass]
         self.spd_display = [tr("gui_spd_" + v.lower()) for v in self.spd_values]
-        self.spd_menu = ctk.CTkOptionMenu(row2, values=self.spd_display, width=130, font=font,
+        self.spd_menu = DirectionalOptionMenu(row2, values=self.spd_display, width=130, font=font,
                                           command=self._on_spd_change)
         self.spd_menu.pack(side="right", padx=6)
         self.spd_menu.set(self.spd_display[self.spd_values.index(SpdClass.T2.value)])
@@ -1140,6 +1181,11 @@ class LVAssistApp(ctk.CTk):
                       command=self.action_generate_template).pack(side="left", padx=8)
         ctk.CTkButton(btn_bar, text=tr("btn_demo"), fg_color="#C55A11", font=font,
                       command=self.action_load_demo).pack(side="left", padx=8)
+
+    def _toggle_advanced_fields(self, force=None):
+        self._advanced_fields_visible = not self._advanced_fields_visible if force is None else force
+        for widget in self._advanced_widgets:
+            widget.grid() if self._advanced_fields_visible else widget.grid_remove()
 
     def _fill_project_form(self, project: ProjectSpec):
         self._project_form_loading = True
@@ -1161,6 +1207,10 @@ class LVAssistApp(ctk.CTk):
             "wiz_panel_tag": project.panel_tag,
             "wiz_earthing": project.earthing_system.value,
             "wiz_panel_type": project.panel_type.value,
+            "wiz_mounting": project.enclosure_mounting.value,
+            "wiz_enc_width": '' if project.enclosure_width_mm is None else str(project.enclosure_width_mm),
+            "wiz_enc_height": '' if project.enclosure_height_mm is None else str(project.enclosure_height_mm),
+            "wiz_enc_depth": '' if project.enclosure_depth_mm is None else str(project.enclosure_depth_mm),
             "wiz_scenario": project.special_scenario.value,
             "wiz_voltage": f"{project.nominal_voltage_v:g}",
             "wiz_trafo": "" if project.transformer_kva is None else str(project.transformer_kva),
@@ -1214,15 +1264,17 @@ class LVAssistApp(ctk.CTk):
             "wiz_trafo": "transformer_kva", "wiz_ambient": "ambient_temp_c",
             "wiz_internal": "max_internal_temp_c", "wiz_ks": "simultaneity_factor_ks",
             "wiz_spare": "spare_factor", "wiz_plc_base": "plc_hmi_24vdc_power_w",
+            "wiz_enc_width": "enclosure_width_mm", "wiz_enc_height": "enclosure_height_mm", "wiz_enc_depth": "enclosure_depth_mm",
         }
         text_fields = {
             "wiz_project_name": "project_name", "wiz_std_regime": "standard_ref",
             "wiz_panel_tag": "panel_tag", "wiz_earthing": "earthing_system",
             "wiz_panel_type": "panel_type", "wiz_scenario": "special_scenario",
+            "wiz_mounting": "enclosure_mounting",
             "wiz_ip": "target_ip",
         }
         for key, field in numeric_fields.items():
-            value = _f(key, optional=key in ("wiz_ik", "wiz_trafo"))
+            value = _f(key, optional=key in ("wiz_ik", "wiz_trafo", "wiz_enc_width", "wiz_enc_height", "wiz_enc_depth"))
             if (not self.current_project
                     or self.wiz_entries[key].get() != self._project_form_values.get(key)):
                 data[field] = value
@@ -1234,40 +1286,57 @@ class LVAssistApp(ctk.CTk):
         data["spd_class"] = self.spd_values[self.spd_display.index(self.spd_menu.get())]
         return ProjectSpec.model_validate(data)
 
+    def action_scenario_settings(self):
+        try:
+            project = self._project_from_form()
+        except ValueError as error:
+            messagebox.showerror(tr('msg_error'), str(error), parent=self)
+            return
+
+        def save(data):
+            self._project_input_data['scenario_inputs'] = data.model_dump()
+            self._mark_stale()
+
+        ScenarioDialog(self, project, save)
+
     # ================================================================= گام ۲: فیدرها
     def _build_view_feeders(self, parent):
         font = ctk.CTkFont(family=i18n.font_family(), size=12)
         ctk.CTkLabel(parent, text=tr("wiz_s2_hint"), font=font, wraplength=1050,
-                     justify="right", text_color="#A9DFBF").pack(anchor="e", padx=14, pady=(10, 4))
+                     justify="right", text_color=("#265C43", "#A9DFBF")).pack(anchor="e", padx=14, pady=(10, 4))
         bar = ctk.CTkFrame(parent)
         bar.pack(fill="x", padx=12, pady=4)
         self.f_entries = {}
-        for key, width in (("wiz_f_id", 80), ("wiz_f_func", 110), ("wiz_f_desc", 180),
-                           ("wiz_f_kw", 80), ("wiz_f_len", 80)):
-            ctk.CTkLabel(bar, text=tr(key), font=font).pack(side="right", padx=3)
+        for index, (key, width) in enumerate((("wiz_f_id", 80), ("wiz_f_func", 110), ("wiz_f_desc", 180),
+                                            ("wiz_f_kw", 80), ("wiz_f_len", 80))):
+            row, column = (index // 3) * 2, index % 3
+            if i18n.direction() == 'rtl':
+                column = 2 - column
+            bar.grid_columnconfigure(column, weight=1)
+            ctk.CTkLabel(bar, text=tr(key), font=font).grid(row=row, column=column, padx=6, sticky="e")
             ent = ctk.CTkEntry(bar, width=width, font=font)
-            ent.pack(side="right", padx=3)
+            ent.grid(row=row+1, column=column, padx=6, pady=(0, 8), sticky="ew")
             self.f_entries[key] = ent
         self.cmb_f_type = LocalizedOptionMenu(bar, values=[t.value for t in LoadType],
                                                 translation_prefix="lt_", width=155, font=font)
         self.cmb_f_type.set("MOTOR_DOL")
-        self.cmb_f_type.pack(side="right", padx=3)
-        self.cmb_f_method = ctk.CTkOptionMenu(bar, values=[m.value for m in InstallationMethod], width=75, font=font)
+        self.cmb_f_type.grid(row=4, column=0, padx=6, pady=6, sticky="ew")
+        self.cmb_f_method = DirectionalOptionMenu(bar, values=[m.value for m in InstallationMethod], width=75, font=font)
         self.cmb_f_method.set("C")
-        self.cmb_f_method.pack(side="right", padx=3)
+        self.cmb_f_method.grid(row=4, column=1, padx=6, pady=6, sticky="ew")
         ctk.CTkButton(bar, text=tr("wiz_add_feeder"), fg_color="#2E86C1", font=font,
-                      command=self.action_add_feeder_interactively).pack(side="left", padx=6)
+                      command=self.action_add_feeder_interactively).grid(row=4, column=2, padx=6, pady=6, sticky="ew")
         ctk.CTkButton(bar, text=tr("wiz_remove_selected"), fg_color="#C0392B", font=font,
-                      command=self.action_remove_selected_feeder).pack(side="left", padx=6)
+                      command=self.action_remove_selected_feeder).grid(row=5, column=2, padx=6, pady=6, sticky="ew")
 
         self.tree_feeders = ttk.Treeview(parent, columns=("id", "desc", "type", "kw", "len", "note"), show="headings")
-        for col, key, w in [("id", "wiz_f_id", 70), ("desc", "wiz_f_desc", 240), ("type", "wiz_i_type", 160),
+        for col, key, w in [("id", "wiz_f_id", 70), ("desc", "wiz_f_desc", 240), ("type", "edt_type", 160),
                             ("kw", "wiz_f_kw", 90), ("len", "wiz_f_len", 100), ("note", "wiz_f_note", 220)]:
             self.tree_feeders.heading(col, text=tr(key))
             self.tree_feeders.column(col, width=w, anchor="center")
         self.tree_feeders.pack(fill="both", expand=True, padx=12, pady=6)
         ctk.CTkLabel(parent, text=tr("edt_dbl_hint"), font=ctk.CTkFont(family=i18n.font_family(), size=11),
-                     text_color="#A6A6A6").pack(side="bottom", pady=(0, 8))
+                     text_color=("#435C74", "#BAC9D8")).pack(side="bottom", pady=(0, 8))
         self.tree_feeders.bind("<Double-1>", self._open_feeder_editor)
 
     def action_add_feeder_interactively(self):
@@ -1338,21 +1407,24 @@ class LVAssistApp(ctk.CTk):
     def _build_view_instruments(self, parent):
         font = ctk.CTkFont(family=i18n.font_family(), size=12)
         ctk.CTkLabel(parent, text=tr("wiz_s3_hint"), font=font, wraplength=1050,
-                     justify="right", text_color="#F9E79F").pack(anchor="e", padx=14, pady=(10, 4))
+                     justify="right", text_color=("#74521B", "#F9E79F")).pack(anchor="e", padx=14, pady=(10, 4))
         bar = ctk.CTkFrame(parent)
         bar.pack(fill="x", padx=12, pady=4)
         self.i_entries = {}
-        for key, width in (("wiz_i_tag", 130), ("wiz_i_desc", 210), ("wiz_i_len", 90)):
-            ctk.CTkLabel(bar, text=tr(key), font=font).pack(side="right", padx=3)
+        for column, (key, width) in enumerate((("wiz_i_tag", 130), ("wiz_i_desc", 210), ("wiz_i_len", 90))):
+            if i18n.direction() == 'rtl':
+                column = 2 - column
+            bar.grid_columnconfigure(column, weight=1)
+            ctk.CTkLabel(bar, text=tr(key), font=font).grid(row=0, column=column, padx=6, sticky="e")
             ent = ctk.CTkEntry(bar, width=width, font=font)
-            ent.pack(side="right", padx=3)
+            ent.grid(row=1, column=column, padx=6, pady=6, sticky="ew")
             self.i_entries[key] = ent
         self.cmb_i_type = LocalizedOptionMenu(bar, values=[s.value for s in AutomationSignalType],
                                                 translation_prefix="signal_", width=200, font=font)
         self.cmb_i_type.set("SENSOR_AI_4_20MA")
-        self.cmb_i_type.pack(side="right", padx=3)
+        self.cmb_i_type.grid(row=2, column=0, columnspan=2, padx=6, pady=6, sticky="ew")
         ctk.CTkButton(bar, text=tr("wiz_add_inst"), fg_color="#8E44AD", font=font,
-                      command=self.action_add_instrument).pack(side="left", padx=6)
+                      command=self.action_add_instrument).grid(row=2, column=2, padx=6, pady=6, sticky="ew")
 
         cols = ("tag", "desc", "sig", "len")
         self.tree_inst = ttk.Treeview(parent, columns=cols, show="headings", height=10)
@@ -1364,7 +1436,7 @@ class LVAssistApp(ctk.CTk):
 
         bottom = ctk.CTkFrame(parent, fg_color="transparent")
         bottom.pack(fill="x", padx=12, pady=8)
-        self.lbl_plc_summary = ctk.CTkLabel(bottom, text="-", font=font, justify="right", text_color="#AED6F1")
+        self.lbl_plc_summary = ctk.CTkLabel(bottom, text="-", font=font, justify="right", text_color=("#244A66", "#AED6F1"))
         self.lbl_plc_summary.pack(side="right", padx=8)
         ctk.CTkButton(bottom, text=tr("wiz_run_calc"), fg_color="#1E8449", height=40, font=font,
                       command=self.action_recalculate).pack(side="left", padx=8)
@@ -1403,19 +1475,32 @@ class LVAssistApp(ctk.CTk):
         kpi_frame = ctk.CTkFrame(parent, height=118, corner_radius=8)
         kpi_frame.pack(fill="x", padx=10, pady=(10, 4))
         self.kpi_labels = {}
-        for key in ("main_current", "busbar", "psu_24v", "thermal", "cooling", "enclosure", "cap_bank", "val_summary"):
+        for index, key in enumerate(("main_current", "busbar", "psu_24v", "thermal", "cooling", "enclosure", "cap_bank", "val_summary")):
+            column = 3 - index % 4 if i18n.direction() == 'rtl' else index % 4
+            kpi_frame.grid_columnconfigure(column, weight=1, uniform='kpi')
             card = ctk.CTkFrame(kpi_frame, corner_radius=6)
-            card.pack(side="left", expand=True, fill="both", padx=4, pady=6)
-            ctk.CTkLabel(card, text=tr(f"kpi_{key}"), font=ctk.CTkFont(family=font_family, size=11),
-                         text_color="#A6A6A6").pack(pady=(4, 0))
-            val_lbl = ctk.CTkLabel(card, text="-", font=ctk.CTkFont(family=font_family, size=12, weight="bold"))
-            val_lbl.pack(pady=(2, 6))
+            card.grid(row=index // 4, column=column, sticky='nsew', padx=4, pady=6)
+            ctk.CTkLabel(card, text=tr(f"kpi_{key}"), wraplength=170,
+                         font=ctk.CTkFont(family=font_family, size=11),
+                         text_color=("#435C74", "#BAC9D8")).pack(fill='x', padx=6, pady=(4, 0))
+            val_lbl = ctk.CTkLabel(card, text="-", wraplength=170,
+                                 font=ctk.CTkFont(family=font_family, size=12, weight="bold"))
+            val_lbl.pack(fill='x', padx=6, pady=(2, 6))
             self.kpi_labels[key] = val_lbl
 
-        tabs = ctk.CTkTabview(parent, corner_radius=8)
+        tabs = ctk.CTkTabview(parent, corner_radius=8, command=self._results_tab_changed)
+        self._results_tabs = tabs
         tabs.pack(fill="both", expand=True, padx=10, pady=(4, 10))
-        tab_out = tabs.add(tr("tab_feeders"))
+        tab_out = tabs.add(tr("tab_equipment"))
+        tab_busbars = tabs.add(tr('tab_busbars'))
         tab_rules = tabs.add(tr("tab_rules"))
+        ctk.CTkLabel(tab_busbars, text=tr('ac_scope_note'), wraplength=700,
+                     font=font, justify='right' if i18n.direction() == 'rtl' else 'left').pack(fill='x', padx=8, pady=6)
+        self.tree_busbars = ttk.Treeview(tab_busbars, columns=('parameter', 'value'), show='headings')
+        for column, key, width in (('parameter', 'col_desc', 300), ('value', 'col_value', 440)):
+            self.tree_busbars.heading(column, text=tr(key))
+            self.tree_busbars.column(column, width=width, anchor='e' if i18n.direction() == 'rtl' else 'w')
+        self.tree_busbars.pack(fill='both', expand=True, padx=8, pady=6)
 
         self.tree_results_tbl = ttk.Treeview(tab_out, columns=("id", "desc", "type", "ib", "cable", "vd", "prot", "contactors", "bimetal_vfd", "sel"), show="headings")
         for col, key, w in [("id", "col_id", 45), ("desc", "col_desc", 175), ("type", "col_type", 115), ("ib", "col_ib", 65), ("cable", "col_cable", 230), ("vd", "col_vd", 60), ("prot", "col_prot", 130), ("contactors", "col_contactors", 190), ("bimetal_vfd", "col_bimetal_vfd", 145), ("sel", "col_sel", 140)]:
@@ -1430,6 +1515,18 @@ class LVAssistApp(ctk.CTk):
         self._apply_tree_tags(self.tree_rules)
         self.tree_rules.pack(fill="both", expand=True, padx=6, pady=6)
 
+    def _results_tab_changed(self):
+        active = 2 if self._results_tabs.get() == tr('tab_busbars') else 1
+        for index, button in enumerate(getattr(self, '_step_buttons', ())):
+            button.configure(fg_color='#1763C0' if index == active else ('#DEE9F4', '#24394F'),
+                             text_color='#FFFFFF' if index == active else ('#183B5D', '#E3F1FF'))
+
+    def _show_workflow_step(self, step):
+        self._switch_view((1, 3, 3, 4)[step])
+        if step in (1, 2):
+            self._results_tabs.set(tr('tab_equipment' if step == 1 else 'tab_busbars'))
+            self._results_tab_changed()
+
     # ================================================================= گام ۵: نقشه‌ها و خروجی‌ها (ادغام‌شده)
     def _build_view_drawings(self, parent):
         self._build_schematics_preview_tab(parent)
@@ -1441,8 +1538,7 @@ class LVAssistApp(ctk.CTk):
         self._export_buttons = []
 
         def _add_btn(parent_f, text, color, cmd, tip_key=None):
-            b = ctk.CTkButton(parent_f, text=text, fg_color=color, font=font, height=34, command=cmd)
-            b.pack(side="left", padx=4, pady=3)
+            b = ctk.CTkButton(parent_f, text=text, fg_color="#24415E", hover_color="#1763C0", font=font, height=36, command=cmd)
             if tip_key:
                 ToolTip(b, tr(tip_key))
             self._export_buttons.append(b)
@@ -1454,10 +1550,15 @@ class LVAssistApp(ctk.CTk):
             ctk.CTkLabel(
                 row, text=tr(grp_key), width=220, anchor="w",
                 font=ctk.CTkFont(family=i18n.font_family(), size=12, weight="bold"),
-                text_color="#A6A6A6"
-            ).pack(side="left", padx=6, pady=3)
-            for text, color, cmd in buttons:
-                _add_btn(row, text, color, cmd)
+                text_color=("#435C74", "#BAC9D8")
+            ).pack(anchor="w", padx=6, pady=3)
+            actions = ctk.CTkFrame(row, fg_color="transparent")
+            actions.pack(fill="x", padx=4, pady=4)
+            for index, (text, color, cmd) in enumerate(buttons):
+                actions.grid_columnconfigure(index % 3, weight=1)
+                button = _add_btn(actions, text, color, cmd)
+                button.pack_forget()
+                button.grid(row=index // 3, column=index % 3, sticky="ew", padx=4, pady=4)
             if extra_right_btn:
                 txt, col, cmd, tip = extra_right_btn
                 b_all = _add_btn(row, txt, col, cmd, tip)
@@ -1495,18 +1596,19 @@ class LVAssistApp(ctk.CTk):
         bar = ctk.CTkFrame(parent)
         bar.pack(fill="x", padx=12, pady=4)
         self.ent_cat_search = ctk.CTkEntry(bar, width=260, font=font, placeholder_text=tr("cat_search"))
-        self.ent_cat_search.pack(side="right", padx=6)
+        self.ent_cat_search.grid(row=0, column=0, columnspan=3, sticky='ew', padx=6, pady=6)
         self.ent_cat_search.bind("<KeyRelease>", lambda _e: self._refresh_catalog_tree())
-        ctk.CTkButton(bar, text=tr("cat_refresh"), fg_color="#566573", font=font,
-                      command=self._refresh_catalog_tree).pack(side="left", padx=4)
-        ctk.CTkButton(bar, text=tr("cat_delete"), fg_color="#C0392B", font=font,
-                      command=self.action_catalog_delete).pack(side="left", padx=4)
-        ctk.CTkButton(bar, text=tr("cat_edit"), fg_color="#B7950B", font=font,
-                      command=self.action_catalog_edit).pack(side="left", padx=4)
-        ctk.CTkButton(bar, text=tr("cat_add"), fg_color="#1E8449", font=font,
-                      command=self.action_catalog_add).pack(side="left", padx=4)
-        ctk.CTkButton(bar, text=tr("cat_web"), fg_color="#1F618D", font=font,
-                      command=self.action_catalog_web_search).pack(side="left", padx=4)
+        for index, (key, color, command) in enumerate((
+            ('cat_add', '#1E8449', self.action_catalog_add),
+            ('cat_edit', '#B7950B', self.action_catalog_edit),
+            ('cat_delete', '#C0392B', self.action_catalog_delete),
+            ('cat_refresh', '#566573', self._refresh_catalog_tree),
+            ('cat_web', '#1F618D', self.action_catalog_web_search),
+        )):
+            column = 2 - index % 3 if i18n.direction() == 'rtl' else index % 3
+            bar.grid_columnconfigure(column, weight=1)
+            ctk.CTkButton(bar, text=tr(key), fg_color=color, font=font, height=32,
+                          command=command).grid(row=1+index // 3, column=column, sticky='ew', padx=6, pady=4)
 
         cols = ("part", "mfg", "series", "type", "in_a", "icu", "kw", "loss", "price", "quality")
         self.tree_catalog = ttk.Treeview(parent, columns=cols, show="headings")
@@ -1524,7 +1626,7 @@ class LVAssistApp(ctk.CTk):
         """Priority 6: return set of matched device_ids (empty on error)."""
         try:
             if not hasattr(self, "_smart_catalog_search"):
-                self._smart_catalog_search = open_smart_search()
+                self._smart_catalog_search = open_smart_search(str(DB_PATH))
             result = self._smart_catalog_search.search(query)
         except Exception:
             return set()
@@ -1721,8 +1823,8 @@ class LVAssistApp(ctk.CTk):
         self._stale = False
         # Priority 10: mark all downstream workflow steps as calculated (additive)
         for _step_id in (
-            "project_inputs", "grid_sc", "feeders", "aggregation_spd",
-            "main_breaker", "enclosure_ctrl", "busbar_thermal", "final_report",
+            "project_inputs", "plc_inst", "grid_sc", "feeders", "aggregation_spd",
+            "main_breaker", "enclosure_ctrl", "busbar_thermal", "scenario_rules", "final_report",
         ):
             self._workflow_step_done(_step_id)
         self._last_calc_time = datetime.now().strftime("%H:%M:%S")
@@ -1730,6 +1832,23 @@ class LVAssistApp(ctk.CTk):
         return True
 
     def _refresh_results_views(self, f_outs, summary, validations):
+        from lv_assist.scenario_rules import localized
+        self.tree_busbars.delete(*self.tree_busbars.get_children())
+        for labels, value in (
+            (('جریان طراحی AC', 'AC design current', 'AC-Auslegungsstrom'), f'{summary.design_main_current_a:g} A'),
+            (('کلید ورودی', 'Incomer device', 'Einspeisegerät'), summary.main_breaker.part_number if summary.main_breaker else '—'),
+            (('شینه فاز / نول', 'Phase / neutral busbar', 'Phasen-/Neutralleiterschiene'), summary.recommended_busbar_spec),
+            (('ظرفیت جریان شینه', 'Busbar current rating', 'Schienen-Strombelastbarkeit'), f'{summary.busbar_rating_a:g} A'),
+            (('شینه PE', 'PE busbar', 'PE-Schiene'), summary.recommended_pe_busbar_spec),
+            (('تحمل Icw یک‌ثانیه', '1 s Icw withstand', 'Icw für 1 s'), f'{summary.busbar_icw_1s_ka:g} kA'),
+            (('تحمل پیک Ipk', 'Ipk withstand', 'Ipk-Festigkeit'), f'{summary.busbar_ipk_ka:g} kA'),
+            (('پیک موردنیاز', 'Required peak current', 'Erforderlicher Scheitelstrom'), '—' if summary.busbar_required_ipk_ka is None else f'{summary.busbar_required_ipk_ka:g} kA'),
+            (('فاصله حداکثر ساپورت', 'Maximum support spacing', 'Maximaler Stützabstand'), '—' if summary.busbar_max_support_spacing_mm is None else f'{summary.busbar_max_support_spacing_mm:g} mm'),
+            (('تعداد ساپورت محاسبه‌شده', 'Calculated support count', 'Berechnete Stützanzahl'), str(summary.busbar_required_supports)),
+            (('افت ولتاژ شینه', 'Busbar voltage drop', 'Schienen-Spannungsfall'), f'{summary.busbar_du_v:g} V / {summary.busbar_du_pct:g} %'),
+            (('کابل ورودی', 'Incoming cable', 'Einspeisekabel'), summary.recommended_incoming_cable_str),
+        ):
+            self.tree_busbars.insert('', 'end', values=(localized(labels), value))
         # Priority 3: separate real In from design current (was: design shown as In)
         _cards = format_summary_cards(
             summary.main_breaker,
@@ -1773,7 +1892,9 @@ class LVAssistApp(ctk.CTk):
             self.kpi_labels["cap_bank"].configure(text=tr("rpt_cap_none"))
         err = sum(1 for v in validations if v.status == ValidationStatus.ERROR)
         warn = sum(1 for v in validations if v.status == ValidationStatus.WARNING)
-        self.kpi_labels["val_summary"].configure(text=tr("kpi_errors", err=err, warn=warn))
+        missing = sum(1 for v in validations if v.status == ValidationStatus.INSUFFICIENT_DATA)
+        self.kpi_labels["val_summary"].configure(text=tr("kpi_errors", err=err, warn=warn) +
+            '\n' + tr('status_INSUFFICIENT_DATA') + f': {missing}')
 
         for item in self.tree_results_tbl.get_children():
             self.tree_results_tbl.delete(item)
@@ -1785,6 +1906,7 @@ class LVAssistApp(ctk.CTk):
             self.tree_rules.delete(item)
         for v in validations:
             self.tree_rules.insert("", "end", tags=(v.status.value,), values=(tr(f"status_{v.status.value}"), v.rule_id, v.feeder_id, v.standard_ref, v.description, v.supporting_evidence, v.recommended_action))
+        self._refresh_precision_context()
 
     # ================================================================= اکشن‌ها
     def action_generate_template(self):
@@ -1824,6 +1946,8 @@ class LVAssistApp(ctk.CTk):
 
     def _mark_stale(self):
         self._stale = True
+        if hasattr(self, '_workflow'):
+            self._workflow.mark_input_changed('project_inputs')
         self._apply_status()
 
     def _apply_status(self):
@@ -1832,13 +1956,14 @@ class LVAssistApp(ctk.CTk):
             self._status_lbl.configure(text="")
             return
         if self._stale:
-            self._status_lbl.configure(text=tr("lbl_stale"), text_color="#B7950B")
+            self._status_lbl.configure(text=tr("lbl_stale"), text_color=("#805000", "#FFD48A"))
         else:
-            self._status_lbl.configure(text=tr("lbl_up_to_date", a=self._last_calc_time or "-"), text_color="#1E8449")
+            self._status_lbl.configure(text=tr("lbl_up_to_date", a=self._last_calc_time or "-"), text_color=("#176333", "#65D6A0"))
         state = "disabled" if (self._stale or not self.last_results) else "normal"
         for b in self._export_buttons:
             try: b.configure(state=state)
             except Exception: pass
+        self._refresh_precision_context()
 
     def action_load_demo(self):
         self.current_project, self.current_feeders = build_demo_project()
@@ -1902,7 +2027,7 @@ class LVAssistApp(ctk.CTk):
             "06_Panel_Layout.svg": lambda p: PanelLayoutGenerator.generate_svg_file(p, project, f_outs, summary),
         }
         count = 0
-        with tempfile.TemporaryDirectory(prefix="lvassist_bundle_") as tmp:
+        with tempfile.TemporaryDirectory(prefix="lvassist_bundle_", dir=str(Path(zip_path).resolve().parent)) as tmp:
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for name, fn in files.items():
                     p = os.path.join(tmp, name)
@@ -2085,27 +2210,29 @@ class LVAssistApp(ctk.CTk):
         ctrl_bar = ctk.CTkFrame(parent, height=55)
         ctrl_bar.pack(fill="x", padx=8, pady=6)
 
-        ctk.CTkLabel(ctrl_bar, text=tr("schem_pick"), font=ctk.CTkFont(size=12, weight="bold")).pack(side="right", padx=8)
-        self.cmb_sheet_selector = ctk.CTkComboBox(
+        ctk.CTkLabel(ctrl_bar, text=tr("schem_pick"), font=ctk.CTkFont(size=12, weight="bold")).grid(
+            row=0, column=0, columnspan=3, sticky="e", padx=8, pady=4)
+        self.cmb_sheet_selector = DirectionalComboBox(
             ctrl_bar, values=[tr("schem_sld")], width=320,
             command=lambda _: self.action_refresh_schematic_preview()
         )
-        self.cmb_sheet_selector.pack(side="right", padx=8, pady=8)
+        self.cmb_sheet_selector.grid(row=1, column=0, columnspan=3, sticky="ew", padx=8, pady=4)
 
-        for key, color, command in (
+        for column, (key, color, command) in enumerate((
             ("schem_preview", "#1F618D", self.action_preview_selected_svg_in_browser),
             ("schem_save_one", "#1E8449", self.action_save_single_svg),
             ("schem_save_all", "#B7950B", self.action_save_all_svgs_folder),
-        ):
+        )):
             button = ctk.CTkButton(ctrl_bar, text=tr(key), fg_color=color, command=command)
-            button.pack(side="left", padx=6, pady=8)
+            ctrl_bar.grid_columnconfigure(column, weight=1)
+            button.grid(row=2, column=column, sticky="ew", padx=6, pady=8)
             self._export_buttons.append(button)
 
         lbl_w = ctk.CTkLabel(parent, text=tr("schem_wire_table"), font=ctk.CTkFont(size=12))
         lbl_w.pack(anchor="e", padx=10, pady=(4, 2))
 
         self.tree_wires_preview = ttk.Treeview(
-            parent, columns=("wire", "feeder", "role", "from_pin", "to_pin", "spec"), show="headings", height=8
+            parent, columns=("wire", "feeder", "role", "from_pin", "to_pin", "spec"), show="headings", height=4
         )
         for col, txt_key, w in [("wire", "schem_w_wire", 130), ("feeder", "schem_w_feeder", 75),
                                 ("role", "schem_w_role", 250), ("from_pin", "schem_w_from", 230),
@@ -2114,7 +2241,7 @@ class LVAssistApp(ctk.CTk):
             self.tree_wires_preview.column(col, width=w, anchor="center")
         self.tree_wires_preview.pack(fill="x", padx=8, pady=4)
 
-        self.txt_svg_inspector = ctk.CTkTextbox(parent, font=ctk.CTkFont(family="Consolas", size=11), height=180)
+        self.txt_svg_inspector = ctk.CTkTextbox(parent, font=ctk.CTkFont(family="Consolas", size=11), height=100)
         self.txt_svg_inspector.pack(fill="both", expand=True, padx=8, pady=6)
 
     def _populate_sheet_selector(self, f_outs, preserve_selection: bool = True):
@@ -2220,8 +2347,11 @@ class LVAssistApp(ctk.CTk):
         new_mode = "light" if ctk.get_appearance_mode() == "Dark" else "dark"
         i18n.set_theme(new_mode)
         ctk.set_appearance_mode(new_mode)
+        self._theme_switch.select() if new_mode == 'light' else self._theme_switch.deselect()
         self._apply_tree_style(i18n.font_family())
         self._apply_tree_tags(self.tree_rules)
+        self._refresh_precision_context()
+        self._apply_windows_backdrop()
         if self.last_results:
             self._refresh_results_views(*self.last_results)
         self._apply_status()

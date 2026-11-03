@@ -15,6 +15,8 @@ a display. All widget interactions are duck-typed.
 from __future__ import annotations
 
 import threading
+import math
+import queue
 from typing import Any, Callable, Optional, Tuple
 
 
@@ -65,7 +67,7 @@ def parse_cable_length_input(
             f"مقدار «{raw_value}» برای طول کابل معتبر نیست. یک عدد مثبت بر حسب متر وارد کنید.",
         ) from exc
 
-    if length_m <= 0:
+    if not math.isfinite(length_m) or length_m <= 0:
         raise FieldValidationError(field_key, "طول کابل باید بزرگ‌تر از صفر متر باشد.")
 
     warning_msg: Optional[str] = None
@@ -94,10 +96,10 @@ class AsyncWebSearchManager:
         self.fetch_fn = fetch_fn
         self._cancel_event = threading.Event()
         self._active_thread: Optional[threading.Thread] = None
+        self._results = queue.SimpleQueue()
 
     def cancel_active_search(self) -> None:
-        if self._active_thread and self._active_thread.is_alive():
-            self._cancel_event.set()
+        self._cancel_event.set()
 
     def start_search(
         self,
@@ -112,25 +114,36 @@ class AsyncWebSearchManager:
 
         on_start_ui()
 
+        def _poll() -> None:
+            if cancel_token.is_set():
+                return
+            try:
+                token, succeeded, value = self._results.get_nowait()
+            except queue.Empty:
+                self.root.after(25, _poll)
+                return
+            if token is not cancel_token:
+                self.root.after(25, _poll)
+                return
+            if succeeded:
+                on_success_ui(value)
+            else:
+                on_error_ui(value)
+
         def _worker() -> None:
             try:
                 results = self.fetch_fn(user_spec)
                 if cancel_token.is_set():
                     return
-                try:
-                    self.root.after(0, lambda: on_success_ui(results))
-                except Exception:
-                    pass  # widget destroyed while fetch was in flight
+                self._results.put((cancel_token, True, results))
             except Exception as err:
                 if cancel_token.is_set():
                     return
-                try:
-                    self.root.after(0, lambda: on_error_ui(f"خطا در دریافت اطلاعات وب: {err}"))
-                except Exception:
-                    pass
+                self._results.put((cancel_token, False, str(err)))
 
         self._active_thread = threading.Thread(target=_worker, daemon=True)
         self._active_thread.start()
+        self.root.after(25, _poll)
 
 
 def highlight_entry_error(

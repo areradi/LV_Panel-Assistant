@@ -213,6 +213,7 @@ def test_wire_schedule_preserves_parallel_start_and_hold_paths_without_shorting_
 @pytest.mark.parametrize("language", ["FA", "EN", "DE"])
 def test_project_fields_share_input_columns_in_every_language(app, language):
     app._on_language_change(language)
+    app._toggle_advanced_fields(True)
     left = ["wiz_project_name", "wiz_higher_func", "wiz_panel_tag", "wiz_trafo",
             "wiz_ambient", "wiz_earthing", "wiz_scenario", "wiz_spare", "wiz_plc_base"]
     right = ["wiz_std_regime", "wiz_install_site", "wiz_voltage", "wiz_ik",
@@ -221,7 +222,68 @@ def test_project_fields_share_input_columns_in_every_language(app, language):
         columns = {app.wiz_entries[key].grid_info()["column"] for key in keys}
         assert len(columns) == 1
         assert all(app.wiz_entries[key].master is app.wiz_entries[keys[0]].master for key in keys)
-    assert app.wiz_entries[left[0]].grid_info()["column"] != app.wiz_entries[right[0]].grid_info()["column"]
+    assert app.wiz_entries[left[0]].grid_info()["column"] == app.wiz_entries[right[0]].grid_info()["column"]
+
+
+def test_precision_context_uses_engine_values_and_marks_stale(app):
+    assert app._run_calculations_and_refresh()
+    summary = app.last_results[1]
+    assert app._hero_current.cget('text') == f'{summary.main_breaker.rated_current_in_a:,.1f} A'
+    assert '√3' in app._formula_text.cget('text')
+    edit(app, 'wiz_voltage', '415')
+    assert app._formula_note.cget('text') == app._shell_copy[11]
+
+
+def test_advanced_fields_keep_their_values(app):
+    app._toggle_advanced_fields(True)
+    edit(app, 'wiz_trafo', '1250')
+    app._toggle_advanced_fields(False)
+    assert app.wiz_entries['wiz_trafo'].get() == '1250'
+    assert app._project_from_form().transformer_kva == 1250
+
+
+def test_stepper_navigates_to_existing_views(app):
+    for button, expected in zip(app._step_buttons, (1, 3, 3, 4)):
+        button.invoke()
+        assert app._active_view == expected
+
+
+def test_equipment_and_busbar_steps_show_distinct_results(app):
+    app._step_buttons[1].invoke()
+    assert app._results_tabs.get() == gui.tr('tab_equipment')
+    app._step_buttons[2].invoke()
+    assert app._results_tabs.get() == gui.tr('tab_busbars')
+    assert app._run_calculations_and_refresh()
+    values = [app.tree_busbars.item(row, 'values')[1] for row in app.tree_busbars.get_children()]
+    assert f'{app.last_results[1].busbar_rating_a:g} A' in values
+
+
+def test_mounting_and_special_inputs_survive_language_changes(app):
+    from lv_assist.models import EnclosureMounting, ScenarioInputs
+    project = app.current_project.model_copy(deep=True)
+    project.enclosure_mounting = EnclosureMounting.CONSOLE
+    project.special_scenario = SpecialScenario.MEDICAL_IT
+    project.scenario_inputs = ScenarioInputs(imd_alarm_kohm=50, insulation_kohm=120)
+    app._fill_project_form(project)
+    for language in ('FA', 'EN', 'DE'):
+        app._on_language_change(language)
+        restored = app._project_from_form()
+        assert app.wiz_entries['wiz_mounting'].get() == 'CONSOLE'
+        assert restored.scenario_inputs.imd_alarm_kohm == 50
+        assert restored.special_scenario == SpecialScenario.MEDICAL_IT
+
+
+def test_scenario_dialog_stages_validated_data_and_marks_results_stale(app):
+    from lv_assist.scenario_dialog import ScenarioDialog
+    project = app._project_from_form()
+    project.special_scenario = SpecialScenario.UPS_CRITICAL
+    app._fill_project_form(project)
+    app.action_scenario_settings()
+    dialog = next(widget for widget in app.winfo_children() if isinstance(widget, ScenarioDialog))
+    dialog._entries['load_kw'].insert(0, '15')
+    dialog._save()
+    assert app._project_from_form().scenario_inputs.load_kw == 15
+    assert app._stale
 
 
 @pytest.mark.parametrize("language", ["EN", "DE"])
@@ -275,3 +337,105 @@ def test_custom_names_and_drafts_survive_language_switches(app):
         assert app.current_feeders[0].description == "توضیح کاربر"
         assert app.wiz_entries["wiz_voltage"].get() == "415"
         assert app._stale
+
+
+@pytest.mark.parametrize('language', ['FA', 'EN', 'DE'])
+def test_localized_alignment_keeps_formulas_and_engineering_entries_readable(app, language):
+    app._on_language_change(language)
+    rtl = language == 'FA'
+    assert app.f_entries['wiz_f_desc'].cget('justify') == ('right' if rtl else 'left')
+    assert app.i_entries['wiz_i_desc'].cget('justify') == ('right' if rtl else 'left')
+    assert app.wiz_entries['wiz_project_name'].cget('justify') == ('right' if rtl else 'left')
+    assert app.wiz_entries['wiz_voltage'].cget('justify') == 'left'
+    assert app.f_entries['wiz_f_id'].cget('justify') == 'left'
+    assert app._formula_text.cget('justify') == 'left'
+    if rtl:
+        assert app._formula_note.cget('justify') == 'right'
+        assert app._formula_note.cget('anchor') == 'e'
+        assert str(app.tree_feeders.column('desc', 'anchor')) == 'e'
+        assert str(app.tree_feeders.column('kw', 'anchor')) == 'center'
+        assert str(app.tree_feeders.heading('desc', 'anchor')) == 'e'
+        assert tuple(app.tree_feeders['displaycolumns'])[-1] == 'id'
+    else:
+        assert str(app.tree_feeders.column('desc', 'anchor')) == 'center'
+        assert str(app.tree_feeders['displaycolumns'][0]) == '#all'
+
+
+def test_persian_editor_rows_and_dynamic_device_fields_are_aligned(app):
+    app._on_language_change('FA')
+    editor = gui.FeederEditDialog(app, app.current_feeders[0], lambda feeder: None)
+    try:
+        entry = editor._entries['description'][0]
+        assert entry.cget('justify') == 'right'
+        assert entry.pack_info()['side'] == 'left'
+        labels = [child for child in entry.master.winfo_children() if isinstance(child, ctk.CTkLabel)]
+        assert labels[0].cget('anchor') == 'e'
+        assert labels[0].pack_info()['side'] == 'right'
+    finally:
+        editor.destroy()
+    device_editor = gui.DeviceEditDialog(app, None, lambda device: None)
+    try:
+        device_editor._on_type_changed('ENCLOSURE')
+        entry = device_editor._entries['width_mm']
+        assert entry.cget('justify') == 'left'
+        assert entry.pack_info()['side'] == 'left'
+        labels = [child for child in entry.master.winfo_children() if isinstance(child, ctk.CTkLabel)]
+        assert labels[0].cget('justify') == 'right'
+        assert labels[0].pack_info()['side'] == 'right'
+    finally:
+        device_editor.destroy()
+
+
+@pytest.mark.parametrize('language', ['FA', 'EN', 'DE'])
+def test_ui_titles_have_no_step_numbers_and_results_use_latin_digits(app, language):
+    app._on_language_change(language)
+    assert app._run_calculations_and_refresh()
+    for widget in (*app._nav_buttons, *app._step_buttons, *app._export_buttons):
+        assert not widget.cget('text').strip()[0].isdigit()
+    for key in ('btn_template', 'btn_import', 'grp_docs', 'grp_drawings', 'html_s1'):
+        assert not gui.tr(key).strip()[0].isdigit()
+    texts = [label.cget('text') for label in app.kpi_labels.values()]
+    texts += [app._hero_current.cget('text'), app._formula_text.cget('text')]
+    texts += [str(app.tree_results_tbl.item(row, 'values')) for row in app.tree_results_tbl.get_children()]
+    texts += [str(app.tree_rules.item(row, 'values')) for row in app.tree_rules.get_children()]
+    assert not any(char in '۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩' for text in texts for char in text)
+
+
+def test_translated_numbers_are_latin_without_rewriting_user_text(app):
+    app._on_language_change('FA')
+    assert '15' in gui.tr('xl_d_f01')
+    assert '24' in gui.tr('kpi_psu_24v')
+    user_name = 'پروژه ۱۲'
+    assert user_name in gui.tr('lbl_project', name=user_name, tag='+MCC1')
+
+
+def test_persian_dropdown_selection_preserves_raw_code_and_cancel_is_inert(app):
+    app._on_language_change('FA')
+    app.deiconify()
+    app._switch_view(1)
+    app.update()
+    menu = app.cmb_f_type
+    menu.set('MOTOR_DOL')
+    try:
+        menu._open_dropdown_menu()
+        popup = menu._persian_popup
+        app.update()
+        assert popup.winfo_ismapped()
+        assert popup.listbox.cget('justify') == 'right'
+        popup.listbox.selection_clear(0, 'end')
+        popup.listbox.selection_set(1)
+        popup.choose()
+        assert menu.get() == menu.cget('values')[1]
+        selected = menu.get()
+        menu._open_dropdown_menu()
+        app.update()
+        menu._persian_popup.listbox.event_generate('<Escape>')
+        app.update()
+        assert not menu._persian_popup.winfo_exists()
+        assert menu.get() == selected
+        assert app.grab_current() is None
+    finally:
+        popup = getattr(menu, '_persian_popup', None)
+        if popup is not None and popup.winfo_exists():
+            popup.close()
+        app.withdraw()

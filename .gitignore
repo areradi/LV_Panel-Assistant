@@ -1,76 +1,53 @@
+# Python environments and caches
 .venv/
+venv/
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
-dist/
-build/
-*.spec
-config.json
- 
-# Local backups, patches, generated tests/reports/diagrams 
-*.bak 
-*.bak_v* 
-patch_*.py 
-test_sld_*.py 
-gui_github.py 
-github_*.py 
-/ctrl_*.svg 
-/sld_*.svg 
-/lv_assist/*.bak 
-/lv_assist/*.bak_v* 
-/lv_assist/Input_Load_List_Template.xlsx 
-/lv_assist/LV_Panel_Engineering_Report.html 
-
-# --- Audit/patch/probe temporary artifacts ---
-strict_plugin.py
-probe_*.py
-fix_*.py
-enable_*.py
-patch_*.py
-inspect_audit.py
-setup_audit_files.py
-test_gui_output_bridge.py
-test_sld_*.py
-_head_gui.py
-_bridge_reference.py
-gui_github.py
-github_*.py
-*.bak
-*.pre_*.bak
-*.audit_*.bak
-*.narrow_*.bak
-/lv_assist/_preview_*.svg.html
-/*_preview*.svg
-/output/previews/
-/outputs/reports/
-/outputs/previews/
-
-# --- Generated preview HTML/SVG artifacts ---
-/_preview*.svg
-/_preview*.svg.html
-/lv_assist/_preview*.svg
-/lv_assist/_preview*.svg.html
-
-# Publication exclusions
-/archive/
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-*.db-journal
-*.db-wal
-*.db-shm
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
 *.egg-info/
+
+# Build and generated documents
+build/
+dist/
+*.spec
+!PanelCalc-Pro.spec
+outputs/
+output/
+archive/
+*.log
+*.zip
+*.bak
+*.bak_v*
+*.pre_*.bak
+*.audit_*.bak
+*.narrow_*.bak
+/_preview*.svg*
+/*_preview*.svg
+/lv_assist/_preview*.svg*
+
+# Local preferences, credentials and mutable databases
+config.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+lv_assist/data/*.db
+lv_assist/data/*.db-*
+
+# Local recovery evidence and one-time repair scripts
+/docs/verification/
+/docs/legacy-tests/
+/scripts/apply_priority*.py
+/scripts/git_sync.bat
+
+# Editor and operating-system files
 .vscode/
 .idea/
 Thumbs.db
 Desktop.ini
 .DS_Store
-# Local SQLite databases (rebuildable from JSON via migrate_to_sqlite.py)
-lv_assist/data/*.db
-lv_assist/data/*.db-journal

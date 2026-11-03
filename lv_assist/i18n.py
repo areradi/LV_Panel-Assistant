@@ -13,7 +13,7 @@ LANGUAGE_META = {
 from lv_assist.paths import get_translations_dir
 
 _TRANSLATIONS_DIR = str(get_translations_dir())
-_FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+_LATIN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 
 
 class I18n:
@@ -93,12 +93,11 @@ class I18n:
                 break
         if text is None:
             text = key
+        text = text.translate(_LATIN_DIGITS)
         try:
             text = text.format(**fmt)
         except (KeyError, IndexError):
             pass
-        if self._language == "fa":
-            text = text.translate(_FA_DIGITS)
         return text
 
 

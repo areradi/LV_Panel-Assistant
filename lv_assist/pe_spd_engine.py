@@ -106,13 +106,13 @@ def evaluate_spd_requirements(
     notes: List[str] = []
 
     if not earthing_system:
-        missing.append("سیستم زمین (TN-S / TN-C-S / TT / IT)")
+        missing.append("earthing_system")
     if not nominal_voltage_ln_v:
-        missing.append("ولتاژ نامی شبکه (Uo)")
+        missing.append("nominal_voltage_ln_v")
     if has_external_lps is None:
-        missing.append("وضعیت صاعقه‌گیر خارجی (LPS) / ورودی خط هوایی")
+        missing.append("external_lps")
     if prospective_ik_ka is None:
-        missing.append("جریان اتصال کوتاه محل نصب (Ik)")
+        missing.append("prospective_ik_ka")
 
     required_type: Optional[SPDType] = None
     if has_external_lps is True:

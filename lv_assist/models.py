@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 class EarthingSystem(str, Enum):
@@ -24,6 +24,13 @@ class PanelType(str, Enum):
     CONTROL = "CONTROL"
     PUMP_STATION = "PUMP_STATION"
 
+class EnclosureMounting(str, Enum):
+    UNSPECIFIED = "UNSPECIFIED"
+    FLOOR_STANDING = "FLOOR_STANDING"
+    WALL_MOUNTED = "WALL_MOUNTED"
+    CONSOLE = "CONSOLE"
+    RACK = "RACK"
+
 class SpecialScenario(str, Enum):
     NONE = "NONE"
     FIRE_PUMP = "FIRE_PUMP"
@@ -32,6 +39,19 @@ class SpecialScenario(str, Enum):
     ATS_MAINS_MAINS = "ATS_MAINS_MAINS"
     UPS_CRITICAL = "UPS_CRITICAL"
     EMERGENCY_LIGHTING = "EMERGENCY_LIGHTING"
+    ATS_CLOSED_TRANSITION = "ATS_CLOSED_TRANSITION"
+    ATS_CONTROLLER = "ATS_CONTROLLER"
+    FIRE_PUMP_TRANSFER = "FIRE_PUMP_TRANSFER"
+    MEDICAL_IT = "MEDICAL_IT"
+    EXPLOSIVE_GAS_D = "EXPLOSIVE_GAS_D"
+    EXPLOSIVE_GAS_E = "EXPLOSIVE_GAS_E"
+    EXPLOSIVE_DUST = "EXPLOSIVE_DUST"
+    DATA_CENTER = "DATA_CENTER"
+    MARINE = "MARINE"
+    MINING = "MINING"
+    PV_DC = "PV_DC"
+    EV_CHARGING = "EV_CHARGING"
+    HOISTING = "HOISTING"
 
 class ConductorMaterial(str, Enum):
     CU = "CU"
@@ -74,6 +94,47 @@ class SpdClass(str, Enum):
     T2 = "T2"
     T1_T2 = "T1_T2"
 
+class ScenarioInputs(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, extra='forbid')
+    review_reference: Optional[str] = None
+    load_kw: Optional[float] = Field(default=None, gt=0)
+    load_pf: Optional[float] = Field(default=None, gt=0, le=1)
+    equipment_rating_a: Optional[float] = Field(default=None, gt=0)
+    ac_phases: Optional[Literal[1, 3]] = None
+    ac_voltage_v: Optional[float] = Field(default=None, gt=0)
+    equipment_fault_ka: Optional[float] = Field(default=None, gt=0)
+    interlock_proven: Optional[bool] = None
+    synchronism_proven: Optional[bool] = None
+    utility_parallel_approved: Optional[bool] = None
+    ups_kva: Optional[float] = Field(default=None, gt=0)
+    ups_kw: Optional[float] = Field(default=None, gt=0)
+    dc_voltage_v: Optional[float] = Field(default=None, gt=0)
+    autonomy_min: Optional[float] = Field(default=None, gt=0)
+    efficiency: Optional[float] = Field(default=None, gt=0, le=1)
+    usable_fraction: Optional[float] = Field(default=None, gt=0, le=1)
+    battery_ah: Optional[float] = Field(default=None, gt=0)
+    transformer_kva: Optional[float] = Field(default=None, gt=0)
+    isolated_secondary_it: Optional[bool] = None
+    imd_alarm_kohm: Optional[float] = Field(default=None, gt=0)
+    insulation_kohm: Optional[float] = Field(default=None, gt=0)
+    remote_alarm_proven: Optional[bool] = None
+    area_classification: Optional[str] = None
+    equipment_marking: Optional[str] = None
+    certificate_reference: Optional[str] = None
+    redundancy_reference: Optional[str] = None
+    fire_strategy_reference: Optional[str] = None
+    marine_class_reference: Optional[str] = None
+    safety_functions_reference: Optional[str] = None
+    pv_voc_module_v: Optional[float] = Field(default=None, gt=0)
+    pv_voc_temp_pct_c: Optional[float] = Field(default=None, lt=0)
+    pv_min_temp_c: Optional[float] = Field(default=None, ge=-100, le=25)
+    pv_series_modules: Optional[int] = Field(default=None, ge=1)
+    pv_parallel_strings: Optional[int] = Field(default=None, ge=1)
+    pv_isc_module_a: Optional[float] = Field(default=None, gt=0)
+    pv_current_factor: Optional[float] = Field(default=None, ge=1)
+    dc_equipment_voltage_v: Optional[float] = Field(default=None, gt=0)
+    ev_supply_type: Optional[Literal['AC', 'DC', 'DC_LOW_VOLTAGE']] = None
+
 class ProjectSpec(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
 
@@ -85,6 +146,11 @@ class ProjectSpec(BaseModel):
     earthing_system: EarthingSystem = Field(default=EarthingSystem.TN_S)
     panel_type: PanelType = Field(default=PanelType.MCC)
     special_scenario: SpecialScenario = Field(default=SpecialScenario.NONE)
+    enclosure_mounting: EnclosureMounting = EnclosureMounting.UNSPECIFIED
+    enclosure_width_mm: Optional[float] = Field(default=None, gt=0)
+    enclosure_height_mm: Optional[float] = Field(default=None, gt=0)
+    enclosure_depth_mm: Optional[float] = Field(default=None, gt=0)
+    scenario_inputs: ScenarioInputs = Field(default_factory=ScenarioInputs)
     prospective_ik_ka: Optional[float] = Field(default=None, gt=0)
     transformer_kva: Optional[float] = Field(default=None, gt=0)
     transformer_uk_pct: float = Field(default=6.0, gt=0.0, le=20.0)
@@ -120,6 +186,7 @@ class FeederInput(BaseModel):
     cable_section_mm2: Optional[float] = Field(default=None, gt=0)
     has_socket_outlets: bool = Field(default=False)
     fire_pump_service: bool = Field(default=False)
+    locked_rotor_current_a: Optional[float] = Field(default=None, gt=0)
     conductor_material: ConductorMaterial = ConductorMaterial.CU
     insulation: InsulationType = InsulationType.PVC
     installation_method: InstallationMethod = InstallationMethod.C
@@ -152,6 +219,7 @@ class CatalogDevice(BaseModel):
     depth_mm: float = 0.0
     airflow_m3h: float = 0.0
     ip_rating: str = "IP20"
+    enclosure_mounting: EnclosureMounting = EnclosureMounting.UNSPECIFIED
     data_quality: DataQuality = DataQuality.REAL_VERIFIED
     spd_class: Optional[str] = None
     spd_uc_v: float = 0.0
@@ -300,6 +368,7 @@ class FeederCalcOutput(BaseModel):
     starting_kva: float = 0.0
     starting_dip_pct: Optional[float] = None
     fire_pump_service: bool = False
+    locked_rotor_current_a: Optional[float] = Field(default=None, gt=0)
     thdi_pct: Optional[float] = None
     fire_resistant: bool = False
 

@@ -4,13 +4,14 @@ from typing import List, Optional, Tuple, Dict
 from lv_assist.models import (
     ProjectSpec, FeederInput, CatalogDevice, ValidationResult, FeederCalcOutput,
     PanelSummaryOutput, LoadType, ValidationStatus, SelectivityEvalState, SpecialScenario, DataQuality, SpdClass,
-    DesignVerificationItem, DesignVerificationReport, VerificationMethod, VerificationStatus
+    DesignVerificationItem, DesignVerificationReport, VerificationMethod, VerificationStatus, EnclosureMounting
 )
 
 from lv_assist.pe_spd_engine import evaluate_spd_requirements, select_pe_k_factor
 from lv_assist.catalog import SiemensSelectivityRepository, TripCurveRepository, catalog_repo
 from lv_assist.busbar import BusbarEngine
 from lv_assist.i18n import tr
+from lv_assist.scenario_rules import evaluate_scenario
 # --- [AUDIT SAFE IMPORTS] ---
 from lv_assist.core_verification import (
     ValidationStatus as AuditValidationStatus,
@@ -649,6 +650,9 @@ class EngineeringEngine:
         starting_dip_pct = None
         if f.load_type in self.START_K_FACTOR:
             starting_kva = round(math.sqrt(3.0) * project.nominal_voltage_v * ib_a * self.START_K_FACTOR[f.load_type] / 1000.0, 1)
+            if f.locked_rotor_current_a is not None:
+                voltage_factor = math.sqrt(3.0) * project.nominal_voltage_v if f.phases == 3 else project.nominal_voltage_v / math.sqrt(3.0)
+                starting_kva = round(voltage_factor * f.locked_rotor_current_a / 1000.0, 1)
             if ik_ka is not None:
                 s_sc_kva = math.sqrt(3.0) * project.nominal_voltage_v * ik_ka
                 starting_dip_pct = round(starting_kva / (starting_kva + s_sc_kva) * 100.0, 1)
@@ -696,6 +700,7 @@ class EngineeringEngine:
             ctrl_24v_pull_in_surge_w=round(ctrl_pull_in_surge_w, 1), total_feeder_loss_w=round(total_loss_w, 1),
             selection_reason=" | ".join(reason_parts), suggested_spec_str=" | ".join(sug_parts),
             starting_kva=starting_kva, starting_dip_pct=starting_dip_pct, fire_pump_service=f.fire_pump_service,
+            locked_rotor_current_a=f.locked_rotor_current_a,
             thdi_pct=f.thdi_pct, fire_resistant=f.fire_resistant
         )
         return out, vals
@@ -715,13 +720,7 @@ class EngineeringEngine:
         i_design_main_a = (s_design_kva * 1000.0) / (math.sqrt(3) * project.nominal_voltage_v)
         sum_ib = sum(f.design_current_ib_a for f in feeders)
 
-        fp_lrc_extra_a = sum(f.design_current_ib_a * 6.0 for f in feeders if f.fire_pump_service)
-        i_main_req_a = i_design_main_a + fp_lrc_extra_a
-        if fp_lrc_extra_a > 0.0:
-            vals.append(ValidationResult(rule_id="RULE-SCEN-FP-021", feeder_id="PANEL", standard_ref="NFPA 20",
-                status=ValidationStatus.COMPLETED, description=tr("val_fp_main_desc"),
-                supporting_evidence=tr("val_fp_main_ev", a=round(fp_lrc_extra_a, 1), b=round(i_main_req_a, 1)),
-                consequence=tr("val_fp_main_cons"), recommended_action=tr("val_no_action")))
+        i_main_req_a = i_design_main_a
 
         # ---------- Phase 4: panel harmonics + capacitor bank ----------
         has_thdi_data = any(f.thdi_pct is not None for f in feeders)
@@ -951,38 +950,7 @@ class EngineeringEngine:
                 else:
                     vals.append(ValidationResult(rule_id="RULE-SEL-005", feeder_id=f.feeder_id, standard_ref="IEC 60947-2", status=ValidationStatus.ERROR, description=tr("val_sel_viol_desc"), supporting_evidence=ref_doc, consequence=tr("val_sel_viol_cons"), recommended_action=tr("val_sel_viol_action")))
 
-        if project.special_scenario == SpecialScenario.ATS_MAINS_GEN:
-            vals.append(ValidationResult(rule_id="RULE-SCEN-ATS-022", feeder_id="PANEL", standard_ref="IEC 60947-6-1",
-                status=ValidationStatus.WARNING, description=tr("val_ats_desc"), supporting_evidence=tr("val_ats_ev"),
-                consequence=tr("val_ats_cons"), recommended_action=tr("val_ats_action")))
-        if project.special_scenario == SpecialScenario.FIRE_PUMP_BYPASS:
-            vals.append(ValidationResult(rule_id="RULE-SCEN-FPB-023", feeder_id="PANEL", standard_ref="NFPA 20",
-                status=ValidationStatus.WARNING, description=tr("val_fpb_desc"), supporting_evidence=tr("val_fpb_ev"),
-                consequence=tr("val_fpb_cons"), recommended_action=tr("val_fpb_action")))
-        if project.special_scenario == SpecialScenario.FIRE_PUMP:
-            vals.append(ValidationResult(rule_id="RULE-SCEN-FP-024", feeder_id="PANEL", standard_ref="NFPA 20",
-                status=ValidationStatus.WARNING, description=tr("val_fp_panel_desc"), supporting_evidence=tr("val_fp_panel_ev"),
-                consequence=tr("val_fp_panel_cons"), recommended_action=tr("val_fp_panel_action")))
-        if project.special_scenario == SpecialScenario.ATS_MAINS_MAINS:
-            vals.append(ValidationResult(rule_id="RULE-SCEN-ATS2-025", feeder_id="PANEL", standard_ref="IEC 60947-6-1",
-                status=ValidationStatus.WARNING, description=tr("val_ats2_desc"), supporting_evidence=tr("val_ats2_ev"),
-                consequence=tr("val_ats2_cons"), recommended_action=tr("val_ats2_action")))
-        if project.special_scenario == SpecialScenario.UPS_CRITICAL:
-            vals.append(ValidationResult(rule_id="RULE-SCEN-UPS-026", feeder_id="PANEL", standard_ref="IEC 62040-3",
-                status=ValidationStatus.WARNING, description=tr("val_ups_desc"), supporting_evidence=tr("val_ups_ev"),
-                consequence=tr("val_ups_cons"), recommended_action=tr("val_ups_action")))
-        if project.special_scenario == SpecialScenario.EMERGENCY_LIGHTING:
-            non_fr = [f.feeder_id for f in feeders if f.load_type == LoadType.LIGHTING_SOCKET and not f.fire_resistant]
-            if non_fr:
-                vals.append(ValidationResult(rule_id="RULE-SCEN-EML-027", feeder_id="PANEL", standard_ref="IEC 60364-5-56",
-                    status=ValidationStatus.WARNING, description=tr("val_eml_desc"),
-                    supporting_evidence=tr("val_eml_ev", a=", ".join(non_fr)), consequence=tr("val_eml_cons"),
-                    recommended_action=tr("val_eml_action")))
-            else:
-                vals.append(ValidationResult(rule_id="RULE-SCEN-EML-027", feeder_id="PANEL", standard_ref="IEC 60364-5-56",
-                    status=ValidationStatus.COMPLETED, description=tr("val_eml_ok_desc"),
-                    supporting_evidence=tr("val_eml_ok_ev"), consequence=tr("val_eml_cons"),
-                    recommended_action=tr("val_no_action")))
+        vals.extend(evaluate_scenario(project, feeders, i_main_req_a, ik_total_ka if ik_total_ka is not None else ik_ka))
 
         pe_busbar_spec = "Cu 20x5 mm (PE - 100 mm²)" if i_main_req_a <= 400 else "Cu 30x5 mm (PE - 150 mm²)"
 
@@ -1031,6 +999,8 @@ class EngineeringEngine:
 
         has_vfd_or_yd = any(f.load_type in (LoadType.MOTOR_VFD, LoadType.MOTOR_STAR_DELTA) for f in feeders)
         enclosures = catalog_repo.get_compatible_enclosures(project.target_ip)
+        if project.enclosure_mounting != EnclosureMounting.UNSPECIFIED:
+            enclosures = [device for device in enclosures if device.enclosure_mounting == project.enclosure_mounting]
         enclosures.sort(key=lambda d: (d.width_mm, d.height_mm))
         if enclosures:
             idx = 2 if (i_main_req_a > 160 or len(feeders) >= 5) else (1 if (has_vfd_or_yd or len(feeders) >= 3) else 0)
@@ -1043,26 +1013,36 @@ class EngineeringEngine:
                 supporting_evidence=tr("val_enc_ip_ev", a=project.target_ip), consequence=tr("val_enc_ip_cons"),
                 recommended_action=tr("val_enc_ip_action")))
 
+        dimensions = {name: getattr(project, 'enclosure_' + name) for name in ('width_mm', 'height_mm', 'depth_mm')}
+        if any(value is not None for value in dimensions.values()):
+            selected_enc = selected_enc.model_copy(update={
+                **{name: value for name, value in dimensions.items() if value is not None},
+                'part_number': 'EST-PANEL', 'data_quality': DataQuality.ESTIMATED,
+                'enclosure_mounting': project.enclosure_mounting})
+        if project.enclosure_mounting != EnclosureMounting.UNSPECIFIED:
+            vals.append(ValidationResult(rule_id='SCEN-MOUNTING', feeder_id='PANEL', standard_ref='IEC 61439-1; IEC 62208',
+                status=ValidationStatus.INSUFFICIENT_DATA, description=tr('mounting_review'),
+                supporting_evidence=f'{project.enclosure_mounting.value}; {selected_enc.width_mm}×{selected_enc.height_mm}×{selected_enc.depth_mm} mm',
+                consequence=tr('mounting_review_note'), recommended_action=tr('mounting_review_note')))
         # ---------- Priority 8: SPD pre-check via pe_spd_engine ----------
         if project.spd_class != SpdClass.NONE:
             try:
-                _has_lps = project.spd_class in (SpdClass.T1, SpdClass.T1_T2)
                 _spd_diag = evaluate_spd_requirements(
                     earthing_system=getattr(project.earthing_system, "value", str(project.earthing_system)),
                     nominal_voltage_ln_v=u0_v,
-                    has_external_lps=_has_lps,
+                    has_external_lps=None,
                     is_sensitive_terminal_load=False,
                     prospective_ik_ka=ik_ka,
                     candidates=[],
                 )
                 if _spd_diag.engineering_status.value == "insufficient_data" and _spd_diag.missing_parameters:
                     vals.append(ValidationResult(
-                        rule_id="RULE-SPD-035", feeder_id="PANEL", standard_ref="IEC 61643-11",
+                        rule_id="RULE-SPD-PRECHECK", feeder_id="PANEL", standard_ref="IEC 61643-11",
                         status=ValidationStatus.WARNING,
-                        description="SPD pre-check: missing data (" + ", ".join(_spd_diag.missing_parameters) + ")",
+                        description=tr('spd_precheck_desc', fields=", ".join(_spd_diag.missing_parameters)),
                         supporting_evidence="pe_spd_engine.evaluate_spd_requirements",
-                        consequence="SPD sufficiency cannot be fully verified.",
-                        recommended_action="Complete missing inputs: " + ", ".join(_spd_diag.missing_parameters),
+                        consequence=tr('spd_precheck_consequence'),
+                        recommended_action=tr('spd_precheck_action', fields=", ".join(_spd_diag.missing_parameters)),
                     ))
             except Exception:
                 pass
@@ -1338,6 +1318,19 @@ def build_design_verification(project: ProjectSpec, feeders: List[FeederCalcOutp
         computed_value=tr("dv_10_13_val", pn=enc_pn),
         evidence=tr("dv_10_13_ev"),
         rule_ids=[]))
+
+    if project.special_scenario != SpecialScenario.NONE:
+        from lv_assist.scenario_rules import PROFILES, localized
+        profile = PROFILES[project.special_scenario.value]
+        items.append(DesignVerificationItem(clause_ref='SCENARIO', title=tr('scenario_settings'),
+            requirement=profile.standards, method=VerificationMethod.MANUFACTURER_DATA,
+            status=VerificationStatus.NOT_VERIFIED, computed_value=tr('scenario_' + project.special_scenario.value),
+            evidence=localized(profile.notes), rule_ids=['SCEN-REVIEW']))
+    if project.enclosure_mounting != EnclosureMounting.UNSPECIFIED:
+        items.append(DesignVerificationItem(clause_ref='MOUNTING', title=tr('mounting_review'),
+            requirement='IEC 61439-1; IEC 62208', method=VerificationMethod.MANUFACTURER_DATA,
+            status=VerificationStatus.NOT_VERIFIED, computed_value=tr('mount_' + project.enclosure_mounting.value),
+            evidence=tr('mounting_review_note'), rule_ids=['SCEN-MOUNTING']))
 
     n_pass = sum(1 for it in items if it.status == VerificationStatus.PASS)
     n_warn = sum(1 for it in items if it.status == VerificationStatus.WARNING)

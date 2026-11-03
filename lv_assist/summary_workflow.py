@@ -84,8 +84,7 @@ def format_summary_cards(
 ) -> Dict[str, Dict[str, str]]:
     """Build the two summary cards ("main_protection" and "enclosure").
 
-    Values are pre-formatted strings with LTR isolation marks around numbers
-    so they render correctly inside RTL Persian UI.
+    Values are plain strings; Tk renders Unicode isolation marks as boxes.
 
     The ``main_protection`` card contains both the **real breaker rating**
     (``rated_current_in``) and the **panel design current** (``design_current``)
@@ -159,7 +158,9 @@ def format_summary_cards(
             "depth": f"\u2066{enc.depth_mm} mm\u2069" if enc.depth_mm else na_label,
         }
 
-    return {"main_protection": main_protection_card, "enclosure": enclosure_card}
+    isolation_marks = dict.fromkeys(map(ord, '\u2066\u2067\u2068\u2069'))
+    return {name: {key: value.translate(isolation_marks) for key, value in card.items()}
+            for name, card in {'main_protection': main_protection_card, 'enclosure': enclosure_card}.items()}
 
 
 @dataclass
@@ -231,6 +232,10 @@ class CalculationWorkflowEngine:
     def mark_input_changed(self, modified_step_id: str) -> List[str]:
         """Mark all downstream steps STALE. Return the list of newly stale step ids."""
         stale_marked: List[str] = []
+        node = self.nodes.get(modified_step_id)
+        if node and node.exec_state == StepExecState.CALCULATED:
+            node.exec_state = StepExecState.STALE
+            stale_marked.append(modified_step_id)
         queue: List[str] = [modified_step_id]
         visited: set = set()
 

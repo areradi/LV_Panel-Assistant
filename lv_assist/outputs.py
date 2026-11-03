@@ -4,6 +4,7 @@ import math
 import os
 import shutil
 import subprocess
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -415,17 +416,21 @@ class PdfExporter:
         if not browser:
             return False
         url = Path(os.path.abspath(html_path)).as_uri()
-        profile_dir = os.path.join(os.environ.get("TEMP", os.path.dirname(pdf_path)), "lvassist_edge_profile")
-        try:
-            subprocess.run(
-                [browser, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
-                 "--no-pdf-header-footer", f"--user-data-dir={profile_dir}",
-                 f"--print-to-pdf={os.path.abspath(pdf_path)}", url],
-                check=True, capture_output=True, timeout=120,
-            )
-        except (subprocess.SubprocessError, OSError):
-            return False
-        return os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 0
+        browsers = [browser] + [p for p in cls.EDGE_CANDIDATES if p != browser and os.path.isfile(p)]
+        for candidate in browsers:
+            try:
+                with tempfile.TemporaryDirectory(prefix='lvassist_pdf_', dir=str(Path(pdf_path).resolve().parent)) as profile_dir:
+                    subprocess.run(
+                        [candidate, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+                         "--no-pdf-header-footer", f"--user-data-dir={profile_dir}",
+                         f"--print-to-pdf={os.path.abspath(pdf_path)}", url],
+                        check=True, capture_output=True, timeout=120,
+                    )
+                if os.path.isfile(pdf_path) and Path(pdf_path).read_bytes().startswith(b'%PDF-'):
+                    return True
+            except (subprocess.SubprocessError, OSError):
+                continue
+        return False
 
 
 def _bom_entries(project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> List[tuple]:

@@ -118,7 +118,8 @@ class TestCatalogCrud:
         repo.add_device(self._device("TST-KEEP-1"), unit_price=10.0)
         db = repo.db_path
         user_rows, price_rows = _backup_user_data(db)
-        assert len(user_rows) == 1 and len(price_rows) == 1
+        assert len(user_rows) == 1
+        assert any(row[0] == 'TST-KEEP-1' and row[1] == 10.0 for row in price_rows)
         # شبیه‌سازی بازسازی: پاک‌سازی جدول کاتالوگ و بازگردانی
         with sqlite3.connect(db) as conn:
             conn.execute("PRAGMA foreign_keys = OFF")

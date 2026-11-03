@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -226,16 +227,20 @@ class CatalogRepository:
         if not target_ip:
             return enclosures
 
-        req_digits = "".join(ch for ch in str(target_ip) if ch.isdigit())
-        if len(req_digits) < 2:
-            return enclosures
-        req_ip_num = int(req_digits[:2])
+        required = re.match(r'IP([0-6])([0-9])', str(target_ip).strip().upper())
+        if required is None:
+            return []
+        req_solid, req_water = map(int, required.groups())
 
         compatible = []
         for enc in enclosures:
-            enc_digits = "".join(ch for ch in str(enc.ip_rating or "") if ch.isdigit())
-            if len(enc_digits) >= 2 and int(enc_digits[:2]) >= req_ip_num:
-                compatible.append(enc)
+            for solid, water in re.findall(r'IP([0-6])([0-9])', str(enc.ip_rating).upper()):
+                solid, water = int(solid), int(water)
+                # Immersion and jet-water ratings need separate evidence.
+                water_ok = req_water == 0 or water == req_water or (water <= 6 and req_water <= 6 and water >= req_water)
+                if solid >= req_solid and water_ok:
+                    compatible.append(enc)
+                    break
         return compatible
 
     # ------------------------------------------------------------------
