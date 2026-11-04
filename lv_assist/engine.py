@@ -397,6 +397,7 @@ class EngineeringEngine:
         return total_ka, parts
 
     def process_project(self, project: ProjectSpec, feeders: List[FeederInput]):
+        input_hash = project.compute_input_hash(feeders)
         self.catalog = list(self._full_catalog)
         if project.preferred_manufacturer != "ANY":
             filtered = [d for d in self.catalog if d.manufacturer == project.preferred_manufacturer]
@@ -438,6 +439,11 @@ class EngineeringEngine:
             project, feeder_outputs, ik_ka, ik_source, ik_total, ip_total, mot_ka)
         validations.extend(panel_vals)
         apply_vde_standard_refs(project, validations)
+        summary.verified_input_hash = input_hash
+        summary.calculation_inputs = [f.model_copy(deep=True) for f in feeders]
+        summary._source_feeders = feeders
+        for output in feeder_outputs:
+            output.verified_input_hash = input_hash
         return feeder_outputs, summary, validations
 
     def _process_single_feeder(self, project: ProjectSpec, f: FeederInput, ik_ka: Optional[float],

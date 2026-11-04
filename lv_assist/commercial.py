@@ -3,6 +3,7 @@
 lv_assist/commercial.py
 موتور برآورد قیمت تمام‌شده تابلو، قیمت‌گذاری پایه کاتالوگ و صدور پیش‌فاکتور رسمی (Commercial Offer)
 """
+from lv_assist.calculation_state import require_current_calculation
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
@@ -143,6 +144,7 @@ class CommercialEngine:
         margin_pct: float = 15.0,
         vat_pct: float = 19.0,
     ) -> CommercialQuoteSummary:
+        require_current_calculation(project, summary, feeders)
         seed_default_catalog_prices(currency=currency)
         repo = CatalogRepository()
         prices = repo.list_prices()
@@ -242,6 +244,7 @@ class CommercialEngine:
 
     @classmethod
     def export_quote_html(cls, filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> str:
+        require_current_calculation(project, summary, feeders)
         q = cls.build_quote(project, feeders, summary)
         esc = lambda s: html.escape(str(s or ""))
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -326,6 +329,7 @@ th {{ background: #EFF6FF; color: #1E3A8A; text-align: center; }}
 
     @classmethod
     def append_commercial_sheet(cls, wb: openpyxl.Workbook, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        require_current_calculation(project, summary, feeders)
         q = cls.build_quote(project, feeders, summary)
         ws = wb.create_sheet("07_Commercial_Quote")
         ws.append(["Item No.", "Category", "Tag", "Part Number", "Manufacturer", "Description", "Qty", "Unit", f"Unit Price ({q.currency})", f"Total Price ({q.currency})", "Price Source"])

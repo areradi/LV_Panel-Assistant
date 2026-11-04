@@ -1,7 +1,16 @@
 # -*- coding: utf-8 -*-
 from enum import Enum
 from typing import List, Optional, Literal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
+import hashlib
+import json
+
+
+def compute_input_hash(project, feeders) -> str:
+    payload = {"project": project.model_dump(mode="json"),
+               "feeders": [f.model_dump(mode="json") for f in feeders]}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False,
+                                     separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 class EarthingSystem(str, Enum):
     TN_S = "TN-S"
@@ -142,6 +151,9 @@ class EngineeringInput(BaseModel):
     def assumed_fields(self) -> dict:
         return {name: getattr(self, name) for name in type(self).model_fields
                 if name not in self.model_fields_set and getattr(self, name) is not None}
+
+    def compute_input_hash(self, feeders) -> str:
+        return compute_input_hash(self, feeders)
 
 
 class ProjectSpec(EngineeringInput):
@@ -328,6 +340,7 @@ class BusbarResult(BaseModel):
 
 class FeederCalcOutput(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
+    verified_input_hash: Optional[str] = None
 
     feeder_id: str
     func_tag: str
@@ -381,6 +394,9 @@ class FeederCalcOutput(BaseModel):
 
 class PanelSummaryOutput(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
+    verified_input_hash: Optional[str] = None
+    calculation_inputs: List[FeederInput] = Field(default_factory=list)
+    _source_feeders: Optional[List[FeederInput]] = PrivateAttr(default=None)
 
     total_active_kw: float
     total_reactive_kvar: float

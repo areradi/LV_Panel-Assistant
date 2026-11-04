@@ -10,6 +10,12 @@ Validation: 375 passed, 1 browser-dependent PDF check deselected, using Python 3
 
 ## Remaining backlog
 
+## Stage 2: enforce calculation state at export boundaries (BKL-P0-06)
+
+The engine records a SHA-256 signature of all project and feeder inputs. Direct Excel/HTML/SVG, layout, wiring, BOM, commercial, and bridge calls reject changed inputs and feeder outputs from another calculation before writing files. Serialized calculations retain their input snapshot for verification. Live references also detect edits, additions, and replacements in the original feeder list. GUI form edits continue to use the existing stale guard until recalculation.
+
+Validation: the existing 375-test baseline passed with these guards; 22 targeted remediation tests passed, including stale direct exports, recovery after recalculation, mixed result rejection, and serialized snapshot mutation. A result signature establishes input consistency, not engineering approval.
+
 | Audit ID | Source assessment / remaining work |
 | --- | --- |
 | P0-01 | Baseline 359 tests passed; `.pyc` inference rejected. Need measured coverage and integration review. |

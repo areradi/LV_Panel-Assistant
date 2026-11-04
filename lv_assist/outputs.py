@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from lv_assist.calculation_state import require_current_calculation
 import csv
 import math
 import os
@@ -40,6 +41,7 @@ class SldGenerator:
 
     @staticmethod
     def _title_block(project: ProjectSpec, summary: PanelSummaryOutput, w: float, tb_y: float) -> List[str]:
+        require_current_calculation(project, summary)
         parts: List[str] = []
         parts.append(f'<rect x="10" y="{tb_y}" width="{w - 20}" height="{SldGenerator.TITLE_BLOCK_H - 10}" fill="#F4F6F7" stroke="#1F4E78" stroke-width="1.5"/>')
         parts.append(f'<text x="24" y="{tb_y + 20}" font-size="13" font-weight="bold" fill="#1F4E78">{_esc(project.project_name)} ({_esc(project.panel_tag)})</text>')
@@ -133,6 +135,7 @@ class SldGenerator:
 
     @staticmethod
     def generate_svg(project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> str:
+        require_current_calculation(project, summary, feeders)
         n = max(1, len(feeders))
         # فاصله داینامیک ستون‌ها بر اساس طول بلندترین برچسب (جلوگیری از تداخل متن)
         def _label_px(f: FeederCalcOutput) -> float:
@@ -221,6 +224,7 @@ class SldGenerator:
 
     @staticmethod
     def generate_svg_file(filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        require_current_calculation(project, summary, feeders)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(SldGenerator.generate_svg(project, feeders, summary))
 
@@ -272,6 +276,7 @@ class TccGenerator:
 
     @staticmethod
     def generate_svg(project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> str:
+        require_current_calculation(project, summary, feeders)
         parts: List[str] = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="720" font-family="Tahoma, Segoe UI, sans-serif">',
             '<rect width="1180" height="720" fill="white"/>',
@@ -379,6 +384,7 @@ class TccGenerator:
 
     @staticmethod
     def generate_svg_file(filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        require_current_calculation(project, summary, feeders)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(TccGenerator.generate_svg(project, feeders, summary))
 
@@ -435,6 +441,7 @@ class PdfExporter:
 
 def _bom_entries(project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> List[tuple]:
     """فهرست تجهیزات BOM به صورت [(func, loc, bmk, cat, dev|None, suggested_spec|None, qty)]."""
+    require_current_calculation(project, summary, feeders)
     entries: List[tuple] = []
     def add(func, loc, bmk, cat, dev: CatalogDevice, qty=1):
         if dev is not None:
@@ -499,6 +506,7 @@ class EplanExporter:
 
     @classmethod
     def export_csv(cls, filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        require_current_calculation(project, summary, feeders)
         rows: List[list] = []
         for func, loc, bmk, cat, dev, spec, qty in _bom_entries(project, feeders, summary):
             if dev is None:
@@ -533,6 +541,7 @@ class EplanPartsExporter:
 
     @classmethod
     def export_csv(cls, filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        require_current_calculation(project, summary, feeders)
         agg: dict = {}
         for _, _, _, _, dev, _, qty in _bom_entries(project, feeders, summary):
             if dev is None:

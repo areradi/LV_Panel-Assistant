@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """بهینه‌سازی چیدمان فیزیکی پانل: جانمایی تجهیزات روی ریل DIN با ابعاد کاتالوگ، فواصل IEC 61439-2 و تفکیک سینی/درب."""
+from lv_assist.calculation_state import require_current_calculation
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -72,6 +73,7 @@ class PanelLayoutGenerator:
     @classmethod
     def _collect_devices(cls, project: ProjectSpec, feeders: List[FeederCalcOutput],
                          summary: PanelSummaryOutput) -> List[LayoutDevice]:
+        require_current_calculation(project, summary, feeders)
         devs: List[LayoutDevice] = []
         devs += cls._dev("-E1", summary.selected_fan, "COOLING")
         devs += cls._dev("-Q0", summary.main_breaker, "POWER")
@@ -102,6 +104,7 @@ class PanelLayoutGenerator:
     @classmethod
     def generate(cls, project: ProjectSpec, feeders: List[FeederCalcOutput],
                  summary: PanelSummaryOutput, spare_space_pct: float = 20.0) -> PanelLayoutResult:
+        require_current_calculation(project, summary, feeders)
         panel_w = summary.estimated_panel_width_mm
         panel_h = summary.estimated_panel_height_mm
         panel_d = summary.estimated_panel_depth_mm
@@ -165,6 +168,7 @@ class PanelLayoutGenerator:
                            devices: List[LayoutDevice], rows: List[LayoutRow],
                            fill_pct: float, usable: float, spare_space_pct: float,
                            form_factor: float) -> List[ValidationResult]:
+        require_current_calculation(project, summary)
         vals: List[ValidationResult] = []
 
         if fill_pct > 100.0:
@@ -252,6 +256,7 @@ class PanelLayoutGenerator:
     @classmethod
     def _collect_door_devices(cls, project: ProjectSpec, feeders: List[FeederCalcOutput],
                               summary: PanelSummaryOutput) -> List[str]:
+        require_current_calculation(project, summary, feeders)
         door: List[str] = []
         if project.plc_hmi_24vdc_power_w > 0:
             door.append(tr("lay_door_hmi"))
@@ -301,6 +306,7 @@ class PanelLayoutGenerator:
     @classmethod
     def generate_svg(cls, project: ProjectSpec, feeders: List[FeederCalcOutput],
                      summary: PanelSummaryOutput) -> str:
+        require_current_calculation(project, summary, feeders)
         res = cls.generate(project, feeders, summary)
         scale = 0.36
         bus_h_px = cls.BUS_BAR_ZONE_HEIGHT_MM * scale
@@ -487,5 +493,6 @@ class PanelLayoutGenerator:
     @classmethod
     def generate_svg_file(cls, filepath: str, project: ProjectSpec,
                           feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        require_current_calculation(project, summary, feeders)
         with open(filepath, "w", encoding="utf-8") as fh:
             fh.write(cls.generate_svg(project, feeders, summary))

@@ -8,6 +8,7 @@ Transforms live calculation outputs from gui.py / engine.py into:
   4. Automatic HTML Engineering Report Injection (Zero Hardcoding, Zero Calc Engine Modification)
 """
 
+from lv_assist.calculation_state import require_current_calculation
 import os
 import html
 from typing import List, Dict, Any, Optional, Tuple
@@ -38,6 +39,7 @@ class GuiOutputBridge:
     @classmethod
     def to_sld_dto(cls, project: Any, feeders_out: List[Any], summary: Any) -> SLDPanelDTO:
         """تبدیل مدل‌های زنده پروژه و فیدرها به ساختار ورودی iec_sld_svg.py"""
+        require_current_calculation(project, summary, feeders_out)
         sld_feeders: List[SLDFeederDTO] = []
 
         for idx, f in enumerate(feeders_out, start=1):
@@ -140,6 +142,7 @@ class GuiOutputBridge:
         cls, project: Any, feeder_out: Any, summary: Any, feeder_index: int = 1
     ) -> FeederLadderDTO:
         """تبدیل اطلاعات یک فیدر محاسبه‌شده به ورودی iec_ladder_svg.py"""
+        require_current_calculation(project, summary, [feeder_out])
         prot = getattr(feeder_out, "selected_protection", None)
         km = getattr(feeder_out, "selected_contactor_main", None) or getattr(feeder_out, "selected_contactor", None)
         kd = getattr(feeder_out, "selected_contactor_delta", None)
@@ -186,6 +189,7 @@ class GuiOutputBridge:
     @classmethod
     def generate_sld_svg(cls, project: Any, feeders_out: List[Any], summary: Any) -> str:
         """تولید کد برداری SVG نقشه تک‌خطی کل تابلو"""
+        require_current_calculation(project, summary, feeders_out)
         dto = cls.to_sld_dto(project, feeders_out, summary)
         return IECSldSvgGenerator.render_sld_svg(dto)
 
@@ -194,6 +198,7 @@ class GuiOutputBridge:
         cls, project: Any, feeder_out: Any, summary: Any, feeder_index: int = 1
     ) -> str:
         """تولید کد برداری SVG نقشه مدار فرمان برای یک فیدر مشخص"""
+        require_current_calculation(project, summary, [feeder_out])
         dto = cls.to_feeder_ladder_dto(project, feeder_out, summary, feeder_index=feeder_index)
         return IECLadderSvgGenerator.render_feeder_ladder_svg(dto)
 
@@ -202,6 +207,7 @@ class GuiOutputBridge:
         cls, project: Any, feeders_out: List[Any], summary: Any
     ) -> Dict[str, str]:
         """تولید دیکشنری کامل مدار فرمان تمام فیدرهای پروژه {feeder_id: svg_str}"""
+        require_current_calculation(project, summary, feeders_out)
         result: Dict[str, str] = {}
         for idx, f in enumerate(feeders_out, start=1):
             fid = str(getattr(f, "feeder_id", f"F{idx:02d}"))
@@ -213,6 +219,7 @@ class GuiOutputBridge:
         cls, project: Any, feeders_out: List[Any], summary: Any
     ) -> Tuple[List[dict], List[dict]]:
         """تولید جدول یکپارچه وایرشو (From-To Wires) و ترمینال‌بندی برای کل فیدرهای پروژه"""
+        require_current_calculation(project, summary, feeders_out)
         all_wires: List[dict] = []
         all_terminals: List[dict] = []
         for idx, f in enumerate(feeders_out, start=1):
@@ -227,6 +234,7 @@ class GuiOutputBridge:
         cls, folder_path: str, project: Any, feeders_out: List[Any], summary: Any
     ) -> List[str]:
         """ذخیره فایل‌های مستقل .svg برای نقشه تک‌خطی و مدار فرمان تمام فیدرها"""
+        require_current_calculation(project, summary, feeders_out)
         os.makedirs(folder_path, exist_ok=True)
         saved_files: List[str] = []
 
@@ -252,6 +260,7 @@ class GuiOutputBridge:
         تزریق خودکار نقشه تک‌خطی (SLD)، نقشه‌های مدار فرمان تمام فیدرها و جداول سیم‌کشی/ترمینال
         به درون فایل گزارش چاپی HTML
         """
+        require_current_calculation(project, summary, feeders_out)
         if not os.path.exists(html_filepath):
             return
 
@@ -340,6 +349,7 @@ class GuiOutputBridge:
     @classmethod
     def export_sld_svg_to_folder(cls, folder_path: str, project, feeders_out, summary):
         """ذخیره مستقل فقط نقشه تک‌خطی (بدون هیچ فایل مدار فرمان)."""
+        require_current_calculation(project, summary, feeders_out)
         os.makedirs(folder_path, exist_ok=True)
         sld_path = os.path.join(folder_path, "Single_Line_Diagram.svg")
         with open(sld_path, "w", encoding="utf-8") as fp:
@@ -349,6 +359,7 @@ class GuiOutputBridge:
     @classmethod
     def export_control_svgs_to_folder(cls, folder_path: str, project, feeders_out, summary):
         """ذخیره مستقل فقط نقشه‌های مدار فرمان (بدون هیچ فایل SLD)."""
+        require_current_calculation(project, summary, feeders_out)
         os.makedirs(folder_path, exist_ok=True)
         saved = []
         for idx, f in enumerate(feeders_out, start=1):

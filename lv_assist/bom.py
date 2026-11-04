@@ -3,6 +3,7 @@
 lv_assist/bom.py
 موتور یکپارچه تولید، دسته‌بندی، فیلتر، تجمیع و خروجی Bill of Materials (BOM)
 """
+from lv_assist.calculation_state import require_current_calculation
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 import csv
@@ -64,6 +65,7 @@ def _clean_pn(pn: Optional[str]) -> str:
 
 def build_bom(project: Any, feeders_out: List[Any], summary: Any) -> List[BomItem]:
     """استخراج دقیق BOM از مدل واقعی پروژه، فیدرها و خلاصه تابلو بدون داده ساختگی."""
+    require_current_calculation(project, summary, feeders_out)
     items: List[BomItem] = []
     panel_tag = getattr(project, "loc_tag", "+MCC1") or "+MCC1"
     func_root = getattr(project, "func_tag", "=PLANT") or "=PLANT"

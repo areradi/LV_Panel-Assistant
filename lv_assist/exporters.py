@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from lv_assist.calculation_state import require_current_calculation
 import html
 from datetime import datetime
 from typing import List
@@ -34,6 +35,7 @@ def _append_safe(ws, row):
 class ExcelExporter:
     @staticmethod
     def export_to_excel(filename: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput, validations: List[ValidationResult]):
+        require_current_calculation(project, summary, feeders)
         wb = openpyxl.Workbook()
         header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
         header_font = Font(color="FFFFFF", bold=True, name="Calibri", size=11)
@@ -222,6 +224,7 @@ class PrintableReportExporter:
 
     @staticmethod
     def generate_html_report(filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput, validations: List[ValidationResult]):
+        require_current_calculation(project, summary, feeders)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         lang = i18n.get_language()
         direction = i18n.direction()
@@ -485,6 +488,7 @@ class DesignVerificationExporter:
     @staticmethod
     def generate_html(filepath: str, project: ProjectSpec, summary: PanelSummaryOutput,
                       report: DesignVerificationReport):
+        require_current_calculation(project, summary)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         lang = i18n.get_language()
         direction = i18n.direction()
@@ -599,6 +603,7 @@ class DesignVerificationExporter:
     @staticmethod
     def generate_html(filepath: str, project: ProjectSpec, summary: PanelSummaryOutput,
                       report: DesignVerificationReport):
+        require_current_calculation(project, summary)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         lang = i18n.get_language()
         direction = i18n.direction()

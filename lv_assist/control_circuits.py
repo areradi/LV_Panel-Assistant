@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """اتوماسیون مدارهای کنترلی: دیاگرام نردبانی SVG، لیست سیم‌ها و خروجی اتصالات سازگار با EPLAN."""
+from lv_assist.calculation_state import require_current_calculation
 import csv
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -36,6 +37,7 @@ class ControlCircuitGenerator:
 
     @classmethod
     def generate_common_wires(cls, project: ProjectSpec, summary: PanelSummaryOutput) -> List[ControlWire]:
+        require_current_calculation(project, summary)
         wires: List[ControlWire] = []
         tag = project.panel_tag
         n = 1
@@ -126,6 +128,7 @@ class ControlCircuitGenerator:
 
     @classmethod
     def build_all_wires(cls, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> List[ControlWire]:
+        require_current_calculation(project, summary, feeders)
         wires = list(cls.generate_common_wires(project, summary))
         for i, f in enumerate(feeders, start=1):
             if f.load_type in (LoadType.MOTOR_DOL, LoadType.MOTOR_STAR_DELTA,
@@ -205,6 +208,7 @@ class ControlCircuitGenerator:
 
     @classmethod
     def generate_svg(cls, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> str:
+        require_current_calculation(project, summary, feeders)
         wires_all = cls.build_all_wires(project, feeders, summary)
         specs = cls.rung_specs(project, feeders)
         total_h = 194.0 + sum(32.0 + 52.0 * len(rungs) for kind, _, _, _, rungs in specs if kind == "feeder") + 34.0
@@ -238,6 +242,7 @@ class ControlCircuitGenerator:
 
     @classmethod
     def generate_svg_file(cls, filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        require_current_calculation(project, summary, feeders)
         with open(filepath, "w", encoding="utf-8") as fh:
             fh.write(cls.generate_svg(project, feeders, summary))
 
@@ -248,6 +253,7 @@ class ControlCircuitGenerator:
     @classmethod
     def export_connections_csv(cls, filepath: str, project: ProjectSpec,
                                feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        require_current_calculation(project, summary, feeders)
         rows = []
         for w in cls.build_all_wires(project, feeders, summary):
             rows.append([w.wire_no, w.from_dev, w.from_term, w.to_dev, w.to_term,
