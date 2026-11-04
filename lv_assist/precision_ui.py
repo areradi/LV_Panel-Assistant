@@ -8,6 +8,7 @@ from tkinter import ttk
 from lv_assist.i18n import i18n, tr
 from lv_assist.ui_direction import align_persian_text, align_persian_table
 from lv_assist.summary_workflow import format_summary_cards
+from lv_assist.ui_theme import TOKENS
 
 COPY = {
     'fa': ('خلاصه محاسبات', 'جریان طراحی', 'ابعاد پیشنهادی', 'پیش‌نمایش تابلو', 'کشوی فرمول',
@@ -95,7 +96,7 @@ class PrecisionShell:
                 scroll = ttk.Scrollbar(tree.master, orient='horizontal', command=tree.xview)
                 scroll.pack(side='bottom', fill='x', padx=8, pady=3)
                 tree.configure(xscrollcommand=scroll.set)
-        ctk.CTkButton(middle, text=self._shell_copy[5], height=46, fg_color='#1763C0', hover_color='#124E99',
+        ctk.CTkButton(middle, text=self._shell_copy[5], height=46, fg_color=TOKENS['calculate_primary'], hover_color=TOKENS['calculate_hover'],
                       command=self.action_recalculate, font=(font, 14, 'bold')).pack(fill='x', pady=(10, 0))
         context = ctk.CTkFrame(body, width=350, fg_color='transparent')
         context.grid(row=0, column=2, sticky='nsew', padx=(10, 0))

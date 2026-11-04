@@ -62,3 +62,11 @@ Feeder reference tags share a central mapping. Main contactors consistently use 
 Excel now includes actual wire/terminal schedules and an uncompleted clause-11 routine inspection checklist; it never invents inspection results. Commercial-sheet errors are no longer silently swallowed. Removed the unreferenced `schematic_generator.py` after a repository-wide reference check; the active IEC SLD/ladder generators remain covered.
 
 Validation: 403 passed, 1 PDF check deselected in the final full run. Also 65 targeted BOM, quote, drawing, schedule and existing export tests passed. Cross-output tests cover DOL, star-delta, soft starter and VFD tags. Manufacturing dimensions, torque values and final component selections still require real OEM/design inputs.
+
+## Stage 6: usable engineering inputs (BKL-P0-02, P2-01/02)
+
+Connected the existing clipboard parser to an atomic GUI import action with a visible button and Ctrl+V on the feeder table. Invalid rows or duplicate identifiers leave the existing loads untouched; successful imports invalidate earlier calculations. Duplicate IDs are also rejected by the engine. Spreadsheet zero demand/phase values and fractional motor-start counts are no longer silently replaced or truncated.
+
+Added source R/X and actual busbar geometry to advanced project inputs and RCD type/sensitivity/electrode resistance to the scrollable feeder editor. Preserved all existing model fields when editing a feeder. Assumption metadata now survives model/GUI/JSON roundtrips and is removed when the corresponding field is explicitly edited. Spreadsheet project defaults are recorded as assumptions. `ui_theme.py` now supplies the existing calculate-button colors without changing the palette; removed its unsupported blanket WCAG claim.
+
+The existing single window, advanced-field toggle and formula drawer already provide the guided/expert workflow. No replacement UI or new design assets were needed. All three language files have the same 1081 keys. The unchanged calculate-button pairing was measured at 5.86:1. Validation: 409 passed, 1 PDF check deselected, including live GUI clipboard import, atomic rejection, RCD editing, preserved drafts and language changes.

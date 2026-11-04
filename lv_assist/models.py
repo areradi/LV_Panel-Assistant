@@ -155,11 +155,25 @@ class ScenarioInputs(BaseModel):
 
 class EngineeringInput(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False, validate_assignment=True)
+    input_assumptions: dict = Field(default_factory=dict)
+
+    def model_post_init(self, context):
+        snapshot = self.model_dump(mode='json', exclude={'input_assumptions'})
+        assumptions = {name: snapshot[name] for name in type(self).model_fields
+                       if name != 'input_assumptions' and name not in self.model_fields_set
+                       and getattr(self, name) is not None}
+        assumptions.update({name: value for name, value in self.input_assumptions.items()
+                            if name in snapshot and snapshot[name] == value})
+        object.__setattr__(self, 'input_assumptions', assumptions)
+
+    def __setattr__(self, name, value):
+        super().__setattr__(name, value)
+        if name != 'input_assumptions' and 'input_assumptions' in self.__dict__:
+            self.input_assumptions.pop(name, None)
 
     @property
     def assumed_fields(self) -> dict:
-        return {name: getattr(self, name) for name in type(self).model_fields
-                if name not in self.model_fields_set and getattr(self, name) is not None}
+        return dict(self.input_assumptions)
 
     def compute_input_hash(self, feeders) -> str:
         return compute_input_hash(self, feeders)

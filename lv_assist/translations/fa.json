@@ -1067,5 +1067,17 @@
   "audit_catalog_failed": "انتخاب حفاظت از کاتالوگ ناموفق بود",
   "audit_provenance": "منبع و ویرایش دیتاشیت تجهیزات تأیید نشده است.",
   "audit_component_temp": "دمای برآوردشده از حد مجاز تجهیز بالاتر است.",
-  "audit_assumptions": "فرضیات تأییدنشده طراحی"
+  "audit_assumptions": "فرضیات تأییدنشده طراحی",
+  "wiz_source_rx": "نسبت R/X منبع (خالی = نامشخص)",
+  "wiz_bus_spacing": "فاصله فازهای شینه (mm)",
+  "wiz_bus_span": "فاصله واقعی تکیه‌گاه‌های شینه (mm)",
+  "wiz_bus_stress": "تنش خمشی مجاز شینه (MPa)",
+  "paste_feeders": "چسباندن بارها از صفحه‌گسترده",
+  "paste_invalid": "ردیف {row}، {column}: مقدار نامعتبر یا خالی [{value}]. هیچ باری وارد نشد.",
+  "paste_duplicate": "شناسه فیدرها باید یکتا باشد. هیچ باری وارد نشد.",
+  "paste_empty": "ابتدا ردیف‌های بار را از صفحه‌گسترده کپی کنید.",
+  "paste_success": "{count} بار وارد شد. پیش از خروجی گرفتن دوباره محاسبه کنید.",
+  "audit_rcd_type": "تیپ RCD (AC/A/F/B)",
+  "audit_rcd_delta": "حساسیت RCD (mA)",
+  "audit_earth_res": "مقاومت زمین (ohm)"
 }

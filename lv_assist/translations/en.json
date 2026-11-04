@@ -1067,5 +1067,17 @@
   "audit_catalog_failed": "Protection catalog match failed",
   "audit_provenance": "Equipment datasheet reference and revision are not verified.",
   "audit_component_temp": "Estimated temperature exceeds an equipment limit.",
-  "audit_assumptions": "Unconfirmed design assumptions"
+  "audit_assumptions": "Unconfirmed design assumptions",
+  "wiz_source_rx": "Source R/X (blank = unknown)",
+  "wiz_bus_spacing": "Busbar phase spacing (mm)",
+  "wiz_bus_span": "Actual busbar support span (mm)",
+  "wiz_bus_stress": "Allowable busbar bending stress (MPa)",
+  "paste_feeders": "Paste loads from spreadsheet",
+  "paste_invalid": "Row {row}, {column}: invalid or missing value [{value}]. No loads imported.",
+  "paste_duplicate": "Feeder identifiers must be unique. No loads imported.",
+  "paste_empty": "Copy load rows from a spreadsheet first.",
+  "paste_success": "Imported {count} loads. Recalculate before exporting.",
+  "audit_rcd_type": "RCD type (AC/A/F/B)",
+  "audit_rcd_delta": "RCD sensitivity (mA)",
+  "audit_earth_res": "Earth resistance (ohm)"
 }

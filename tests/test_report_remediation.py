@@ -272,3 +272,18 @@ def test_schedule_and_qc_workbook_exports_actual_records(calculation, tmp_path):
     qc = list(wb['Routine_Verification'].values)
     assert len(qc) == 10
     assert all(row[2] == 'NOT_TESTED' and row[3] is None for row in qc[1:])
+
+
+def test_assumptions_survive_serialization_and_clear_on_edit():
+    project = ProjectSpec(project_name='Defaults')
+    restored = ProjectSpec.model_validate_json(project.model_dump_json())
+    assert restored.assumed_fields == project.assumed_fields
+    restored.ambient_temp_c = 45
+    assert 'ambient_temp_c' not in restored.assumed_fields
+    assert 'spare_factor' in restored.assumed_fields
+
+
+def test_duplicate_feeder_ids_cannot_produce_ambiguous_tags():
+    with pytest.raises(ValueError):
+        EngineeringEngine(CatalogRepository.get_default_catalog()).process_project(
+            ProjectSpec(project_name='Duplicate'), [feeder(), feeder()])

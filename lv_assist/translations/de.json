@@ -1067,5 +1067,17 @@
   "audit_catalog_failed": "Keine passende Schutzeinrichtung im Katalog",
   "audit_provenance": "Datenblattreferenz und Revision der Geräte sind nicht verifiziert.",
   "audit_component_temp": "Geschätzte Temperatur übersteigt eine Gerätegrenze.",
-  "audit_assumptions": "Unbestätigte Entwurfsannahmen"
+  "audit_assumptions": "Unbestätigte Entwurfsannahmen",
+  "wiz_source_rx": "Quellenverhältnis R/X (leer = unbekannt)",
+  "wiz_bus_spacing": "Phasenabstand der Sammelschienen (mm)",
+  "wiz_bus_span": "Tatsächlicher Stützabstand der Sammelschiene (mm)",
+  "wiz_bus_stress": "Zulässige Biegespannung der Sammelschiene (MPa)",
+  "paste_feeders": "Lasten aus Tabellenblatt einfügen",
+  "paste_invalid": "Zeile {row}, {column}: ungültiger oder fehlender Wert [{value}]. Keine Lasten importiert.",
+  "paste_duplicate": "Abgangskennungen müssen eindeutig sein. Keine Lasten importiert.",
+  "paste_empty": "Zuerst Lastzeilen aus einem Tabellenblatt kopieren.",
+  "paste_success": "{count} Lasten importiert. Vor dem Export neu berechnen.",
+  "audit_rcd_type": "RCD-Typ (AC/A/F/B)",
+  "audit_rcd_delta": "RCD-Bemessungsdifferenzstrom (mA)",
+  "audit_earth_res": "Erdungswiderstand (Ohm)"
 }

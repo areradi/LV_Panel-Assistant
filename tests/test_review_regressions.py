@@ -52,6 +52,53 @@ def edit(app, key, value):
     widget.insert(0, value)
 
 
+def test_clipboard_import_is_atomic_and_marks_results_stale(app, monkeypatch):
+    before = len(app.current_feeders)
+    monkeypatch.setattr(app, 'clipboard_get', lambda: 'tag\tkw\tlength\tstarter\nCLIP-01\t7.5\t25\tVFD')
+    app.action_paste_feeders()
+    assert len(app.current_feeders) == before + 1
+    assert app.current_feeders[-1].feeder_id == 'CLIP-01'
+    assert app.current_feeders[-1].input_assumptions['efficiency'] == .9
+    assert app._stale
+    monkeypatch.setattr(app, 'clipboard_get', lambda: 'tag\tkw\nCLIP-02\t5\nCLIP-03\tnan')
+    app.action_paste_feeders()
+    assert len(app.current_feeders) == before + 1
+    gui.messagebox.showerror.assert_called()
+
+
+def test_clipboard_duplicate_does_not_replace_existing_feeder(app, monkeypatch):
+    before = list(app.current_feeders)
+    duplicate = before[0].feeder_id
+    monkeypatch.setattr(app, 'clipboard_get', lambda: f'tag\tkw\n{duplicate}\t10')
+    app.action_paste_feeders()
+    assert app.current_feeders == before
+    gui.messagebox.showerror.assert_called()
+
+
+def test_new_safety_parameters_survive_language_change(app):
+    edit(app, 'wiz_source_rx', '.25')
+    edit(app, 'wiz_bus_span', '450')
+    edit(app, 'wiz_bus_spacing', '80')
+    app._on_language_change('DE')
+    project = app._project_from_form()
+    assert project.source_r_x == .25
+    assert project.busbar_support_span_mm == 450
+    assert project.busbar_phase_spacing_mm == 80
+
+
+def test_feeder_editor_preserves_and_updates_rcd_inputs(app):
+    source = app.current_feeders[0].model_copy(deep=True)
+    source.rcd_type = 'B'
+    source.rcd_sensitivity_ma = 30
+    source.earth_resistance_ohm = 50
+    saved = []
+    dialog = gui.FeederEditDialog(app, source, saved.append)
+    dialog._save()
+    assert saved[0].rcd_type == 'B'
+    assert saved[0].rcd_sensitivity_ma == 30
+    assert saved[0].earth_resistance_ohm == 50
+
+
 def test_imported_project_survives_form_and_recalculation(app, tmp_path):
     path = tmp_path / "inputs.xlsx"
     wb = openpyxl.Workbook()

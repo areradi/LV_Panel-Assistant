@@ -65,6 +65,7 @@ from lv_assist.gui_helpers import (
     parse_cable_length_input,
 )
 from lv_assist.summary_workflow import format_summary_cards, CalculationWorkflowEngine
+from lv_assist.excel_clipboard import ExcelClipboardParser
 
 from lv_assist.catalog_smart_search import open_smart_search
 from lv_assist.catalog import DB_PATH
@@ -166,7 +167,7 @@ GUIDE_FEEDER_ROWS = [
      "MOTOR_DOL | MOTOR_STAR_DELTA | MOTOR_SOFT_STARTER | MOTOR_VFD | SUB_FEEDER | LIGHTING_SOCKET | HEATER_RESISTIVE",
      "MOTOR_DOL"),
     ("power_kw", "توان نامی بار (kW)", "Rated load power (kW)", "Nennleistung der Last (kW)", "kW (>0)", "15"),
-    ("phases", "تعداد فاز", "Number of phases", "Phasenzahl", "1 | 2 | 3", "3"),
+    ("phases", "تعداد فاز", "Number of phases", "Phasenzahl", "1 | 3", "3"),
     ("cos_phi", "ضریب توان بار؛ خالی = پیش‌فرض بر اساس نوع بار",
      "Load power factor; empty = default by load type", "Leistungsfaktor der Last; leer = Standard je Lastart", "0.1 - 1.0", "0.85"),
     ("efficiency", "راندمان؛ خالی = 1.0", "Efficiency; empty = 1.0", "Wirkungsgrad; leer = 1,0", "0.1 - 1.0", "0.91"),
@@ -371,6 +372,10 @@ class ExcelInputManager:
                     if row[0] and row[1] not in (None, '')}) if 'Scenario_Inputs' in wb.sheetnames else ScenarioInputs(),
                 special_scenario=_enum(SpecialScenario, "special_scenario", SpecialScenario.NONE),
                 prospective_ik_ka=_f_opt("prospective_ik_ka"),
+                source_r_x=_f_opt('source_r_x'),
+                busbar_phase_spacing_mm=_f('busbar_phase_spacing_mm', 60),
+                busbar_support_span_mm=_f_opt('busbar_support_span_mm'),
+                busbar_allowable_stress_mpa=_f('busbar_allowable_stress_mpa', 120),
                 transformer_kva=_f_opt("transformer_kva"),
                 transformer_uk_pct=_f("transformer_uk_pct", 6.0),
                 ambient_temp_c=_f("ambient_temp_c", 40.0),
@@ -381,7 +386,7 @@ class ExcelInputManager:
                 simultaneity_factor_ks=_f("simultaneity_factor_ks", 0.85),
                 spare_factor=_f("spare_factor", 0.20),
                 plc_hmi_24vdc_power_w=_f("plc_hmi_24vdc_power_w", 55.0),
-                simultaneous_motor_starts=int(_f("simultaneous_motor_starts", 2)),
+                simultaneous_motor_starts=_f("simultaneous_motor_starts", 2),
                 preferred_manufacturer=str(proj_dict.get("preferred_manufacturer", "ANY")).strip() or "ANY",
                 spd_class=_enum(SpdClass, "spd_class", SpdClass.T2),
                 spd_connection_length_m=_f("spd_connection_length_m", 0.5),
@@ -433,8 +438,8 @@ class ExcelInputManager:
                 feeders.append(FeederInput(
                     feeder_id=str(row[0]).strip(), func_tag=str(_cell(1, "=PWR")), loc_tag=str(_cell(2, project.panel_tag)),
                     description=str(_cell(3, "")), load_type=_cell_enum(LoadType, 4, LoadType.SUB_FEEDER), power_kw=float(power_kw),
-                    phases=int(_num(6, "phases", 3) or 3), cos_phi=cos_phi,
-                    efficiency=eff, demand_factor_kd=_num(9, "demand", 1.0) or 1.0,
+                    phases=_num(6, "phases", 3), cos_phi=cos_phi,
+                    efficiency=eff, demand_factor_kd=_num(9, "demand", 1.0),
                     cable_length_m=cable_len, cable_section_mm2=cable_sec,
                     has_socket_outlets=ExcelInputManager._parse_bool(_cell(12)),
                     conductor_material=_cell_enum(ConductorMaterial, 13, ConductorMaterial.CU),
@@ -447,6 +452,9 @@ class ExcelInputManager:
                 ))
             if not feeders and not errors:
                 raise ExcelImportError(tr("err_excel_generic"))
+            snapshot = project.model_dump(mode='json', exclude={'input_assumptions'})
+            project.input_assumptions = {name: value for name, value in snapshot.items()
+                                         if proj_dict.get(name) in (None, '') and value is not None}
             return project, feeders, errors
         except ExcelImportError:
             raise
@@ -521,9 +529,11 @@ class FeederEditDialog(ctk.CTkToplevel):
         self.grab_set()
         font = ctk.CTkFont(family=i18n.font_family(), size=12)
         self._entries = {}
+        form = ctk.CTkScrollableFrame(self)
+        form.pack(fill='both', expand=True, padx=8, pady=8)
 
         def row(key, attr, caster):
-            fr = ctk.CTkFrame(self); fr.pack(fill="x", padx=14, pady=5)
+            fr = ctk.CTkFrame(form); fr.pack(fill="x", padx=14, pady=5)
             ctk.CTkLabel(fr, text=tr(key), width=150, anchor="w", font=font).pack(side="left", padx=6)
             entry = ctk.CTkEntry(fr, width=190, font=font)
             entry.insert(0, str(getattr(feeder, attr) if getattr(feeder, attr) is not None else ""))
@@ -541,24 +551,27 @@ class FeederEditDialog(ctk.CTkToplevel):
         row("edt_kd", "demand_factor_kd", float)
         row("edt_length", "cable_length_m", _opt_float)
         row("edt_lrc", "locked_rotor_current_a", _opt_float)
+        row('audit_rcd_type', 'rcd_type', lambda v: v.strip().upper() or None)
+        row('audit_rcd_delta', 'rcd_sensitivity_ma', _opt_float)
+        row('audit_earth_res', 'earth_resistance_ohm', _opt_float)
         self._fire_pump = ctk.BooleanVar(value=feeder.fire_pump_service)
-        ctk.CTkCheckBox(self, text=tr('edt_fire_pump'), variable=self._fire_pump, font=font).pack(fill='x', padx=20, pady=6)
+        ctk.CTkCheckBox(form, text=tr('edt_fire_pump'), variable=self._fire_pump, font=font).pack(fill='x', padx=20, pady=6)
 
         self.geometry("440x680")
-        type_row = ctk.CTkFrame(self); type_row.pack(fill="x", padx=14, pady=5)
+        type_row = ctk.CTkFrame(form); type_row.pack(fill="x", padx=14, pady=5)
         ctk.CTkLabel(type_row, text=tr("edt_type"), width=150, anchor="w", font=font).pack(side="left", padx=6)
         self._type_menu = LocalizedOptionMenu(type_row, values=[e.value for e in LoadType],
                                                translation_prefix="lt_", width=190, font=font)
         self._type_menu.set(feeder.load_type.value)
         self._type_menu.pack(side="right", padx=6)
 
-        meth_row = ctk.CTkFrame(self); meth_row.pack(fill="x", padx=14, pady=5)
+        meth_row = ctk.CTkFrame(form); meth_row.pack(fill="x", padx=14, pady=5)
         ctk.CTkLabel(meth_row, text=tr("xl_h_method"), width=150, anchor="w", font=font).pack(side="left", padx=6)
         self._method_menu = DirectionalOptionMenu(meth_row, values=[m.value for m in InstallationMethod], width=190, font=font)
         self._method_menu.set(feeder.installation_method.value)
         self._method_menu.pack(side="right", padx=6)
 
-        ins_row = ctk.CTkFrame(self); ins_row.pack(fill="x", padx=14, pady=5)
+        ins_row = ctk.CTkFrame(form); ins_row.pack(fill="x", padx=14, pady=5)
         ctk.CTkLabel(ins_row, text=tr("xl_h_insulation"), width=150, anchor="w", font=font).pack(side="left", padx=6)
         self._ins_menu = DirectionalOptionMenu(ins_row, values=[ins.value for ins in InsulationType], width=190, font=font)
         self._ins_menu.set(feeder.insulation.value)
@@ -570,13 +583,14 @@ class FeederEditDialog(ctk.CTkToplevel):
         ctk.CTkButton(btn_row, text=tr("dlg_cancel"), fg_color="#566573", font=font,
                       command=self.destroy).pack(side="left", padx=8, expand=True)
         align_persian_text(self)
+        self.bind('<Escape>', lambda event: self.destroy())
         if i18n.direction() == "rtl":
             self._entries['description'][0].configure(justify='right')
 
     def _save(self):
         f = self.feeder
         try:
-            updated = FeederInput(
+            updated = FeederInput(**(f.model_dump() | dict(
                 feeder_id=f.feeder_id, func_tag=f.func_tag, loc_tag=f.loc_tag,
                 description=self._entries["description"][0].get().strip() or f.description,
                 load_type=LoadType(self._type_menu.get()),
@@ -591,7 +605,10 @@ class FeederEditDialog(ctk.CTkToplevel):
                 installation_method=InstallationMethod(self._method_menu.get()), fire_resistant=f.fire_resistant,
                 thdi_pct=f.thdi_pct, fire_pump_service=self._fire_pump.get(),
                 locked_rotor_current_a=self._entries['locked_rotor_current_a'][1](self._entries['locked_rotor_current_a'][0].get()),
-            )
+                rcd_type=self._entries['rcd_type'][1](self._entries['rcd_type'][0].get()),
+                rcd_sensitivity_ma=self._entries['rcd_sensitivity_ma'][1](self._entries['rcd_sensitivity_ma'][0].get()),
+                earth_resistance_ohm=self._entries['earth_resistance_ohm'][1](self._entries['earth_resistance_ohm'][0].get()),
+            )))
         except Exception as ex:
             messagebox.showerror(tr("msg_error"), str(ex), parent=self)
             return
@@ -1116,6 +1133,10 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             ("wiz_spare", "entry", "0.20"),
             ("wiz_ks", "entry", "0.85"),
             ("wiz_plc_base", "entry", "55"),
+            ("wiz_source_rx", "entry", ""),
+            ("wiz_bus_spacing", "entry", "60"),
+            ("wiz_bus_span", "entry", ""),
+            ("wiz_bus_stress", "entry", "120"),
         ]
         primary = {"wiz_project_name", "wiz_voltage", "wiz_ks", "wiz_ambient", "wiz_internal", "wiz_mounting", "wiz_scenario"}
         fields.sort(key=lambda field: field[0] not in primary)
@@ -1221,6 +1242,10 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             "wiz_spare": f"{project.spare_factor:g}",
             "wiz_ks": f"{project.simultaneity_factor_ks:g}",
             "wiz_plc_base": f"{project.plc_hmi_24vdc_power_w:g}",
+            "wiz_source_rx": '' if project.source_r_x is None else str(project.source_r_x),
+            "wiz_bus_spacing": str(project.busbar_phase_spacing_mm),
+            "wiz_bus_span": '' if project.busbar_support_span_mm is None else str(project.busbar_support_span_mm),
+            "wiz_bus_stress": str(project.busbar_allowable_stress_mpa),
         }
         for key, val in values.items():
             widget = self.wiz_entries.get(key)
@@ -1265,6 +1290,8 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             "wiz_internal": "max_internal_temp_c", "wiz_ks": "simultaneity_factor_ks",
             "wiz_spare": "spare_factor", "wiz_plc_base": "plc_hmi_24vdc_power_w",
             "wiz_enc_width": "enclosure_width_mm", "wiz_enc_height": "enclosure_height_mm", "wiz_enc_depth": "enclosure_depth_mm",
+            "wiz_source_rx": "source_r_x", "wiz_bus_spacing": "busbar_phase_spacing_mm",
+            "wiz_bus_span": "busbar_support_span_mm", "wiz_bus_stress": "busbar_allowable_stress_mpa",
         }
         text_fields = {
             "wiz_project_name": "project_name", "wiz_std_regime": "standard_ref",
@@ -1274,7 +1301,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             "wiz_ip": "target_ip",
         }
         for key, field in numeric_fields.items():
-            value = _f(key, optional=key in ("wiz_ik", "wiz_trafo", "wiz_enc_width", "wiz_enc_height", "wiz_enc_depth"))
+            value = _f(key, optional=key in ("wiz_ik", "wiz_trafo", "wiz_enc_width", "wiz_enc_height", "wiz_enc_depth", "wiz_source_rx", "wiz_bus_span"))
             if (not self.current_project
                     or self.wiz_entries[key].get() != self._project_form_values.get(key)):
                 data[field] = value
@@ -1328,6 +1355,9 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                       command=self.action_add_feeder_interactively).grid(row=4, column=2, padx=6, pady=6, sticky="ew")
         ctk.CTkButton(bar, text=tr("wiz_remove_selected"), fg_color="#C0392B", font=font,
                       command=self.action_remove_selected_feeder).grid(row=5, column=2, padx=6, pady=6, sticky="ew")
+        self.paste_feeders_button = ctk.CTkButton(bar, text=tr('paste_feeders'), font=font,
+                                                 command=self.action_paste_feeders)
+        self.paste_feeders_button.grid(row=5, column=0, columnspan=2, padx=6, pady=6, sticky='ew')
 
         self.tree_feeders = ttk.Treeview(parent, columns=("id", "desc", "type", "kw", "len", "note"), show="headings")
         for col, key, w in [("id", "wiz_f_id", 70), ("desc", "wiz_f_desc", 240), ("type", "edt_type", 160),
@@ -1338,6 +1368,36 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         ctk.CTkLabel(parent, text=tr("edt_dbl_hint"), font=ctk.CTkFont(family=i18n.font_family(), size=11),
                      text_color=("#435C74", "#BAC9D8")).pack(side="bottom", pady=(0, 8))
         self.tree_feeders.bind("<Double-1>", self._open_feeder_editor)
+        self.tree_feeders.bind('<Control-v>', lambda event: self.action_paste_feeders())
+
+    def action_paste_feeders(self):
+        try:
+            result = ExcelClipboardParser.parse_clipboard_text(self.clipboard_get())
+            if result.errors:
+                details = '\n'.join(tr('paste_invalid', row=e.row_index, column=e.column_name, value=e.raw_value)
+                                    for e in result.errors[:10])
+                raise ValueError(details)
+            types = {'DOL': LoadType.MOTOR_DOL, 'YD': LoadType.MOTOR_STAR_DELTA,
+                     'STAR-DELTA': LoadType.MOTOR_STAR_DELTA, 'VFD': LoadType.MOTOR_VFD,
+                     'SOFTSTARTER': LoadType.MOTOR_SOFT_STARTER, 'FEEDER': LoadType.SUB_FEEDER,
+                     'RESISTIVE': LoadType.HEATER_RESISTIVE}
+            pending = [FeederInput(
+                feeder_id=row.feeder_tag, description=row.description, load_type=types[row.starter_type],
+                power_kw=row.power_kw, cable_length_m=row.length_m, cos_phi=row.cos_phi,
+                efficiency=row.efficiency, loc_tag=self.wiz_entries['wiz_panel_tag'].get(),
+                input_assumptions=row.assumed_fields) for row in result.valid_rows]
+            ids = [f.feeder_id for f in (self.current_feeders or []) + pending]
+            if len(ids) != len(set(ids)):
+                raise ValueError(tr('paste_duplicate'))
+            if not pending:
+                raise ValueError(tr('paste_empty'))
+        except (ValueError, tk.TclError) as error:
+            messagebox.showerror(tr('msg_error'), str(error), parent=self)
+            return
+        self.current_feeders = (self.current_feeders or []) + pending
+        self._refresh_feeder_tree()
+        self._mark_stale()
+        messagebox.showinfo(tr('msg_success'), tr('paste_success', count=len(pending)), parent=self)
 
     def action_add_feeder_interactively(self):
         f_id = (self.f_entries["wiz_f_id"].get() or "").strip() or f"F{len(self.current_feeders or []) + 1:02d}"

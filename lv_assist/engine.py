@@ -406,6 +406,9 @@ class EngineeringEngine:
         return total_ka, parts
 
     def process_project(self, project: ProjectSpec, feeders: List[FeederInput]):
+        ids = [f.feeder_id for f in feeders]
+        if len(ids) != len(set(ids)):
+            raise ValueError(tr('paste_duplicate'))
         input_hash = project.compute_input_hash(feeders)
         self.catalog = list(self._full_catalog)
         if project.preferred_manufacturer != "ANY":

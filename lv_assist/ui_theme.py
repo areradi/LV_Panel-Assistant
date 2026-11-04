@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 lv_assist/ui_theme.py
-سیستم یکپارچه Design Tokens و کامپوننت‌های استاندارد رابط کاربری (WCAG AA Compliant)
+رنگ‌ها و سبک‌های مشترک رابط کاربری دسکتاپ.
 """
 from typing import Dict, Any, Tuple
 
 TOKENS: Dict[str, str] = {
     "primary": "#2563EB",
     "primary_hover": "#1D4ED8",
+    "calculate_primary": "#1763C0",
+    "calculate_hover": "#124E99",
     "sidebar": "#0F172A",
     "sidebar_active": "#1E293B",
     "sidebar_text": "#F8FAFC",
