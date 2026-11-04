@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import math
 from typing import List, Dict, Optional, Tuple
 
 
@@ -12,6 +13,7 @@ class ParsedFeederRow:
     starter_type: str = "DOL"
     cos_phi: float = 0.85
     efficiency: float = 0.90
+    assumed_fields: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -100,7 +102,7 @@ class ExcelClipboardParser:
             raw_kw = get_cell("power_kw", "").replace(",", ".")
             try:
                 power_kw = float(raw_kw)
-                if power_kw <= 0 or power_kw > 2000:
+                if not math.isfinite(power_kw) or power_kw <= 0 or power_kw > 2000:
                     result.errors.append(
                         RowValidationError(human_row, "power_kw", raw_kw, "توان فیدر باید عددی مثبت و تا 2000 کیلووات باشد.")
                     )
@@ -116,7 +118,7 @@ class ExcelClipboardParser:
             if raw_len:
                 try:
                     length_m = float(raw_len)
-                    if length_m <= 0 or length_m > 5000:
+                    if not math.isfinite(length_m) or length_m <= 0 or length_m > 5000:
                         result.errors.append(
                             RowValidationError(human_row, "length_m", raw_len, "طول کابل باید عددی مثبت باشد.")
                         )
@@ -176,6 +178,9 @@ class ExcelClipboardParser:
                     starter_type=raw_starter,
                     cos_phi=cos_phi,
                     efficiency=efficiency,
+                    assumed_fields={key: value for key, value, raw in
+                                    (("cos_phi", cos_phi, raw_cos), ("efficiency", efficiency, raw_eff))
+                                    if not raw},
                 )
             )
 

@@ -135,8 +135,16 @@ class ScenarioInputs(BaseModel):
     dc_equipment_voltage_v: Optional[float] = Field(default=None, gt=0)
     ev_supply_type: Optional[Literal['AC', 'DC', 'DC_LOW_VOLTAGE']] = None
 
-class ProjectSpec(BaseModel):
-    model_config = ConfigDict(allow_inf_nan=False)
+class EngineeringInput(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, validate_assignment=True)
+
+    @property
+    def assumed_fields(self) -> dict:
+        return {name: getattr(self, name) for name in type(self).model_fields
+                if name not in self.model_fields_set and getattr(self, name) is not None}
+
+
+class ProjectSpec(EngineeringInput):
 
     project_name: str = Field(..., min_length=2)
     panel_tag: str = Field(default="+MCC1")
@@ -169,8 +177,7 @@ class ProjectSpec(BaseModel):
     spd_class: SpdClass = Field(default=SpdClass.T2)
     spd_connection_length_m: float = Field(default=0.5, ge=0.0, le=10.0)
 
-class FeederInput(BaseModel):
-    model_config = ConfigDict(allow_inf_nan=False)
+class FeederInput(EngineeringInput):
 
     feeder_id: str = Field(..., min_length=1)
     func_tag: str = Field(default="=PWR")
@@ -178,7 +185,7 @@ class FeederInput(BaseModel):
     description: str
     load_type: LoadType
     power_kw: float = Field(..., gt=0)
-    phases: int = Field(default=3, ge=1, le=3)
+    phases: Literal[1, 3] = 3
     cos_phi: Optional[float] = Field(default=None, ge=0.1, le=1.0)
     efficiency: Optional[float] = Field(default=None, gt=0.1, le=1.0)
     demand_factor_kd: float = Field(default=1.0, gt=0.0, le=1.0)

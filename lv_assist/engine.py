@@ -255,7 +255,9 @@ class EngineeringEngine:
         if cos_phi is None:
             cos_phi = 0.95 if load_type == LoadType.MOTOR_VFD else (
                 0.86 if motor else (1.0 if load_type == LoadType.HEATER_RESISTIVE else 0.90))
-        if eff is None:
+        if not motor:
+            eff = 1.0
+        elif eff is None:
             eff = 0.91 if motor else 1.0
         return cos_phi, eff
 
