@@ -37,12 +37,12 @@ class BusbarEngine:
         return 2.2
 
     @staticmethod
-    def _kappa_iec60909(ik_ka: float) -> float:
-        if ik_ka <= 5.0: return 1.41
-        if ik_ka <= 10.0: return 1.7
-        if ik_ka <= 20.0: return 1.9
-        if ik_ka <= 50.0: return 2.0
-        return 2.2
+    def _kappa_iec60909(ik_ka: float, source_r_x: Optional[float] = None) -> float:
+        if source_r_x is None:
+            return 2.0
+        if not math.isfinite(source_r_x) or source_r_x < 0:
+            raise ValueError("Source R/X must be finite and nonnegative")
+        return 1.02 + 0.98 * math.exp(-3 * source_r_x)
 
     @classmethod
     def _bar_withstand(cls, width_mm: float, thick_mm: float) -> Tuple[float, float, float]:
@@ -54,21 +54,22 @@ class BusbarEngine:
         return icw, ipk, w_mm3
 
     @classmethod
-    def _max_support_spacing_mm(cls, ipk_req_ka: float, w_mm3: float) -> float:
+    def _max_support_spacing_mm(cls, ipk_req_ka: float, w_mm3: float,
+                                phase_spacing_mm: float = 60, allowable_stress_mpa: float = 120) -> float:
         """حداکثر فاصله ساپورت از نیروی الکترودینامیکی سه‌فاز (IEC 61439-1 پیوست D)."""
-        f_n_per_m = 0.173 * ipk_req_ka ** 2 / cls.PHASE_SPACING_M
+        f_n_per_m = 0.173 * ipk_req_ka ** 2 / (phase_spacing_mm / 1000)
         if f_n_per_m <= 0.0:
             return 1000.0
-        l_m = math.sqrt(cls.SIGMA_ALLOW * 8.0 * w_mm3 * 1e-3 / f_n_per_m)
+        l_m = math.sqrt(allowable_stress_mpa * 8.0 * w_mm3 * 1e-3 / f_n_per_m)
         return min(1000.0, l_m * 1000.0)
 
     @classmethod
     def _choose_bar(cls, design_current_a: float, ik_ka: Optional[float],
-                    req_ipk: Optional[float]) -> Tuple[Tuple[float, float, float], bool]:
+                    req_ipk: Optional[float], temperature_factor: float = 1) -> Tuple[Tuple[float, float, float], bool]:
         """کوچک‌ترین شینه‌ای که جریان (و در صورت معلوم بودن Ik، تحمل Icw/Ipk) را تأمین کند."""
-        cands = [(w, t, r) for (w, t, r) in cls.CU_RATINGS if r >= design_current_a]
+        cands = [(w, t, r * temperature_factor) for (w, t, r) in cls.CU_RATINGS if r * temperature_factor >= design_current_a]
         if not cands:
-            return (100.0, 10.0, 1464.0), False
+            return (100.0, 10.0, 1464.0 * temperature_factor), False
         if ik_ka is None:
             return cands[0], True
         for w, t, r in cands:
@@ -80,20 +81,26 @@ class BusbarEngine:
     @classmethod
     def select(cls, design_current_a: float, ik_ka: Optional[float], panel_width_mm: float,
                voltage_v: float = 400.0, cos_phi: float = 1.0,
-               ik_total_ka: Optional[float] = None, ip_total_ka: Optional[float] = None) -> BusbarResult:
+               ik_total_ka: Optional[float] = None, ip_total_ka: Optional[float] = None,
+               internal_temp_c: float = 35, source_r_x: Optional[float] = None,
+               phase_spacing_mm: float = 60, support_span_mm: Optional[float] = None,
+               allowable_stress_mpa: float = 120) -> BusbarResult:
         """انتخاب شینه با جریان و تحمل اتصال کوتاه کل (شبکه + موتورها) و محاسبه افت ولتاژ.
 
         ik_total_ka/ip_total_ka: مجموع مشارکت شبکه و موتورها (IEC 60909)؛ اگر داده نشود
         از ik_ka شبکه با ضریب پیک κ استاندارد استفاده می‌شود."""
         vals: List[ValidationResult] = []
+        if any(not math.isfinite(v) or v <= 0 for v in (phase_spacing_mm, support_span_mm, allowable_stress_mpa) if v is not None):
+            raise ValueError("Busbar geometry and allowable stress must be positive and finite")
         sc_ik = ik_total_ka if ik_total_ka is not None else ik_ka
         if sc_ik is None:
             req_ipk = None
         elif ip_total_ka is not None:
             req_ipk = round(ip_total_ka, 1)
         else:
-            req_ipk = round(cls._kappa_iec60909(sc_ik) * math.sqrt(2.0) * sc_ik, 1)
-        (w, t, rating), current_ok = cls._choose_bar(design_current_a, sc_ik, req_ipk)
+            req_ipk = round(cls._kappa_iec60909(sc_ik, source_r_x) * math.sqrt(2.0) * sc_ik, 1)
+        temperature_factor = min(1.0, math.sqrt(max(0, (70 - internal_temp_c) / 35)))
+        (w, t, rating), current_ok = cls._choose_bar(design_current_a, sc_ik, req_ipk, temperature_factor)
 
         # ۱. جریان‌دهی پیوسته (بند 10.10)
         vals.append(ValidationResult(
@@ -139,7 +146,7 @@ class BusbarEngine:
                 recommended_action=tr("val_no_action") if ipk >= req_ipk else tr("val_bus_026_action")))
 
             # ۴. فاصله ساپورت‌ها از نیروی الکترودینامیکی
-            max_span = round(cls._max_support_spacing_mm(req_ipk, w_mm3), 0)
+            max_span = round(cls._max_support_spacing_mm(req_ipk, w_mm3, phase_spacing_mm, allowable_stress_mpa), 0)
             supports = math.ceil(max(1.0, panel_width_mm) / max(max_span, 1.0)) + 1
             if supports <= 3:
                 sup_status, sup_desc, sup_action = ValidationStatus.COMPLETED, tr("val_bus_027_desc"), tr("val_no_action")
@@ -171,8 +178,19 @@ class BusbarEngine:
             consequence=tr("val_bus_028_cons"),
             recommended_action=tr("val_no_action") if du_ok else tr("val_bus_028_action")))
 
+        for check in vals:
+            if check.rule_id in ("RULE-BUS-024", "RULE-BUS-025", "RULE-BUS-026", "RULE-BUS-027"):
+                if check.status == ValidationStatus.COMPLETED:
+                    check.status = ValidationStatus.WARNING
+                check.supporting_evidence += f"; PRELIMINARY; typical bar properties, kT={temperature_factor:.3f}; verify OEM data"
+            if check.rule_id == "RULE-BUS-027" and max_span is not None and support_span_mm is not None and support_span_mm > max_span:
+                check.status = ValidationStatus.ERROR
+                check.supporting_evidence += f"; actual span={support_span_mm:g} mm > maximum={max_span:g} mm"
         return BusbarResult(
             spec=spec, rating_a=rating, cross_section_mm2=w * t,
+            temperature_factor=temperature_factor,
+            force_n_per_m=(0.173 * req_ipk ** 2 / (phase_spacing_mm / 1000)) if req_ipk is not None else None,
+            bending_stress_mpa=(0.173 * req_ipk ** 2 / (phase_spacing_mm / 1000) * (support_span_mm / 1000) ** 2 * 1000 / (8 * w_mm3)) if req_ipk is not None and support_span_mm is not None else None,
             icw_1s_ka=round(icw, 1), ipk_ka=round(ipk, 1),
             required_ipk_ka=req_ipk, max_support_spacing_mm=max_span,
             required_supports=supports, r_mohm_m=r_mohm_m, x_mohm_m=x_mohm_m,

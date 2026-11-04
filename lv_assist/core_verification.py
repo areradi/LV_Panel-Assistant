@@ -30,6 +30,8 @@ class CheckResult:
     cause: str = ""
     effect: str = ""
     recommended_action: str = ""
+    rule_category: str = "IEC_MANDATORY_CLAUSE"
+    application_scope: str = "LV; verify installation-specific applicability"
 
 
 def aggregate_status(results: List[CheckResult]) -> ValidationStatus:

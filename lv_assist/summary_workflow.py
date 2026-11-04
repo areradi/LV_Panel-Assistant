@@ -53,7 +53,8 @@ def _catalog_to_breaker(breaker: Any) -> Optional[MainBreakerSpec]:
         ics_ka=None,
         icn_ka=None,
         icw_ka_1s=None,
-        verification_status=CatalogProvenance.VERIFIED_CATALOG,
+        verification_status=(CatalogProvenance.VERIFIED_CATALOG if getattr(breaker, 'has_verified_datasheet', False)
+                             else CatalogProvenance.USER_ESTIMATED),
     )
 
 

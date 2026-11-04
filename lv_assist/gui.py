@@ -1843,6 +1843,8 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             (('تحمل Icw یک‌ثانیه', '1 s Icw withstand', 'Icw für 1 s'), f'{summary.busbar_icw_1s_ka:g} kA'),
             (('تحمل پیک Ipk', 'Ipk withstand', 'Ipk-Festigkeit'), f'{summary.busbar_ipk_ka:g} kA'),
             (('پیک موردنیاز', 'Required peak current', 'Erforderlicher Scheitelstrom'), '—' if summary.busbar_required_ipk_ka is None else f'{summary.busbar_required_ipk_ka:g} kA'),
+            (('تنش خمشی مقدماتی', 'Preliminary bending stress', 'Vorläufige Biegespannung'), '—' if summary.busbar_bending_stress_mpa is None else f'{summary.busbar_bending_stress_mpa:.2f} MPa'),
+            (('ضریب دمای شینه (برآورد)', 'Busbar temperature factor (estimate)', 'Schienentemperaturfaktor (Schätzung)'), f'{summary.busbar_temperature_factor:.3f}'),
             (('فاصله حداکثر ساپورت', 'Maximum support spacing', 'Maximaler Stützabstand'), '—' if summary.busbar_max_support_spacing_mm is None else f'{summary.busbar_max_support_spacing_mm:g} mm'),
             (('تعداد ساپورت محاسبه‌شده', 'Calculated support count', 'Berechnete Stützanzahl'), str(summary.busbar_required_supports)),
             (('افت ولتاژ شینه', 'Busbar voltage drop', 'Schienen-Spannungsfall'), f'{summary.busbar_du_v:g} V / {summary.busbar_du_pct:g} %'),

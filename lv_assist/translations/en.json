@@ -1064,5 +1064,8 @@
   "audit_pe_i2t": "PE conductor short-circuit thermal withstand",
   "audit_preliminary": "Preliminary calculation; manufacturer verification and conformity certification are not established.",
   "audit_review": "Check the actual protection curve, fault-loop impedance and manufacturer data.",
-  "audit_catalog_failed": "Protection catalog match failed"
+  "audit_catalog_failed": "Protection catalog match failed",
+  "audit_provenance": "Equipment datasheet reference and revision are not verified.",
+  "audit_component_temp": "Estimated temperature exceeds an equipment limit.",
+  "audit_assumptions": "Unconfirmed design assumptions"
 }

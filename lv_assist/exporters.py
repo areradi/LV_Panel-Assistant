@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from lv_assist.calculation_state import require_current_calculation
 import html
+import json
 from datetime import datetime
 from typing import List
 import openpyxl
@@ -110,9 +111,9 @@ class ExcelExporter:
             _append_safe(ws2, [f.feeder_id, f.func_tag, f.loc_tag, f.description, f.load_type.value, f.power_kw, f.design_current_ib_a, f.delta_loop_current_a or "-", f.cable_designation_str, f.pe_basis_str, f.cable_derated_iz_a, f.cable_temp_factor_k1, f.cable_grouping_factor_k2, f.cable_total_derating_k, f.cable_method_ref_str, f.cable_length_m, f.voltage_drop_percent, f.selected_protection.part_number if f.selected_protection else "NONE", icu_str, f.selected_contactor_main.part_number if f.selected_contactor_main else "-", f.selected_contactor_delta.part_number if f.selected_contactor_delta else "-", f.selected_contactor_star.part_number if f.selected_contactor_star else "-", f.selected_bimetal.part_number if f.selected_bimetal else "-", vfd_rcd, f.selected_soft_starter.part_number if f.selected_soft_starter else "-", f"{f.ctrl_24v_holding_w} / +{f.ctrl_24v_pull_in_surge_w}", f.selectivity_state.value, f.total_feeder_loss_w, f.suggested_spec_str or "-"])
 
         ws3 = wb.create_sheet("03_Validation_Log")
-        _append_safe(ws3, [tr("rpt_v_rule"), tr("rpt_v_target"), tr("rpt_v_std"), tr("rpt_v_status"), tr("rpt_v_desc"), tr("rpt_v_evidence"), tr("rpt_v_cons"), tr("rpt_v_action")])
+        _append_safe(ws3, [tr("rpt_v_rule"), tr("rpt_v_target"), tr("rpt_v_std"), tr("rpt_v_status"), tr("rpt_v_desc"), tr("rpt_v_evidence"), tr("rpt_v_cons"), tr("rpt_v_action"), 'Rule category', 'Application scope'])
         for v in validations:
-            _append_safe(ws3, [v.rule_id, v.feeder_id, v.standard_ref, v.status.value, v.description, v.supporting_evidence, v.consequence, v.recommended_action])
+            _append_safe(ws3, [v.rule_id, v.feeder_id, v.standard_ref, v.status.value, v.description, v.supporting_evidence, v.consequence, v.recommended_action, v.rule_category, v.application_scope])
             row_idx = ws3.max_row
             fill = status_colors.get(v.status)
             if fill:
@@ -204,6 +205,13 @@ class ExcelExporter:
         except Exception:
             pass
 
+        assumption_sheet = wb.create_sheet('Assumed_Defaults')
+        _append_safe(assumption_sheet, ['Target', 'Field', 'Value', 'Status'])
+        for target, fields in summary.assumptions.items():
+            for name, value in fields.items():
+                if value != []:
+                    _append_safe(assumption_sheet, [target, name, json.dumps(value, ensure_ascii=False), 'ASSUMED_DEFAULT'])
+        _append_safe(assumption_sheet, ['PANEL', 'thermal_method', summary.thermal_method, 'PRELIMINARY'])
         for ws in wb.worksheets:
             for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal="center", vertical="center")
             for row in ws.iter_rows(min_row=2):
@@ -225,6 +233,12 @@ class PrintableReportExporter:
     @staticmethod
     def generate_html_report(filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput, validations: List[ValidationResult]):
         require_current_calculation(project, summary, feeders)
+        assumption_rows = ''.join(
+            f'<tr><td dir="ltr">{_h(target)}</td><td dir="ltr">{_h(name)}</td>'
+            f'<td dir="ltr">{_h(json.dumps(value, ensure_ascii=False))}</td><td>ASSUMED_DEFAULT</td></tr>'
+            for target, fields in summary.assumptions.items() for name, value in fields.items() if value != [])
+        assumptions_html = (f'<h2>{_h(tr("audit_assumptions"))}</h2><table><tbody>{assumption_rows}</tbody></table>'
+                            f'<p>{_h(summary.thermal_method)}</p>')
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         lang = i18n.get_language()
         direction = i18n.direction()
@@ -271,7 +285,7 @@ class PrintableReportExporter:
             val_rows += f"""<tr>
                 <td style="text-align:center;"><span class="badge {cls}">{_h(label)}</span></td>
                 <td dir="ltr"><b>{_h(v.rule_id)}</b><br><small>{_h(v.feeder_id)}</small></td>
-                <td dir="ltr">{_h(v.standard_ref)}</td><td>{_h(v.description)}</td>
+                <td dir="ltr">{_h(v.standard_ref)}<br><small>{_h(v.rule_category)} / {_h(v.application_scope)}</small></td><td>{_h(v.description)}</td>
                 <td dir="ltr"><small>{_h(v.supporting_evidence)}</small></td><td>{_h(v.recommended_action)}</td>
             </tr>"""
 
@@ -432,6 +446,7 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <div class="header-box"><div><h1>{_h(tr("html_title"))}</h1><p>{_h(tr("html_project"))} <b>{_h(project.project_name)}</b> | {_h(tr("html_date"))} {_h(now_str)}</p></div>
 <div class="no-print"><button class="print-btn" onclick="window.print()">{_h(tr("html_print"))}</button></div></div>
 {kpi_html}
+{assumptions_html}
 <div class="grid-2">
 <div><h2>{tr("html_s1")}</h2><table>
 <tr><th>{tr("html_param")}</th><th>{tr("html_value")}</th></tr>

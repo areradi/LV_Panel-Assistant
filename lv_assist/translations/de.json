@@ -1064,5 +1064,8 @@
   "audit_pe_i2t": "Thermische Kurzschlussfestigkeit des Schutzleiters",
   "audit_preliminary": "Vorläufige Berechnung; Herstellerverifizierung und Konformitätsnachweis fehlen.",
   "audit_review": "Tatsächliche Schutzkennlinie, Fehlerschleifenimpedanz und Herstellerdaten prüfen.",
-  "audit_catalog_failed": "Keine passende Schutzeinrichtung im Katalog"
+  "audit_catalog_failed": "Keine passende Schutzeinrichtung im Katalog",
+  "audit_provenance": "Datenblattreferenz und Revision der Geräte sind nicht verifiziert.",
+  "audit_component_temp": "Geschätzte Temperatur übersteigt eine Gerätegrenze.",
+  "audit_assumptions": "Unbestätigte Entwurfsannahmen"
 }

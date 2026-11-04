@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from enum import Enum
 from typing import List, Optional, Literal
-from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, AliasChoices
 import hashlib
 import json
 
@@ -173,6 +173,9 @@ class ProjectSpec(EngineeringInput):
     scenario_inputs: ScenarioInputs = Field(default_factory=ScenarioInputs)
     prospective_ik_ka: Optional[float] = Field(default=None, gt=0)
     source_r_x: Optional[float] = Field(default=None, ge=0)
+    busbar_phase_spacing_mm: float = Field(default=60, gt=0)
+    busbar_support_span_mm: Optional[float] = Field(default=None, gt=0)
+    busbar_allowable_stress_mpa: float = Field(default=120, gt=0)
     transformer_kva: Optional[float] = Field(default=None, gt=0)
     transformer_uk_pct: float = Field(default=6.0, gt=0.0, le=20.0)
     ambient_temp_c: float = Field(default=40.0, ge=-20.0, le=60.0)
@@ -253,6 +256,16 @@ class CatalogDevice(BaseModel):
     spd_poles: str = "4P"
     spd_backup_fuse_a: float = 0.0
     overload_i2_factor: Optional[float] = Field(default=None, ge=1)
+    datasheet_reference: Optional[str] = Field(default=None, validation_alias=AliasChoices('datasheet_reference', 'datasheet_ref'))
+    datasheet_revision: Optional[str] = None
+    max_operating_temp_c: Optional[float] = None
+
+    @property
+    def has_verified_datasheet(self) -> bool:
+        reference = (self.datasheet_reference or '').strip()
+        revision = (self.datasheet_revision or '').strip()
+        return (self.data_quality == DataQuality.REAL_VERIFIED and bool(reference) and bool(revision)
+                and reference.lower() not in {'verified entry', 'unspecified', 'n/a'})
 
 class SelectivityRuleRecord(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
@@ -276,6 +289,8 @@ class ValidationResult(BaseModel):
     supporting_evidence: str
     consequence: str
     recommended_action: str
+    rule_category: Literal['IEC_MANDATORY_CLAUSE', 'IEC_INFORMATIVE_ANNEX', 'OEM_MANUFACTURER_RULE', 'ENGINEERING_DESIGN_PRACTICE'] = 'ENGINEERING_DESIGN_PRACTICE'
+    application_scope: str = 'LV preliminary design'
 
 class ControlWire(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
@@ -330,6 +345,9 @@ class BusbarResult(BaseModel):
 
     spec: str
     rating_a: float
+    bending_stress_mpa: Optional[float] = None
+    force_n_per_m: Optional[float] = None
+    temperature_factor: float = 1
     cross_section_mm2: float
     icw_1s_ka: float
     ipk_ka: float
@@ -421,6 +439,9 @@ class PanelSummaryOutput(BaseModel):
     busbar_required_ipk_ka: Optional[float] = None
     busbar_max_support_spacing_mm: Optional[float] = None
     busbar_required_supports: int = 2
+    busbar_bending_stress_mpa: Optional[float] = None
+    busbar_force_n_per_m: Optional[float] = None
+    busbar_temperature_factor: float = 1
     recommended_incoming_cable_str: str
     ctrl_24v_plc_hmi_w: float = 0.0
     ctrl_24v_coils_holding_w: float = 0.0
@@ -469,6 +490,8 @@ class PanelSummaryOutput(BaseModel):
     spd_suggested_str: str = ""
     estimated_internal_temp_c: Optional[float] = None
     altitude_derating_factor: float = 1.0
+    thermal_method: str = 'PRELIMINARY_LUMPED_ESTIMATE; not IEC/TR 60890 verification'
+    assumptions: dict = Field(default_factory=dict)
 
 class VerificationMethod(str, Enum):
     CALCULATION = "CALCULATION"

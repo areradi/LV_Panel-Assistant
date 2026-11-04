@@ -15,6 +15,8 @@ from lv_assist.bom import build_bom
 from lv_assist.engine import CableSizingEngine
 from lv_assist.core_verification import calculate_network_ik_profile
 from lv_assist.pe_spd_engine import calculate_pe_adiabatic_section, select_pe_k_factor
+from lv_assist.busbar import BusbarEngine
+from lv_assist.models import CatalogDevice
 
 
 @pytest.fixture
@@ -180,3 +182,45 @@ def test_tt_requires_rcd_and_vfd_rejects_ac_type():
     _, _, checks = engine.process_project(project, [item])
     assert any(v.rule_id == "RULE-ADS-TT" and v.status.value == "INSUFFICIENT_DATA" for v in checks)
     assert any(v.rule_id == "RULE-RCD-VFD" and v.status.value == "ERROR" for v in checks)
+
+
+def test_peak_factor_uses_rx_and_never_exceeds_physical_limit():
+    assert BusbarEngine._kappa_iec60909(100) == 2
+    assert BusbarEngine._kappa_iec60909(10, 0.3) == pytest.approx(1.02 + .98 * math.exp(-.9))
+    assert BusbarEngine._kappa_iec60909(100, 0) == 2
+
+
+def test_busbar_stress_and_span_match_beam_equation():
+    _, _, section_modulus = BusbarEngine._bar_withstand(50, 10)
+    force = .173 * 50**2 / .06
+    expected_span = math.sqrt(120 * 8 * section_modulus / (force * 1000)) * 1000
+    assert BusbarEngine._max_support_spacing_mm(50, section_modulus) == pytest.approx(expected_span)
+    result = BusbarEngine.select(400, 25, 800, ip_total_ka=50, support_span_mm=1000)
+    assert result.bending_stress_mpa > 120
+    assert any(v.rule_id == 'RULE-BUS-027' and v.status.value == 'ERROR' for v in result.validations)
+
+
+def test_hot_busbar_has_lower_rating_for_same_geometry():
+    bar35, _ = BusbarEngine._choose_bar(1, None, None, 1)
+    bar50, _ = BusbarEngine._choose_bar(1, None, None, math.sqrt(20/35))
+    assert bar35[:2] == bar50[:2]
+    assert bar50[2] < bar35[2]
+
+
+def test_verified_label_without_datasheet_does_not_prove_provenance():
+    device = CatalogDevice(part_number='TEST', manufacturer='Test', series='Test', device_type='MCB')
+    assert not device.has_verified_datasheet
+    device.datasheet_reference = 'Specific test datasheet'
+    device.datasheet_revision = 'Revision 1'
+    assert device.has_verified_datasheet
+
+
+def test_assumptions_and_rule_categories_are_exported(calculation, tmp_path):
+    project, _, outputs, summary, checks, _ = calculation
+    path = tmp_path / 'audit.html'
+    PrintableReportExporter.generate_html_report(str(path), project, outputs, summary, checks)
+    document = path.read_text()
+    assert 'ASSUMED_DEFAULT' in document
+    assert 'transformer_uk_pct' in document
+    assert 'IEC_MANDATORY_CLAUSE' in document
+    assert 'ENGINEERING_DESIGN_PRACTICE' in document

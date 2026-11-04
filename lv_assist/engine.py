@@ -418,7 +418,7 @@ class EngineeringEngine:
         mot_ka, mot_parts = self._motor_contribution(project, feeders)
         ik_total = ip_total = None
         if ik_ka is not None:
-            ip_net = BusbarEngine._kappa_iec60909(ik_ka) * math.sqrt(2.0) * ik_ka
+            ip_net = BusbarEngine._kappa_iec60909(ik_ka, project.source_r_x) * math.sqrt(2.0) * ik_ka
             ip_mot = self.MOTOR_IK_KAPPA * math.sqrt(2.0) * mot_ka
             ik_total = round(ik_ka + mot_ka, 3)
             ip_total = round(ip_net + ip_mot, 3)
@@ -447,8 +447,22 @@ class EngineeringEngine:
         summary, panel_vals = self._process_panel_summary(
             project, feeder_outputs, ik_ka, ik_source, ik_total, ip_total, mot_ka)
         validations.extend(panel_vals)
+        for check in validations:
+            check.application_scope = ('DBO' if '61439-3' in project.standard_ref else 'PSC') + (' / Machinery' if '60204' in project.standard_ref else '')
+            if check.rule_id in {'RULE-PROT-SC-001', 'RULE-CABLE-009', 'RULE-CABLE-I2', 'RULE-PHASE-I2T', 'RULE-PE-I2T', 'RULE-ADS-TN', 'RULE-ADS-TT'}:
+                check.rule_category = 'IEC_MANDATORY_CLAUSE'
+            elif check.rule_id.startswith('RULE-VDROP'):
+                check.rule_category = 'IEC_INFORMATIVE_ANNEX'
+            elif check.rule_id in {'RULE-COORD-002', 'RULE-RCD-VFD'}:
+                check.rule_category = 'OEM_MANUFACTURER_RULE'
         apply_vde_standard_refs(project, validations)
         summary.verified_input_hash = input_hash
+        summary.assumptions = {'PROJECT': {name: project.model_dump(mode='json')[name]
+                                          for name in project.assumed_fields}}
+        for source, output in zip(feeders, feeder_outputs):
+            summary.assumptions[source.feeder_id] = {
+                **{name: source.model_dump(mode='json')[name] for name in source.assumed_fields},
+                'resolved_defaults': output.assumptions_used}
         summary.calculation_inputs = [f.model_copy(deep=True) for f in feeders]
         summary._source_feeders = feeders
         for output in feeder_outputs:
@@ -1142,7 +1156,10 @@ class EngineeringEngine:
         bus_res = BusbarEngine.select(
             i_main_req_a, ik_ka, selected_enc.width_mm,
             voltage_v=project.nominal_voltage_v, cos_phi=overall_cos_phi,
-            ik_total_ka=ik_total_ka, ip_total_ka=ip_total_ka)
+            ik_total_ka=ik_total_ka, ip_total_ka=ip_total_ka,
+            internal_temp_c=project.max_internal_temp_c, source_r_x=project.source_r_x,
+            phase_spacing_mm=project.busbar_phase_spacing_mm, support_span_mm=project.busbar_support_span_mm,
+            allowable_stress_mpa=project.busbar_allowable_stress_mpa)
         busbar_spec = bus_res.spec
         vals.extend(bus_res.validations)
 
@@ -1178,7 +1195,7 @@ class EngineeringEngine:
         est_internal_c = project.ambient_temp_c + (delta_t if selected_fan else delta_t * total_loss_w / max(p_diss_natural_w, 1.0))
         est_internal_c = round(est_internal_c, 1)
         fan_missing = total_loss_w > p_diss_natural_w and selected_fan is None
-        therm_status = ValidationStatus.ERROR if fan_missing else (ValidationStatus.COMPLETED if est_internal_c <= project.max_internal_temp_c else ValidationStatus.WARNING)
+        therm_status = ValidationStatus.ERROR if fan_missing else ValidationStatus.WARNING
         if fan_missing:
             therm_action = tr("val_tint_nofan_action")
         elif est_internal_c <= project.max_internal_temp_c:
@@ -1190,6 +1207,24 @@ class EngineeringEngine:
             description=tr("val_tint_desc", a=est_internal_c, b=project.max_internal_temp_c),
             supporting_evidence=tr("val_tint_ev", a=total_loss_w, b=p_diss_natural_w, c=req_airflow_m3h),
             consequence=tr("val_tint_cons"), recommended_action=therm_action))
+        selected = [dev for f in feeders for dev in (f.selected_protection, f.selected_contactor_main,
+                    f.selected_contactor_delta, f.selected_contactor_star, f.selected_bimetal,
+                    f.selected_vfd, f.selected_soft_starter) if dev is not None]
+        selected += [dev for dev in (main_breaker, selected_enc, selected_fan) if dev is not None]
+        missing_sources = [dev.part_number for dev in selected if not dev.has_verified_datasheet]
+        if missing_sources:
+            vals.append(ValidationResult(rule_id='RULE-CATALOG-PROVENANCE', feeder_id='PANEL',
+                standard_ref='OEM catalog evidence', status=ValidationStatus.INSUFFICIENT_DATA,
+                description=tr('audit_provenance'), supporting_evidence=', '.join(sorted(set(missing_sources))),
+                consequence=tr('audit_preliminary'), recommended_action=tr('audit_review'),
+                rule_category='OEM_MANUFACTURER_RULE'))
+        known_limits = [dev.max_operating_temp_c for dev in selected if dev.max_operating_temp_c is not None]
+        if known_limits and est_internal_c > min(known_limits):
+            vals.append(ValidationResult(rule_id='RULE-THERM-COMPONENT', feeder_id='PANEL',
+                standard_ref='OEM operating temperature', status=ValidationStatus.ERROR,
+                description=tr('audit_component_temp'), supporting_evidence=f'T_est={est_internal_c:g} C; limit={min(known_limits):g} C',
+                consequence=tr('audit_preliminary'), recommended_action=tr('audit_review'),
+                rule_category='OEM_MANUFACTURER_RULE'))
 
         # F-017: هشدار صریح در گزارش وقتی دمای داخلی از ۵۰°C (مرجع derating تجهیزات) فراتر می‌رود
         if est_internal_c > 50.0:
@@ -1227,6 +1262,8 @@ class EngineeringEngine:
             busbar_rating_a=bus_res.rating_a, busbar_icw_1s_ka=bus_res.icw_1s_ka, busbar_ipk_ka=bus_res.ipk_ka,
             busbar_required_ipk_ka=bus_res.required_ipk_ka, busbar_max_support_spacing_mm=bus_res.max_support_spacing_mm,
             busbar_required_supports=bus_res.required_supports,
+            busbar_bending_stress_mpa=bus_res.bending_stress_mpa,
+            busbar_force_n_per_m=bus_res.force_n_per_m, busbar_temperature_factor=bus_res.temperature_factor,
             recommended_incoming_cable_str=inc_cable_str, ctrl_24v_plc_hmi_w=plc_hmi_w, ctrl_24v_coils_holding_w=coils_holding_w,
             ctrl_24v_total_continuous_w=total_cont_24v_w, ctrl_24v_continuous_current_a=i_cont_24v_a,
             ctrl_24v_design_current_with_spare_a=i_design_24v_a, ctrl_24v_peak_inrush_current_a=i_peak_24v_a,

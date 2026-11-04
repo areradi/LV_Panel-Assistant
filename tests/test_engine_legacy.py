@@ -193,7 +193,7 @@ class TestExcelIO:
         wb = openpyxl.load_workbook(str(out_path))
         assert wb.sheetnames == ["01_Project_Summary", "02_Feeder_Cable_Schedule",
                                  "03_Validation_Log", "04_BOM", "05_Control_Circuits",
-                                 "06_Design_Verification", "Scenario_Inputs", "07_Commercial_Quote"]
+                                 "06_Design_Verification", "Scenario_Inputs", "07_Commercial_Quote", "Assumed_Defaults"]
 
     def test_altitude_loaded_from_excel(self, tmp_path):
         path = tmp_path / "input.xlsx"
@@ -714,7 +714,7 @@ class TestPhase4Thermal:
         assert summary.estimated_internal_temp_c is not None
         assert summary.estimated_internal_temp_c <= 50.0
         tint = [v for v in validations if v.rule_id == "RULE-THERM-016"]
-        assert tint and tint[0].status == ValidationStatus.COMPLETED
+        assert tint and tint[0].status == ValidationStatus.WARNING
 
 
 class TestPhase4Scenarios:
@@ -1161,7 +1161,7 @@ class TestPhase6Busbar:
     def test_busbar_without_ik_is_insufficient_data(self):
         res = BusbarEngine.select(130.0, None, 800.0)
         statuses = {v.rule_id: v.status for v in res.validations}
-        assert statuses["RULE-BUS-024"] == ValidationStatus.COMPLETED
+        assert statuses["RULE-BUS-024"] == ValidationStatus.WARNING
         assert statuses["RULE-BUS-025"] == ValidationStatus.INSUFFICIENT_DATA
         assert statuses["RULE-BUS-026"] == ValidationStatus.INSUFFICIENT_DATA
         assert statuses["RULE-BUS-027"] == ValidationStatus.INSUFFICIENT_DATA

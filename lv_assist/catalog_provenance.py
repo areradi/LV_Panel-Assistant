@@ -49,11 +49,12 @@ def evaluate_selectivity_status(
         )
 
     ratio = upstream_in_a / downstream_in_a
-    if ratio < 1.6:
+    if ratio < 1.6 and not has_manufacturer_coordination_table:
         return CheckResult(
             check_id="SELECTIVITY_CHECK",
             title="هماهنگی حفاظتی و سلکتیویتی (Selectivity)",
-            status=ValidationStatus.ERROR,
+            status=ValidationStatus.WARNING,
+            rule_category="ENGINEERING_DESIGN_PRACTICE",
             measured_or_calc_value=f"In_up / In_down = {ratio:.2f}",
             limit_or_reference="حداقل نسبت پیشنهادی اولیه >= 1.6",
             cause="نسبت جریان نامی کلید بالادست به پایین‌دست کمتر از 1.6 است.",
@@ -86,6 +87,7 @@ def evaluate_selectivity_status(
         check_id="SELECTIVITY_CHECK",
         title="هماهنگی حفاظتی و سلکتیویتی (برآورد مقدماتی)",
         status=ValidationStatus.WARNING,
+        rule_category="ENGINEERING_DESIGN_PRACTICE",
         measured_or_calc_value=f"Ratio = {ratio:.2f} (بدون جدول تست سازنده)",
         limit_or_reference="PRELIMINARY — نیازمند جدول هماهنگی سازنده",
         cause="صرفاً بر اساس نسبت جریان نامی برآورد شده است.",
