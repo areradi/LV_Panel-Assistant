@@ -13,11 +13,15 @@ from lv_assist.gui_output_bridge import GuiOutputBridge
 from lv_assist.outputs import SldGenerator
 from lv_assist.bom import build_bom
 from lv_assist.engine import CableSizingEngine
-from lv_assist.core_verification import calculate_network_ik_profile
+from lv_assist.core_verification import calculate_network_ik_profile, verify_breaking_capacity_icu
 from lv_assist.pe_spd_engine import calculate_pe_adiabatic_section, select_pe_k_factor
 from lv_assist.busbar import BusbarEngine
-from lv_assist.models import CatalogDevice
+from lv_assist.models import CatalogDevice, StepEngStatus
 from lv_assist.commercial import CommercialEngine
+from lv_assist.pe_spd_engine import evaluate_spd_requirements
+from lv_assist.tcc_analyzer import TccAnalyzer
+from lv_assist.catalog import TripCurveRepository
+from lv_assist.engine import build_design_verification
 from lv_assist.layout import PanelLayoutGenerator
 import openpyxl
 
@@ -163,7 +167,7 @@ def test_fuse_second_overload_condition_increases_required_ampacity():
 def test_hot_fault_loop_matches_independent_impedance_calculation():
     result = calculate_network_ik_profile(None, None, source_ik_ka=10, source_r_x=0.3,
         feeder_cable_length_m=100, feeder_phase_mm2=10, feeder_pe_mm2=10)
-    z = 1.05 * (400 / math.sqrt(3)) / 10_000
+    z = 1.1 * (400 / math.sqrt(3)) / 10_000
     x = z / math.sqrt(1 + 0.3**2)
     r = x * 0.3
     hot_r = 0.017241 * (1 + 0.00393 * 140) * 100 * (1/10 + 1/10)
@@ -287,3 +291,141 @@ def test_duplicate_feeder_ids_cannot_produce_ambiguous_tags():
     with pytest.raises(ValueError):
         EngineeringEngine(CatalogRepository.get_default_catalog()).process_project(
             ProjectSpec(project_name='Duplicate'), [feeder(), feeder()])
+
+
+def test_report_reference_unbalanced_single_phase_loads():
+    project = ProjectSpec(project_name='32/10/12 A reference', prospective_ik_ka=10,
+                          simultaneity_factor_ks=1, spare_factor=0)
+    u_ln = 400 / math.sqrt(3)
+    sources = [FeederInput(feeder_id=phase, description=phase, load_type='HEATER_RESISTIVE',
+                          power_kw=current*u_ln/1000, cos_phi=1, phases=1, supply_phase=phase)
+               for phase, current in zip(('L1', 'L2', 'L3'), (32, 10, 12))]
+    outputs, summary, checks = EngineeringEngine(CatalogRepository.get_default_catalog()).process_project(project, sources)
+    assert summary.design_main_current_a == pytest.approx(32, abs=.02)
+    assert summary.phase_design_currents_a['L1'] == pytest.approx(32, abs=.02)
+    assert summary.neutral_current_a == pytest.approx(math.sqrt(444), abs=.03)
+    assert summary.phase_imbalance_pct == pytest.approx(77.78, abs=.2)
+    assert all('L+N+PE' in f.cable_designation_str for f in outputs)
+    assert any(v.rule_id == 'RULE-PHASE-BALANCE' for v in checks)
+
+
+def test_unassigned_single_phase_loads_are_not_silently_balanced():
+    project = ProjectSpec(project_name='Unknown phases', prospective_ik_ka=10, simultaneity_factor_ks=1, spare_factor=0)
+    sources = [FeederInput(feeder_id=f'F{i}', description='Unassigned', load_type='HEATER_RESISTIVE',
+                          power_kw=2.3, cos_phi=1, phases=1) for i in range(3)]
+    _, summary, checks = EngineeringEngine(CatalogRepository.get_default_catalog()).process_project(project, sources)
+    assert summary.design_main_current_a > 29
+    assert any(v.rule_id == 'RULE-PHASE-BALANCE' and v.status.value == 'INSUFFICIENT_DATA' for v in checks)
+
+
+def test_report_distribution_reference_and_motor_efficiencies():
+    engine = EngineeringEngine(CatalogRepository.get_default_catalog())
+    project = ProjectSpec(project_name='45 kW reference', prospective_ik_ka=10,
+                          simultaneity_factor_ks=.8, spare_factor=0)
+    item = FeederInput(feeder_id='F1', description='Distribution', load_type='SUB_FEEDER', power_kw=45, cos_phi=.85)
+    _, summary, _ = engine.process_project(project, [item])
+    assert summary.design_main_current_a == pytest.approx(36_000 / (math.sqrt(3)*400*.85), abs=.02)
+    sources = [FeederInput(feeder_id=f'M{i}', description='Motor', load_type='MOTOR_DOL',
+                          power_kw=power, efficiency=efficiency, cos_phi=pf)
+               for i, (power, efficiency, pf) in enumerate([(7.5, .88, .84), (15, .90, .85), (22, .92, .86)])]
+    outputs, _, _ = engine.process_project(project, sources)
+    for result, source in zip(outputs, sources):
+        expected = source.power_kw*1000/(math.sqrt(3)*400*source.efficiency*source.cos_phi)
+        assert result.design_current_ib_a == pytest.approx(expected, abs=.01)
+
+
+def test_report_50ka_adiabatic_reference_without_energy_limiting():
+    section = calculate_pe_adiabatic_section(50_000, .1, 'Cu', 'PVC', 'in_cable')
+    assert section['s_adiabatic_mm2'] == pytest.approx(137.49, abs=.01)
+    rx = .25 / math.sqrt(1 - .25**2)
+    peak = BusbarEngine._kappa_iec60909(50, rx)*math.sqrt(2)*50
+    assert peak == pytest.approx(104.119, abs=.1)
+
+
+def test_design_checklist_cannot_pass_without_recorded_assembly_evidence(calculation):
+    project, _, outputs, summary, checks, _ = calculation
+    report = build_design_verification(project, outputs, summary, checks)
+    assert all(item.status.value != 'PASS' for item in report.items)
+    assert report.conclusion_status.value != 'PASS'
+
+
+@pytest.mark.parametrize('earth,voltage,fault', [('invalid',230,10), ('TN-S',float('nan'),10), ('TT',230,-1)])
+def test_spd_rejects_missing_or_invalid_physical_inputs(earth, voltage, fault):
+    result = evaluate_spd_requirements(earth, voltage, False, prospective_ik_ka=fault)
+    assert result.engineering_status == StepEngStatus.INSUFFICIENT_DATA
+
+
+@pytest.mark.parametrize('earth,lps,candidate_type,uc', [('IT',False,'Type 2',385), ('TN-S',True,'Type 1',275), ('TT',False,'Type 2',275)])
+def test_spd_preselection_keeps_actual_type_and_requires_review(earth, lps, candidate_type, uc):
+    result = evaluate_spd_requirements(earth, 230, lps, is_sensitive_terminal_load=True,
+        prospective_ik_ka=10, candidates=[{'spd_type':candidate_type, 'uc_v':uc, 'model_name':'Test SPD'}])
+    assert result.spd_type.value == candidate_type
+    assert result.model_name == 'Test SPD'
+    assert result.engineering_status == StepEngStatus.WARNING
+
+
+def test_spd_cannot_select_a_device_below_required_continuous_voltage():
+    result = evaluate_spd_requirements('IT',230,False,prospective_ik_ka=10,
+        candidates=[{'spd_type':'Type 2','uc_v':275}])
+    assert result.model_name is None
+
+
+def test_tcc_intersection_matches_independent_analytic_curves(monkeypatch):
+    up = CatalogDevice(part_number='UP', manufacturer='Test', series='UP', device_type='MCCB', rated_current_in_a=100)
+    down = CatalogDevice(part_number='DN', manufacturer='Test', series='DN', device_type='MCB', rated_current_in_a=50)
+    monkeypatch.setattr(TripCurveRepository, 'thermal_time_s', lambda series, mult: 1000 / mult**3 if series == 'UP' else 10 / mult)
+    monkeypatch.setattr(TripCurveRepository, 'instantaneous_band_a', lambda series, rating: (5000,6000))
+    result = TccAnalyzer.find_intersection(up, down)
+    assert result.intersection_a == pytest.approx(math.sqrt(2_000_000), rel=.005)
+    assert TccAnalyzer.trip_time_s('UP',100,float('nan')) is None
+    up.rated_current_in_a = 0
+    assert TccAnalyzer.evaluate_pair(up, down, 10)[0] == 'UNKNOWN'
+
+
+@pytest.mark.parametrize('voltage', [109, 1001])
+def test_panel_voltage_outside_declared_lv_scope_is_rejected(voltage):
+    with pytest.raises(ValidationError):
+        ProjectSpec(project_name='Outside LV scope', nominal_voltage_v=voltage)
+
+
+def test_transformer_fault_uses_declared_maximum_voltage_factor():
+    project = ProjectSpec(project_name='Fault reference', transformer_kva=1600, voltage_factor_c_max=1.1)
+    assert EngineeringEngine._ik_from_transformer(project) == pytest.approx(1.1*1600/(math.sqrt(3)*.4*.06)/1000, abs=.005)
+
+
+def test_motor_contribution_cannot_be_relied_on_for_minimum_fault():
+    arguments = dict(source_r_x=.3, feeder_cable_length_m=25, feeder_phase_mm2=16, feeder_pe_mm2=16)
+    base = calculate_network_ik_profile(None, None, source_ik_ka=10, **arguments)
+    maximum = calculate_network_ik_profile(None, None, source_ik_ka=20, source_min_ik_ka=10, **arguments)
+    assert maximum.ik_feeder_end_max_3p_ka > base.ik_feeder_end_max_3p_ka
+    assert maximum.ik_feeder_end_min_1p_ka == base.ik_feeder_end_min_1p_ka
+
+
+@pytest.mark.parametrize('icu,fault', [(float('nan'),10), (25,float('inf'))])
+def test_nonfinite_breaking_capacity_cannot_pass(icu, fault):
+    assert verify_breaking_capacity_icu(icu, fault).status.value == 'INSUFFICIENT_DATA'
+
+
+def test_automatic_cable_selection_rechecks_end_fault_and_pe_energy():
+    project = ProjectSpec(project_name='Long automatic feeder', prospective_ik_ka=10)
+    item = feeder(cable_length_m=400)
+    protection = CatalogDevice(part_number='TEST-32', manufacturer='Test', series='SENTRON 3VA1',
+                               device_type='MCCB', rated_current_in_a=32)
+    outputs, _, checks = EngineeringEngine([protection]).process_project(project, [item])
+    assert outputs[0].selected_phase_mm2 > 16
+    assert not any(v.rule_id in {'RULE-ADS-TN', 'RULE-PHASE-I2T', 'RULE-PE-I2T'} and v.status.value == 'ERROR' for v in checks)
+
+
+@pytest.mark.parametrize('kind', ['MOTOR_DOL', 'MOTOR_STAR_DELTA'])
+def test_motor_selection_does_not_mix_manufacturers_or_overload_ranges(kind):
+    catalog = [
+        CatalogDevice(part_number='PROTECT-A', manufacturer='A', series='SENTRON 3VA1', device_type='MPCB', rated_current_in_a=63),
+        CatalogDevice(part_number='CONTACT-B', manufacturer='B', series='Test', device_type='CONTACTOR', rated_current_in_a=100),
+        CatalogDevice(part_number='OVERLOAD-A', manufacturer='A', series='Test', device_type='BIMETAL', setting_min_a=20, setting_max_a=40),
+    ]
+    project = ProjectSpec(project_name='Pair selection', prospective_ik_ka=10)
+    item = FeederInput(feeder_id='F1', description='Motor', load_type=kind, power_kw=7.5)
+    result, _ = EngineeringEngine(catalog)._process_single_feeder(project, item, 10, 10)
+    assert result.selected_protection.manufacturer == 'A'
+    assert result.selected_contactor_main is None
+    assert result.selected_bimetal is None

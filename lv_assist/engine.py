@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import math
+import cmath
 from typing import List, Optional, Tuple, Dict
 from lv_assist.models import (
     ProjectSpec, FeederInput, CatalogDevice, ValidationResult, FeederCalcOutput,
@@ -145,8 +146,6 @@ class CableSizingEngine:
         insulation: str = "PVC",
         arrangement: str = "separate",
     ) -> Optional[float]:
-        # Priority 9: k-factor from IEC 60364-5-54 (default Cu/PVC/separate -> 143,
-        # identical to the previous hardcoded 143.0). Callers may override.
         _k, _ = select_pe_k_factor(material, insulation, arrangement)
         if phase_section_mm2 <= 16.0: s_table = phase_section_mm2
         elif phase_section_mm2 <= 35.0: s_table = 16.0
@@ -167,7 +166,7 @@ class CableSizingEngine:
         conductor: str = "CU", insulation: str = "PVC", installation_method: str = "C",
         fire_resistant: bool = False, thdi_pct: Optional[float] = None,
         fault_current_ka: Optional[float] = None, clear_time_s: Optional[float] = None,
-        overload_i2_factor: Optional[float] = None
+        overload_i2_factor: Optional[float] = None, additional_check=None
     ) -> Tuple[float, float, Optional[float], Optional[float], float, str]:
         k1, k2, total_k = cls.get_derating_summary(ambient_temp_c, grouping_k2, conductor, insulation, installation_method)
         required_iz = ib_a if is_adjustable_prot else protection_in_a
@@ -199,7 +198,10 @@ class CableSizingEngine:
                     if sec < min_allowed_section: continue
                     curr_iz = round(iz0 * total_k, 1)
                     curr_vd = cls.calc_voltage_drop_pct(ib_a, length_m, sec, cos_phi, voltage_v, phases, conductor, insulation)
-                    if curr_iz >= required_iz and curr_vd <= max_vdrop_pct and sec >= adiabatic_min:
+                    pe = cls.calculate_pe_section(sec, fault_current_ka or 0, clear_time_s or .02,
+                                                  material, insulation, 'in_cable')
+                    extra_ok = additional_check is None or additional_check(sec, pe)
+                    if curr_iz >= required_iz and curr_vd <= max_vdrop_pct and sec >= adiabatic_min and extra_ok:
                         s_ph = sec; iz_derated = curr_iz; vdrop = curr_vd; break
 
         # F-005: جریان خطا و زمان قطع واقعی پروژه (نه فرض ثابت ۱۰ kA / ۲۰ ms)
@@ -219,7 +221,10 @@ class CableSizingEngine:
 
         s_pe_lbl = f"{s_pe:g}" if s_pe is not None else tr("desig_pe_nostd")
         mat_lbl = "Cu" if conductor == "CU" else "Al"
-        if load_type == LoadType.MOTOR_STAR_DELTA:
+        if phases == 1:
+            s_neutral = s_ph
+            desig = f"2x{s_ph:g}+{s_pe_lbl} mm² {mat_lbl} (L+N+PE)"
+        elif load_type == LoadType.MOTOR_STAR_DELTA:
             i_delta = ib_a / math.sqrt(3)
             s_delta = next((sec for sec, iz0 in sorted(table.items()) if sec >= 2.5 and (iz0 * total_k) >= i_delta), s_ph)
             desig = f"Line: 3x{s_ph:g}+{s_pe_lbl} mm² | Motor Y-Δ: 2x(3x{s_delta:g})+{s_pe_lbl} mm² {mat_lbl}"
@@ -312,8 +317,7 @@ class EngineeringEngine:
 
     @staticmethod
     def _estimate_clear_time_s(prot: CatalogDevice, ik_ka: float) -> float:
-        """زمان قطع تخمینی حفاظ فیدر در جریان خطای پروژه (F-005):
-        ناحیه لحظه‌ای → ۲۰ ms (زمان شکست تیپیک MCCB/MCB)؛ ناحیه حرارتی → درون‌یابی منحنی (سقف ۵ s)."""
+        """Approximate clearing time using the upper pickup tolerance; thermal times are never capped."""
         i_fault_a = ik_ka * 1000.0
         im_min_a, im_max_a = TripCurveRepository.instantaneous_band_a(prot.series, prot.rated_current_in_a)
         if i_fault_a >= max(im_min_a, im_max_a):
@@ -345,7 +349,7 @@ class EngineeringEngine:
     def _ik_from_transformer(project: ProjectSpec) -> float:
         uk = project.transformer_uk_pct / 100.0
         u_kv = project.nominal_voltage_v / 1000.0
-        return round(project.transformer_kva / (math.sqrt(3.0) * u_kv * uk) / 1000.0, 2)
+        return round(project.voltage_factor_c_max * project.transformer_kva / (math.sqrt(3.0) * u_kv * uk) / 1000.0, 2)
 
     @staticmethod
     def _feeder_ik_profile(
@@ -508,7 +512,8 @@ class EngineeringEngine:
             mpcbs = [d for d in self.catalog if d.device_type == "MPCB" and (d.rated_current_in_a * self._get_derating_factor(d, project.max_internal_temp_c)) >= ib_a and self._icu_ok(d, project, ik_total_ka)]
             mpcbs.sort(key=lambda x: x.rated_current_in_a)
             if mpcbs: sel_prot = mpcbs[0]; reason_parts.append(f"MPCB {sel_prot.part_number}")
-            contactors = [d for d in self.catalog if d.device_type == "CONTACTOR" and d.rated_current_in_a >= ib_a]
+            contactors = [d for d in self.catalog if d.device_type == "CONTACTOR" and d.rated_current_in_a >= ib_a
+                          and (sel_prot is None or d.manufacturer == sel_prot.manufacturer)]
             contactors.sort(key=lambda x: x.rated_current_in_a)
             if contactors:
                 sel_cont_main = contactors[0]
@@ -532,14 +537,16 @@ class EngineeringEngine:
             prot_cands = [d for d in self.catalog if d.device_type in ("MPCB", "MCCB") and (d.rated_current_in_a * self._get_derating_factor(d, project.max_internal_temp_c)) >= ib_a and self._icu_ok(d, project, ik_total_ka)]
             prot_cands.sort(key=lambda x: (0 if x.device_type == "MPCB" else 1, x.rated_current_in_a))
             if prot_cands: sel_prot = prot_cands[0]; reason_parts.append(f"Line Prot: {sel_prot.part_number}")
-            delta_conts = [d for d in self.catalog if d.device_type == "CONTACTOR" and d.rated_current_in_a >= i_delta_a]
+            delta_conts = [d for d in self.catalog if d.device_type == "CONTACTOR" and d.rated_current_in_a >= i_delta_a
+                           and (sel_prot is None or d.manufacturer == sel_prot.manufacturer)]
             delta_conts.sort(key=lambda x: x.rated_current_in_a)
             if delta_conts: sel_cont_main = delta_conts[0]; sel_cont_delta = delta_conts[0]; reason_parts.append(f"KM & KD: {sel_cont_main.part_number}")
-            star_conts = [d for d in self.catalog if d.device_type == "CONTACTOR" and d.rated_current_in_a >= i_star_a]
+            star_conts = [d for d in self.catalog if d.device_type == "CONTACTOR" and d.rated_current_in_a >= i_star_a
+                          and (sel_prot is None or d.manufacturer == sel_prot.manufacturer)]
             star_conts.sort(key=lambda x: x.rated_current_in_a)
             if star_conts: sel_cont_star = star_conts[0]; reason_parts.append(f"KY: {sel_cont_star.part_number}")
-            bimetals = [d for d in self.catalog if d.device_type == "BIMETAL" and d.setting_min_a <= i_delta_a <= d.setting_max_a]
-            if not bimetals: bimetals = [d for d in self.catalog if d.device_type == "BIMETAL" and d.setting_max_a >= i_delta_a]
+            bimetals = [d for d in self.catalog if d.device_type == "BIMETAL" and d.setting_min_a <= i_delta_a <= d.setting_max_a
+                        and (sel_prot is None or d.manufacturer == sel_prot.manufacturer)]
             bimetals.sort(key=lambda x: x.setting_max_a)
             if bimetals: sel_bimetal = bimetals[0]; reason_parts.append(f"Bimetal: {sel_bimetal.part_number}")
             timers = [d for d in self.catalog if d.device_type == "TIMER_YD"]
@@ -616,7 +623,9 @@ class EngineeringEngine:
             user_specified_mm2=f.cable_section_mm2, conductor=f.conductor_material.value,
             insulation=f.insulation.value, installation_method=f.installation_method.value,
             fire_resistant=f.fire_resistant, thdi_pct=f.thdi_pct,
-            fault_current_ka=fault_ka, clear_time_s=clear_t, overload_i2_factor=i2_factor
+            fault_current_ka=fault_ka, clear_time_s=clear_t, overload_i2_factor=i2_factor,
+            additional_check=lambda phase, pe: self._candidate_fault_compatible(
+                project, f, sel_prot, phase, pe, ik_ka, ik_total_ka, clear_t)
         )
 
         # F-008: ضرایب تصحیح دقیق و روش نصب مرجع برای گزارش
@@ -636,7 +645,9 @@ class EngineeringEngine:
         profile = audit_calculate_network_ik_profile(
             project.transformer_kva, project.transformer_uk_pct, project.nominal_voltage_v,
             feeder_cable_length_m=cable_len_m, feeder_phase_mm2=s_ph, feeder_pe_mm2=s_pe,
-            source_ik_ka=ik_ka, source_r_x=project.source_r_x,
+            source_ik_ka=ik_total_ka if ik_total_ka is not None else ik_ka,
+            source_min_ik_ka=ik_ka, source_r_x=project.source_r_x,
+            voltage_factor_c_max=project.voltage_factor_c_max, voltage_factor_c_min=project.voltage_factor_c_min,
             conductor=f.conductor_material.value, insulation=f.insulation.value)
         vals.extend(self._verify_feeder_safety(project, f, sel_prot, profile, s_ph, s_pe,
                                               iz_derated, prot_in, i2_factor, clear_t, ik_total_ka))
@@ -729,6 +740,7 @@ class EngineeringEngine:
 
         k_derate_ref = self._get_derating_factor(sel_prot, project.max_internal_temp_c) if sel_prot else 0.90
         out = FeederCalcOutput(
+            phases=f.phases, supply_phase=f.supply_phase,
             feeder_id=f.feeder_id, func_tag=f.func_tag, loc_tag=f.loc_tag, description=f.description, load_type=f.load_type,
             power_kw=f.power_kw, active_power_demand_kw=round(p_elec_kw, 2), reactive_power_demand_kvar=round(q_elec_kvar, 2),
             design_current_ib_a=round(ib_a, 2), delta_loop_current_a=i_delta_a, star_current_a=i_star_a,
@@ -751,6 +763,35 @@ class EngineeringEngine:
         )
         return out, vals
 
+    @staticmethod
+    def _tn_disconnection_limit_s(project, feeder, rated_current_a):
+        u0 = project.nominal_voltage_v / math.sqrt(3)
+        final_limit = 0.8 if u0 <= 120 else (0.4 if u0 <= 230.95 else (0.2 if u0 <= 400 else 0.1))
+        return final_limit if feeder.load_type != LoadType.SUB_FEEDER and rated_current_a <= 32 else 5.0
+
+    def _candidate_fault_compatible(self, project, feeder, protection, phase, pe, source_ik, total_ik, clear_s):
+        if protection is None or source_ik is None:
+            return True
+        if pe is None or not 0 < clear_s <= 5:
+            return False
+        profile = audit_calculate_network_ik_profile(
+            project.transformer_kva, project.transformer_uk_pct, project.nominal_voltage_v,
+            feeder_cable_length_m=feeder.cable_length_m or 25, feeder_phase_mm2=phase, feeder_pe_mm2=pe,
+            source_ik_ka=total_ik or source_ik, source_min_ik_ka=source_ik, source_r_x=project.source_r_x,
+            voltage_factor_c_max=project.voltage_factor_c_max, voltage_factor_c_min=project.voltage_factor_c_min,
+            conductor=feeder.conductor_material.value, insulation=feeder.insulation.value)
+        if profile.ik_feeder_end_min_1p_ka is None:
+            return True
+        end_s = self._estimate_clear_time_s(protection, profile.ik_feeder_end_min_1p_ka)
+        if not 0 < end_s <= 5:
+            return False
+        if project.earthing_system.value.startswith('TN') and end_s > self._tn_disconnection_limit_s(project, feeder, protection.rated_current_in_a):
+            return False
+        k, _ = select_pe_k_factor('Cu' if feeder.conductor_material.value == 'CU' else 'Al', feeder.insulation.value, 'in_cable')
+        energy = max(((total_ik or source_ik)*1000)**2 * clear_s,
+                     (profile.ik_feeder_end_min_1p_ka*1000)**2 * end_s)
+        return energy <= min((k*phase)**2, (k*pe)**2)
+
     def _verify_feeder_safety(self, project, f, protection, profile, phase_mm2, pe_mm2,
                               iz_a, in_a, i2_factor, clear_s, bus_ik_ka):
         checks = []
@@ -769,9 +810,7 @@ class EngineeringEngine:
             f"Ik_min={profile.ik_feeder_end_min_1p_ka} kA; Ik_max={profile.ik_feeder_end_max_3p_ka} kA; {profile.scope_warning_note}", "IEC 60909-0")
         if project.earthing_system.value.startswith("TN") and protection and profile.ik_feeder_end_min_1p_ka:
             end_s = self._estimate_clear_time_s(protection, profile.ik_feeder_end_min_1p_ka)
-            u0 = project.nominal_voltage_v / math.sqrt(3)
-            final_limit = 0.8 if u0 <= 120 else (0.4 if u0 <= 230.95 else (0.2 if u0 <= 400 else 0.1))
-            limit_s = final_limit if f.load_type != LoadType.SUB_FEEDER and in_a <= 32 else 5.0
+            limit_s = self._tn_disconnection_limit_s(project, f, in_a)
             add("RULE-ADS-TN", "ads", ValidationStatus.ERROR if end_s > limit_s else ValidationStatus.WARNING,
                 f"t_est={end_s:g} s; limit={limit_s:g} s; approximate curve; source sequence impedances require verification", "IEC 60364-4-41")
         elif project.earthing_system.value.startswith("TN"):
@@ -825,6 +864,37 @@ class EngineeringEngine:
 
         s_design_kva = s_raw * project.simultaneity_factor_ks * (1.0 + project.spare_factor)
         i_design_main_a = (s_design_kva * 1000.0) / (math.sqrt(3) * project.nominal_voltage_v)
+        phase_power = {phase: 0j for phase in ('L1', 'L2', 'L3')}
+        unassigned_power = 0j
+        for feeder in feeders:
+            power = complex(feeder.active_power_demand_kw, feeder.reactive_power_demand_kvar)
+            if feeder.phases == 3:
+                for phase in phase_power:
+                    phase_power[phase] += power / 3
+            elif feeder.supply_phase is not None:
+                phase_power[feeder.supply_phase] += power
+            else:
+                unassigned_power += power
+        if unassigned_power:
+            worst_phase = max(phase_power, key=lambda phase: abs(phase_power[phase] + unassigned_power))
+            phase_power[worst_phase] += unassigned_power
+        u_ln = project.nominal_voltage_v / math.sqrt(3)
+        demand_margin = project.simultaneity_factor_ks * (1 + project.spare_factor)
+        phase_currents = {phase: abs(power) * 1000 / u_ln * demand_margin for phase, power in phase_power.items()}
+        i_design_main_a = max(phase_currents.values(), default=i_design_main_a)
+        neutral_a = abs(sum(power.conjugate() * cmath.exp(1j * angle) for power, angle in
+                           zip(phase_power.values(), (0, -2*math.pi/3, 2*math.pi/3)))) * 1000 / u_ln * demand_margin
+        average_a = sum(phase_currents.values()) / 3
+        imbalance = max((abs(current - average_a) for current in phase_currents.values()), default=0) / average_a * 100 if average_a else 0
+        if unassigned_power or imbalance > 10:
+            vals.append(ValidationResult(rule_id='RULE-PHASE-BALANCE', feeder_id='PANEL',
+                standard_ref='Engineering phase allocation',
+                status=ValidationStatus.INSUFFICIENT_DATA if unassigned_power else ValidationStatus.WARNING,
+                description=tr('audit_phase_balance'),
+                supporting_evidence=f'{phase_currents}; IN={neutral_a:.2f} A; imbalance={imbalance:.1f}%; '
+                                    + ('unassigned single-phase loads placed on worst phase; ' if unassigned_power else '')
+                                    + 'fundamental sinusoidal model; harmonic neutral currents require separate verification',
+                consequence=tr('audit_preliminary'), recommended_action=tr('audit_phase_action')))
         sum_ib = sum(f.design_current_ib_a for f in feeders)
 
         i_main_req_a = i_design_main_a
@@ -1259,6 +1329,8 @@ class EngineeringEngine:
         max_feeder_du = max((f.voltage_drop_percent for f in feeders), default=0.0)
 
         summary = PanelSummaryOutput(
+            phase_design_currents_a={phase: round(current, 2) for phase, current in phase_currents.items()},
+            neutral_current_a=round(neutral_a, 2), phase_imbalance_pct=round(imbalance, 2),
             total_active_kw=round(sum_p, 2), total_reactive_kvar=round(sum_q, 2), total_apparent_kva=round(s_design_kva, 2),
             overall_cos_phi=overall_cos_phi, sum_feeder_currents_a=round(sum_ib, 2), design_main_current_a=round(i_main_req_a, 2),
             main_breaker=main_breaker, recommended_busbar_spec=busbar_spec, recommended_pe_busbar_spec=pe_busbar_spec,
@@ -1298,6 +1370,9 @@ def build_design_verification(project: ProjectSpec, feeders: List[FeederCalcOutp
                               validations: List[ValidationResult]) -> DesignVerificationReport:
     """فاز ۱۲: گزارش تأیید طراحی مطابق IEC 61439-1 بند ۱۰ — چک‌لیست خودکار ۱۳ آیتم
     با مقدار محاسبه‌شده، روش تأیید، قاعده مرجع و وضعیت."""
+    from lv_assist.calculation_state import require_current_calculation
+    require_current_calculation(project, summary, feeders)
+
     def _worst(rule_ids) -> VerificationStatus:
         rel = [v for v in validations if v.rule_id in rule_ids]
         if not rel:
@@ -1313,7 +1388,7 @@ def build_design_verification(project: ProjectSpec, feeders: List[FeederCalcOutp
     items: List[DesignVerificationItem] = []
     enc = summary.selected_enclosure
     enc_pn = enc.part_number if enc else "-"
-    enc_verified = enc is not None and enc.data_quality == DataQuality.REAL_VERIFIED
+    enc_verified = enc is not None and enc.has_verified_datasheet
 
     # 10.2 — استحکام مصالح و قطعات (مقاومت در برابر خوردگی)
     items.append(DesignVerificationItem(
@@ -1462,6 +1537,18 @@ def build_design_verification(project: ProjectSpec, feeders: List[FeederCalcOutp
             status=VerificationStatus.NOT_VERIFIED, computed_value=tr('mount_' + project.enclosure_mounting.value),
             evidence=tr('mounting_review_note'), rule_ids=['SCEN-MOUNTING']))
 
+    for item in items:
+        if item.clause_ref == '10.5':
+            item.rule_ids = ['RULE-PE-I2T', 'RULE-ADS-TN', 'RULE-ADS-TT']
+        elif item.clause_ref == '10.8':
+            item.rule_ids = ['RULE-CABLE-009', 'RULE-CABLE-I2', 'RULE-PHASE-I2T']
+        if item.rule_ids and _worst(item.rule_ids) == VerificationStatus.FAIL:
+            item.status = VerificationStatus.FAIL
+        elif item.status == VerificationStatus.PASS:
+            item.status = VerificationStatus.NOT_VERIFIED
+        item.evidence += ' ' + tr('audit_no_assembly_proof')
+        if item.clause_ref == '10.9':
+            item.method = VerificationMethod.TYPE_TEST
     n_pass = sum(1 for it in items if it.status == VerificationStatus.PASS)
     n_warn = sum(1 for it in items if it.status == VerificationStatus.WARNING)
     n_fail = sum(1 for it in items if it.status == VerificationStatus.FAIL)

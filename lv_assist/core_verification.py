@@ -56,7 +56,7 @@ def estimate_clear_time_s(
     thermal_curve_lookup: Callable[[str, float], Optional[float]],
     is_approximated_curve: bool = True,
 ) -> TripTimeEstimate:
-    if fault_multiple is None or fault_multiple <= 0:
+    if fault_multiple is None or not math.isfinite(fault_multiple) or fault_multiple <= 0:
         return TripTimeEstimate(
             time_s=None,
             is_curve_estimated=is_approximated_curve,
@@ -107,7 +107,9 @@ def calculate_adiabatic_pe_mm2(
     trip_estimate: TripTimeEstimate,
     k_factor: float = 143.0,
 ) -> Tuple[Optional[float], CheckResult]:
-    if fault_current_a is None or fault_current_a <= 0 or trip_estimate.time_s is None:
+    if (fault_current_a is None or not math.isfinite(fault_current_a) or fault_current_a <= 0
+            or trip_estimate.time_s is None or not math.isfinite(trip_estimate.time_s)
+            or trip_estimate.time_s <= 0 or not math.isfinite(k_factor) or k_factor <= 0):
         return None, CheckResult(
             check_id="PE_ADIABATIC_SIZING",
             title="سایزینگ آدیاباتیک هادی حفاظتی (PE)",
@@ -117,7 +119,7 @@ def calculate_adiabatic_pe_mm2(
             recommended_action="طول کابل، امپدانس منبع و مشخصات منحنی کلید را تکمیل کنید."
         )
 
-    if trip_estimate.exceeds_adiabatic_5s_limit:
+    if trip_estimate.exceeds_adiabatic_5s_limit or trip_estimate.time_s > 5:
         return None, CheckResult(
             check_id="PE_ADIABATIC_SIZING",
             title="سایزینگ آدیاباتیک هادی حفاظتی (PE)",
@@ -163,9 +165,10 @@ def calculate_network_ik_profile(
     feeder_cable_length_m: Optional[float] = None,
     feeder_phase_mm2: Optional[float] = None,
     feeder_pe_mm2: Optional[float] = None,
-    voltage_factor_c_max: float = 1.05,
+    voltage_factor_c_max: float = 1.1,
     voltage_factor_c_min: float = 0.95,
     source_ik_ka: Optional[float] = None,
+    source_min_ik_ka: Optional[float] = None,
     source_r_x: Optional[float] = None,
     conductor: str = "CU",
     insulation: str = "PVC",
@@ -194,12 +197,16 @@ def calculate_network_ik_profile(
 
     r_bus = r_tr_ohm
     x_bus = x_tr_ohm
+    source_ratio = source_ik_ka / source_min_ik_ka if source_ik_ka and source_min_ik_ka else 1.0
+    r_bus_min, x_bus_min = r_bus * source_ratio, x_bus * source_ratio
     rho_cu_20 = 0.017241 if conductor == "CU" else 0.028264
     x_per_m = 0.00008
 
     if incomer_cable_length_m and incomer_cable_mm2 and incomer_cable_length_m > 0 and incomer_cable_mm2 > 0:
         r_bus += rho_cu_20 * (incomer_cable_length_m / incomer_cable_mm2)
         x_bus += x_per_m * incomer_cable_length_m
+        r_bus_min += rho_cu_20 * (incomer_cable_length_m / incomer_cable_mm2)
+        x_bus_min += x_per_m * incomer_cable_length_m
 
     z_bus_ohm = math.hypot(r_bus, x_bus)
     ik_bus_ka = (voltage_factor_c_max * u_phase_v) / (z_bus_ohm * 1000.0)
@@ -225,8 +232,8 @@ def calculate_network_ik_profile(
     alpha = 0.00393 if conductor == "CU" else 0.00403
     final_temp = 160 if insulation == "PVC" else 250
     rho_hot = rho_cu_20 * (1 + alpha * (final_temp - 20))
-    r_loop_min = (2.0 * r_bus) + rho_hot * feeder_cable_length_m * ((1.0 / feeder_phase_mm2) + (1.0 / pe_s))
-    x_loop_min = (2.0 * x_bus) + (2.0 * x_per_m * feeder_cable_length_m)
+    r_loop_min = (2.0 * r_bus_min) + rho_hot * feeder_cable_length_m * ((1.0 / feeder_phase_mm2) + (1.0 / pe_s))
+    x_loop_min = (2.0 * x_bus_min) + (2.0 * x_per_m * feeder_cable_length_m)
     z_loop_min = math.hypot(r_loop_min, x_loop_min)
     ik_end_min_1p_ka = (voltage_factor_c_min * u_phase_v) / (z_loop_min * 1000.0)
 
@@ -249,7 +256,9 @@ def verify_breaking_capacity_icu(
     prospective_ik_ka: Optional[float],
     is_ik_preliminary: bool = False,
 ) -> CheckResult:
-    if prospective_ik_ka is None or device_icu_ka is None or prospective_ik_ka <= 0 or device_icu_ka <= 0:
+    if (prospective_ik_ka is None or device_icu_ka is None
+            or not math.isfinite(prospective_ik_ka) or not math.isfinite(device_icu_ka)
+            or prospective_ik_ka <= 0 or device_icu_ka <= 0):
         return CheckResult(
             check_id="BREAKING_CAPACITY_ICU",
             title="بررسی قدرت قطع کلید حفاظتی (Icu >= Ik)",

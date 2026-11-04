@@ -141,9 +141,9 @@ class ExcelClipboardParser:
             if raw_cos:
                 try:
                     cos_phi = float(raw_cos)
-                    if not (0.1 <= cos_phi <= 1.0):
+                    if not (0.2 < cos_phi <= 1.0):
                         result.errors.append(
-                            RowValidationError(human_row, "cos_phi", raw_cos, "ضریب توان باید بین 0.1 و 1.0 باشد.")
+                            RowValidationError(human_row, "cos_phi", raw_cos, "ضریب توان باید بیشتر از 0.2 و حداکثر 1.0 باشد.")
                         )
                         continue
                 except ValueError:
@@ -157,7 +157,7 @@ class ExcelClipboardParser:
             if raw_eff:
                 try:
                     efficiency = float(raw_eff)
-                    if not (0.1 <= efficiency <= 1.0):
+                    if not (0.1 < efficiency <= 1.0):
                         result.errors.append(
                             RowValidationError(human_row, "efficiency", raw_eff, "بازده باید بین 0.1 و 1.0 باشد.")
                         )

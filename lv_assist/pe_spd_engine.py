@@ -45,7 +45,7 @@ def select_pe_k_factor(
     insulation: str = "PVC",
     arrangement: str = "separate",
 ) -> Tuple[int, str]:
-    """Return (k_factor, note). Falls back to 143 with a note when unsupported."""
+    """Return a tabulated k-factor; unsupported conductor arrangements require input correction."""
     key = (material, insulation, arrangement)
     k = PE_K_FACTOR_TABLE.get(key)
     if k is None:
@@ -103,13 +103,13 @@ def evaluate_spd_requirements(
     missing: List[str] = []
     notes: List[str] = []
 
-    if not earthing_system:
+    if earthing_system not in {'TN-S', 'TN-C-S', 'TT', 'IT'}:
         missing.append("earthing_system")
-    if not nominal_voltage_ln_v:
+    if nominal_voltage_ln_v is None or not math.isfinite(nominal_voltage_ln_v) or nominal_voltage_ln_v <= 0:
         missing.append("nominal_voltage_ln_v")
-    if has_external_lps is None:
+    if not isinstance(has_external_lps, bool):
         missing.append("external_lps")
-    if prospective_ik_ka is None:
+    if prospective_ik_ka is None or not math.isfinite(prospective_ik_ka) or prospective_ik_ka <= 0:
         missing.append("prospective_ik_ka")
 
     required_type: Optional[SPDType] = None
@@ -138,10 +138,12 @@ def evaluate_spd_requirements(
     else:
         min_uc_v = round(nominal_voltage_ln_v * 1.15, 1)
 
+    allowed_types = ({SPDType.TYPE_1.value, SPDType.TYPE_1_2.value} if has_external_lps else
+                     {SPDType.TYPE_2.value, SPDType.TYPE_2_3.value, SPDType.TYPE_1_2.value})
     matched = [
         c for c in candidates
         if (c.get("uc_v") or 0) >= min_uc_v
-        and (required_type is None or required_type.value in str(c.get("spd_type", "")))
+        and c.get('spd_type') in allowed_types
     ]
 
     if not matched:
@@ -161,7 +163,7 @@ def evaluate_spd_requirements(
     )
 
     return SPDSelectionResult(
-        spd_type=required_type,
+        spd_type=SPDType(best.get('spd_type')),
         model_name=best.get("model_name"),
         uc_v=best.get("uc_v"),
         up_kv=best.get("up_kv"),

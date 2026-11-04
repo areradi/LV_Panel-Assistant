@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 from enum import Enum
 from typing import List, Optional, Literal
-from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, AliasChoices
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, AliasChoices, ValidationError
 import hashlib
 import json
+
+InputValidationError = ValidationError
 
 
 def compute_input_hash(project, feeders) -> str:
@@ -184,7 +186,7 @@ class ProjectSpec(EngineeringInput):
     project_name: str = Field(..., min_length=2)
     panel_tag: str = Field(default="+MCC1")
     standard_ref: str = Field(default="IEC 61439-2 / IEC 60204-1")
-    nominal_voltage_v: float = Field(default=400.0, gt=0)
+    nominal_voltage_v: float = Field(default=400.0, ge=110, le=1000)
     frequency_hz: float = Field(default=50.0, gt=0)
     earthing_system: EarthingSystem = Field(default=EarthingSystem.TN_S)
     panel_type: PanelType = Field(default=PanelType.MCC)
@@ -196,6 +198,8 @@ class ProjectSpec(EngineeringInput):
     scenario_inputs: ScenarioInputs = Field(default_factory=ScenarioInputs)
     prospective_ik_ka: Optional[float] = Field(default=None, gt=0)
     source_r_x: Optional[float] = Field(default=None, ge=0)
+    voltage_factor_c_max: float = Field(default=1.1, ge=1, le=1.1)
+    voltage_factor_c_min: float = Field(default=.95, gt=0, le=1)
     busbar_phase_spacing_mm: float = Field(default=60, gt=0)
     busbar_support_span_mm: Optional[float] = Field(default=None, gt=0)
     busbar_allowable_stress_mpa: float = Field(default=120, gt=0)
@@ -225,7 +229,8 @@ class FeederInput(EngineeringInput):
     load_type: LoadType
     power_kw: float = Field(..., gt=0)
     phases: Literal[1, 3] = 3
-    cos_phi: Optional[float] = Field(default=None, ge=0.1, le=1.0)
+    supply_phase: Optional[Literal['L1', 'L2', 'L3']] = None
+    cos_phi: Optional[float] = Field(default=None, gt=0.2, le=1.0)
     efficiency: Optional[float] = Field(default=None, gt=0.1, le=1.0)
     demand_factor_kd: float = Field(default=1.0, gt=0.0, le=1.0)
     cable_length_m: Optional[float] = Field(default=None, gt=0)
@@ -387,6 +392,8 @@ class BusbarResult(BaseModel):
 class FeederCalcOutput(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
     verified_input_hash: Optional[str] = None
+    phases: Literal[1, 3] = 3
+    supply_phase: Optional[Literal['L1', 'L2', 'L3']] = None
 
     feeder_id: str
     func_tag: str
@@ -452,6 +459,9 @@ class PanelSummaryOutput(BaseModel):
     total_apparent_kva: float
     overall_cos_phi: float
     sum_feeder_currents_a: float
+    phase_design_currents_a: dict[str, float] = Field(default_factory=dict)
+    neutral_current_a: Optional[float] = None
+    phase_imbalance_pct: Optional[float] = None
     design_main_current_a: float
     main_breaker: Optional[CatalogDevice] = None
     recommended_busbar_spec: str

@@ -46,7 +46,7 @@ class TccAnalyzer:
     @staticmethod
     def trip_time_s(series: str, rated_in_a: float, current_a: float) -> Optional[float]:
         """زمان قطع تخمینی (s) در جریان dataشده؛ زیر ۱.۰۵×In → None (نمی‌پرد)."""
-        if rated_in_a <= 0 or current_a <= 0:
+        if not math.isfinite(rated_in_a) or not math.isfinite(current_a) or rated_in_a <= 0 or current_a <= 0:
             return None
         mult = current_a / rated_in_a
         if mult < GRID_MIN_MULT:

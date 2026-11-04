@@ -310,7 +310,7 @@ class TestPhase2IkAndDip:
         project = make_project(prospective_ik_ka=None, transformer_kva=1600.0, transformer_uk_pct=6.0)
         _, summary, validations = EngineeringEngine(CATALOG).process_project(project, [make_feeder()])
         assert summary.ik_used_ka is not None
-        assert abs(summary.ik_used_ka - 38.49) < 0.05
+        assert abs(summary.ik_used_ka - 42.34) < 0.05
         assert any(v.rule_id == "RULE-IK-012" and v.status == ValidationStatus.COMPLETED for v in validations)
 
     def test_no_ik_degrades_gracefully(self):
@@ -1793,17 +1793,17 @@ class TestPhase12DesignVerification:
             assert expected in clauses
         assert all(it.title and it.requirement and it.computed_value for it in report.items)
 
-    def test_demo_project_conforms(self):
+    def test_demo_calculations_do_not_certify_assembly_conformity(self):
         from lv_assist.engine import build_design_verification
         from lv_assist.models import VerificationStatus
         project, outs, summary, validations = self._demo()
         report = build_design_verification(project, outs, summary, validations)
         assert not any(it.status == VerificationStatus.FAIL for it in report.items)
-        assert report.conclusion_status in (VerificationStatus.PASS, VerificationStatus.WARNING)
+        assert report.conclusion_status == VerificationStatus.NOT_VERIFIED
         by_clause = {it.clause_ref: it for it in report.items}
-        assert by_clause["10.4"].status == VerificationStatus.PASS
-        assert by_clause["10.9"].method.value == "DESIGN_RULE"
-        assert by_clause["10.11"].status == VerificationStatus.PASS
+        assert by_clause["10.4"].status == VerificationStatus.NOT_VERIFIED
+        assert by_clause["10.9"].method.value == "TYPE_TEST"
+        assert by_clause["10.11"].status == VerificationStatus.NOT_VERIFIED
         assert "RULE-BUS-025" in by_clause["10.11"].rule_ids
         assert by_clause["10.10"].method.value == "CALCULATION"
 
@@ -1841,7 +1841,7 @@ class TestPhase12DesignVerification:
         if summary.effective_ip_str != project.target_ip:
             assert by_clause["10.3"].status == VerificationStatus.WARNING
         else:
-            assert by_clause["10.3"].status == VerificationStatus.PASS
+            assert by_clause["10.3"].status == VerificationStatus.NOT_VERIFIED
 
     def test_html_report_generates_with_items(self, tmp_path):
         from lv_assist.engine import build_design_verification

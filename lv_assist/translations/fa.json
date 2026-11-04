@@ -1079,5 +1079,12 @@
   "paste_success": "{count} بار وارد شد. پیش از خروجی گرفتن دوباره محاسبه کنید.",
   "audit_rcd_type": "تیپ RCD (AC/A/F/B)",
   "audit_rcd_delta": "حساسیت RCD (mA)",
-  "audit_earth_res": "مقاومت زمین (ohm)"
+  "audit_earth_res": "مقاومت زمین (ohm)",
+  "audit_load_phases": "تعداد فاز (1 یا 3)",
+  "audit_load_phase": "فاز تغذیه تک‌فاز (L1/L2/L3)",
+  "audit_phase_balance": "بررسی تخصیص بار و عدم تعادل فازها",
+  "audit_phase_action": "فاز بارهای تک‌فاز را مشخص و پُربارترین فاز و هادی نول را بررسی کنید.",
+  "audit_no_assembly_proof": "مقدماتی: مدرک آزمون یا صحه‌گذاری طراحی مجموعه ثبت نشده است؛ این محاسبات گواهی انطباق نیستند.",
+  "wiz_cmax": "ضریب ولتاژ حداکثر cmax",
+  "wiz_cmin": "ضریب ولتاژ حداقل cmin"
 }

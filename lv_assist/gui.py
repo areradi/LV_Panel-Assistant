@@ -166,11 +166,11 @@ GUIDE_FEEDER_ROWS = [
     ("load_type", "نوع بار", "Load type", "Lastart",
      "MOTOR_DOL | MOTOR_STAR_DELTA | MOTOR_SOFT_STARTER | MOTOR_VFD | SUB_FEEDER | LIGHTING_SOCKET | HEATER_RESISTIVE",
      "MOTOR_DOL"),
-    ("power_kw", "توان نامی بار (kW)", "Rated load power (kW)", "Nennleistung der Last (kW)", "kW (>0)", "15"),
+    ("power_kw", "توان محور موتور؛ برای سایر بارها توان الکتریکی (kW)", "Motor shaft power; other loads: electrical input (kW)", "Motorwellenleistung; sonstige Lasten: elektrische Aufnahme (kW)", "kW (>0)", "15"),
     ("phases", "تعداد فاز", "Number of phases", "Phasenzahl", "1 | 3", "3"),
     ("cos_phi", "ضریب توان بار؛ خالی = پیش‌فرض بر اساس نوع بار",
-     "Load power factor; empty = default by load type", "Leistungsfaktor der Last; leer = Standard je Lastart", "0.1 - 1.0", "0.85"),
-    ("efficiency", "راندمان؛ خالی = 1.0", "Efficiency; empty = 1.0", "Wirkungsgrad; leer = 1,0", "0.1 - 1.0", "0.91"),
+     "Load power factor; empty = recorded assumption", "Leistungsfaktor; leer = protokollierte Annahme", ">0.2 to 1.0", "0.85"),
+    ("efficiency", "راندمان محور موتور؛ خالی = فرض ثبت‌شده", "Motor shaft efficiency; empty = recorded assumption", "Motorwellenwirkungsgrad; leer = protokollierte Annahme", ">0.1 to 1.0", "0.91"),
     ("demand_factor_kd", "ضریب تقاضای بار", "Load demand factor", "Bedarfsfaktor der Last", "0.1 - 1.0", "1.0"),
     ("cable_length_m", "طول کابل تا مصرف‌کننده (m)", "Cable length to load (m)", "Kabellänge zur Last (m)", "m", "45"),
     ("cable_section_mm2", "سطح مقطع کابل موجود؛ خالی = انتخاب خودکار", "Existing cable cross-section; empty = auto-select",
@@ -373,6 +373,8 @@ class ExcelInputManager:
                 special_scenario=_enum(SpecialScenario, "special_scenario", SpecialScenario.NONE),
                 prospective_ik_ka=_f_opt("prospective_ik_ka"),
                 source_r_x=_f_opt('source_r_x'),
+                voltage_factor_c_max=_f('voltage_factor_c_max', 1.1),
+                voltage_factor_c_min=_f('voltage_factor_c_min', .95),
                 busbar_phase_spacing_mm=_f('busbar_phase_spacing_mm', 60),
                 busbar_support_span_mm=_f_opt('busbar_support_span_mm'),
                 busbar_allowable_stress_mpa=_f('busbar_allowable_stress_mpa', 120),
@@ -551,6 +553,8 @@ class FeederEditDialog(ctk.CTkToplevel):
         row("edt_kd", "demand_factor_kd", float)
         row("edt_length", "cable_length_m", _opt_float)
         row("edt_lrc", "locked_rotor_current_a", _opt_float)
+        row('audit_load_phases', 'phases', int)
+        row('audit_load_phase', 'supply_phase', lambda v: v.strip().upper() or None)
         row('audit_rcd_type', 'rcd_type', lambda v: v.strip().upper() or None)
         row('audit_rcd_delta', 'rcd_sensitivity_ma', _opt_float)
         row('audit_earth_res', 'earth_resistance_ohm', _opt_float)
@@ -595,7 +599,8 @@ class FeederEditDialog(ctk.CTkToplevel):
                 description=self._entries["description"][0].get().strip() or f.description,
                 load_type=LoadType(self._type_menu.get()),
                 power_kw=self._entries["power_kw"][1](self._entries["power_kw"][0].get()),
-                phases=f.phases,
+                phases=self._entries['phases'][1](self._entries['phases'][0].get()),
+                supply_phase=self._entries['supply_phase'][1](self._entries['supply_phase'][0].get()),
                 cos_phi=self._entries["cos_phi"][1](self._entries["cos_phi"][0].get()),
                 efficiency=self._entries["efficiency"][1](self._entries["efficiency"][0].get()),
                 demand_factor_kd=self._entries["demand_factor_kd"][1](self._entries["demand_factor_kd"][0].get()),
@@ -1134,6 +1139,8 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             ("wiz_ks", "entry", "0.85"),
             ("wiz_plc_base", "entry", "55"),
             ("wiz_source_rx", "entry", ""),
+            ("wiz_cmax", "entry", "1.1"),
+            ("wiz_cmin", "entry", ".95"),
             ("wiz_bus_spacing", "entry", "60"),
             ("wiz_bus_span", "entry", ""),
             ("wiz_bus_stress", "entry", "120"),
@@ -1243,6 +1250,8 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             "wiz_ks": f"{project.simultaneity_factor_ks:g}",
             "wiz_plc_base": f"{project.plc_hmi_24vdc_power_w:g}",
             "wiz_source_rx": '' if project.source_r_x is None else str(project.source_r_x),
+            "wiz_cmax": str(project.voltage_factor_c_max),
+            "wiz_cmin": str(project.voltage_factor_c_min),
             "wiz_bus_spacing": str(project.busbar_phase_spacing_mm),
             "wiz_bus_span": '' if project.busbar_support_span_mm is None else str(project.busbar_support_span_mm),
             "wiz_bus_stress": str(project.busbar_allowable_stress_mpa),
@@ -1291,6 +1300,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             "wiz_spare": "spare_factor", "wiz_plc_base": "plc_hmi_24vdc_power_w",
             "wiz_enc_width": "enclosure_width_mm", "wiz_enc_height": "enclosure_height_mm", "wiz_enc_depth": "enclosure_depth_mm",
             "wiz_source_rx": "source_r_x", "wiz_bus_spacing": "busbar_phase_spacing_mm",
+            "wiz_cmax": "voltage_factor_c_max", "wiz_cmin": "voltage_factor_c_min",
             "wiz_bus_span": "busbar_support_span_mm", "wiz_bus_stress": "busbar_allowable_stress_mpa",
         }
         text_fields = {
@@ -1905,6 +1915,8 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             (('پیک موردنیاز', 'Required peak current', 'Erforderlicher Scheitelstrom'), '—' if summary.busbar_required_ipk_ka is None else f'{summary.busbar_required_ipk_ka:g} kA'),
             (('تنش خمشی مقدماتی', 'Preliminary bending stress', 'Vorläufige Biegespannung'), '—' if summary.busbar_bending_stress_mpa is None else f'{summary.busbar_bending_stress_mpa:.2f} MPa'),
             (('ضریب دمای شینه (برآورد)', 'Busbar temperature factor (estimate)', 'Schienentemperaturfaktor (Schätzung)'), f'{summary.busbar_temperature_factor:.3f}'),
+            (('جریان طراحی هر فاز', 'Design current by phase', 'Bemessungsstrom je Phase'), ' | '.join(f'{phase}: {current:g} A' for phase, current in summary.phase_design_currents_a.items())),
+            (('جریان نول در مؤلفه اصلی', 'Fundamental neutral current', 'Grundschwingungs-Neutralleiterstrom'), f'{summary.neutral_current_a:g} A' if summary.neutral_current_a is not None else '—'),
             (('فاصله حداکثر ساپورت', 'Maximum support spacing', 'Maximaler Stützabstand'), '—' if summary.busbar_max_support_spacing_mm is None else f'{summary.busbar_max_support_spacing_mm:g} mm'),
             (('تعداد ساپورت محاسبه‌شده', 'Calculated support count', 'Berechnete Stützanzahl'), str(summary.busbar_required_supports)),
             (('افت ولتاژ شینه', 'Busbar voltage drop', 'Schienen-Spannungsfall'), f'{summary.busbar_du_v:g} V / {summary.busbar_du_pct:g} %'),

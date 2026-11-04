@@ -1079,5 +1079,12 @@
   "paste_success": "{count} Lasten importiert. Vor dem Export neu berechnen.",
   "audit_rcd_type": "RCD-Typ (AC/A/F/B)",
   "audit_rcd_delta": "RCD-Bemessungsdifferenzstrom (mA)",
-  "audit_earth_res": "Erdungswiderstand (Ohm)"
+  "audit_earth_res": "Erdungswiderstand (Ohm)",
+  "audit_load_phases": "Phasen (1 oder 3)",
+  "audit_load_phase": "Einphasige Versorgung (L1/L2/L3)",
+  "audit_phase_balance": "Prüfung der Phasenzuordnung und Unsymmetrie",
+  "audit_phase_action": "Einphasige Lasten zuordnen und höchste Phasenbelastung sowie Neutralleiter prüfen.",
+  "audit_no_assembly_proof": "VORLÄUFIG: Kein Prüf- oder Bauartnachweis der Schaltgerätekombination erfasst; diese Berechnungen bestätigen keine Konformität.",
+  "wiz_cmax": "Maximaler Spannungsfaktor cmax",
+  "wiz_cmin": "Minimaler Spannungsfaktor cmin"
 }

@@ -101,6 +101,9 @@ class ExcelExporter:
                                     d=f"{project.spd_connection_length_m:g}")))
         else:
             summary_rows.append((tr("rpt_spd"), summary.spd_suggested_str or tr("rpt_cap_none"), "-", "-"))
+        for phase, current in summary.phase_design_currents_a.items():
+            summary_rows.append((phase, current, 'A', 'Design current by phase'))
+        summary_rows.append(('Neutral (fundamental)', summary.neutral_current_a, 'A', 'Harmonic currents require separate verification'))
         for r in summary_rows: _append_safe(ws1, r)
 
         ws2 = wb.create_sheet("02_Feeder_Cable_Schedule")

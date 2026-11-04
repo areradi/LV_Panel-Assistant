@@ -1079,5 +1079,12 @@
   "paste_success": "Imported {count} loads. Recalculate before exporting.",
   "audit_rcd_type": "RCD type (AC/A/F/B)",
   "audit_rcd_delta": "RCD sensitivity (mA)",
-  "audit_earth_res": "Earth resistance (ohm)"
+  "audit_earth_res": "Earth resistance (ohm)",
+  "audit_load_phases": "Phases (1 or 3)",
+  "audit_load_phase": "Single-phase supply (L1/L2/L3)",
+  "audit_phase_balance": "Phase allocation and unbalance check",
+  "audit_phase_action": "Assign single-phase loads and review the busiest phase and neutral conductor.",
+  "audit_no_assembly_proof": "PRELIMINARY: no assembly test or design-verification evidence is recorded; these calculations do not certify conformity.",
+  "wiz_cmax": "Maximum voltage factor cmax",
+  "wiz_cmin": "Minimum voltage factor cmin"
 }
