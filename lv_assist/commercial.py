@@ -14,7 +14,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 from lv_assist.catalog import CatalogRepository, _ensure_user_tables
 from lv_assist.models import ProjectSpec, FeederCalcOutput, PanelSummaryOutput, CatalogDevice, LoadType
-from lv_assist.outputs import _bom_entries
+from lv_assist.bom import build_bom
 from lv_assist.i18n import tr, i18n
 
 
@@ -78,7 +78,7 @@ def seed_default_catalog_prices(currency: str = "EUR") -> int:
     for dev in repo.devices:
         if dev.part_number not in existing:
             price = estimate_catalog_unit_price_eur(dev)
-            repo.set_device_price(dev.part_number, price, currency=currency)
+            repo.set_device_price(dev.part_number, price, currency=currency, source='ESTIMATED')
             added += 1
     return added
 
@@ -150,7 +150,10 @@ class CommercialEngine:
         prices = repo.list_prices()
 
         lines: List[QuoteLineItem] = []
-        raw_entries = _bom_entries(project, feeders, summary)
+        bom = build_bom(project, feeders, summary)
+        raw_entries = [(item.func_loc, '', item.tag, item.category, item.device,
+                        item.description + ' ' + item.tech_spec, item.qty) for item in bom]
+        units = {f'{item.func_loc}{item.tag}': item.unit for item in bom}
 
         grouped: Dict[str, List[Any]] = {}
         unassigned_idx = 0
@@ -180,7 +183,7 @@ class CommercialEngine:
                 pn = dev.part_number
                 mfg = dev.manufacturer
             else:
-                u_price = 35.0
+                u_price = 0.0
                 p_src = "TBD"
                 desc = sug_spec or "Auxiliary / Fuse"
                 pn = "TBD"
@@ -190,7 +193,7 @@ class CommercialEngine:
             eq_subtotal += t_price
             lines.append(QuoteLineItem(
                 item_no=idx, category=cat, tag=tag_str, part_number=pn,
-                manufacturer=mfg, description=desc, qty=qty, unit="PCS",
+                manufacturer=mfg, description=desc, qty=qty, unit=units.get(tags[0], "pcs"),
                 unit_price=u_price, total_price=t_price, currency=currency, price_source=p_src
             ))
 

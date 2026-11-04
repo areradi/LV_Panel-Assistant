@@ -445,7 +445,7 @@ class CatalogRepository:
         self.reload()
         return cur.rowcount > 0
 
-    def set_device_price(self, device_id: str, unit_price: Optional[float], currency: str = "EUR") -> None:
+    def set_device_price(self, device_id: str, unit_price: Optional[float], currency: str = "EUR", source: str = "MANUAL") -> None:
         """ثبت/به‌روزرسانی قیمت واحد یک قطعه برای برآورد بهای BOM."""
         with self._connect() as conn:
             if unit_price is None:
@@ -453,8 +453,8 @@ class CatalogRepository:
             else:
                 conn.execute(
                     "INSERT OR REPLACE INTO device_prices (device_id, unit_price, currency, price_source, updated_at)"
-                    " VALUES (?,?,?,'MANUAL',datetime('now'))",
-                    (device_id, float(unit_price), currency))
+                    " VALUES (?,?,?,?,datetime('now'))",
+                    (device_id, float(unit_price), currency, source))
             conn.commit()
 
     def get_device_price(self, device_id: str) -> Optional[Dict[str, Any]]:

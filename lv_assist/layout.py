@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """بهینه‌سازی چیدمان فیزیکی پانل: جانمایی تجهیزات روی ریل DIN با ابعاد کاتالوگ، فواصل IEC 61439-2 و تفکیک سینی/درب."""
+from lv_assist.drawing_status import preliminary_drawing
+from lv_assist.models import feeder_reference_tag
 from lv_assist.calculation_state import require_current_calculation
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -79,18 +81,18 @@ class PanelLayoutGenerator:
         devs += cls._dev("-Q0", summary.main_breaker, "POWER")
         devs += cls._dev("-F9", summary.selected_spd, "POWER")
         for i, f in enumerate(feeders, start=1):
-            devs += cls._dev(f"-Q{i}", f.selected_protection, "POWER",
+            devs += cls._dev(feeder_reference_tag(i, 'protection'), f.selected_protection, "POWER",
                              extra_loss_w=f.total_feeder_loss_w)
             if f.load_type == LoadType.MOTOR_STAR_DELTA:
-                devs += cls._dev(f"-K{i}M", f.selected_contactor_main, "POWER")
-                devs += cls._dev(f"-K{i}D", f.selected_contactor_delta, "POWER")
-                devs += cls._dev(f"-K{i}Y", f.selected_contactor_star, "POWER")
-                devs += cls._dev(f"-F{i}", f.selected_bimetal, "POWER")
-                devs += cls._dev(f"-K{i}T", f.selected_timer_yd, "CONTROL")
+                devs += cls._dev(feeder_reference_tag(i, 'contactor_main'), f.selected_contactor_main, "POWER")
+                devs += cls._dev(feeder_reference_tag(i, 'contactor_delta'), f.selected_contactor_delta, "POWER")
+                devs += cls._dev(feeder_reference_tag(i, 'contactor_star'), f.selected_contactor_star, "POWER")
+                devs += cls._dev(feeder_reference_tag(i, 'overload'), f.selected_bimetal, "POWER")
+                devs += cls._dev(feeder_reference_tag(i, 'timer'), f.selected_timer_yd, "CONTROL")
             elif f.load_type == LoadType.MOTOR_DOL:
-                devs += cls._dev(f"-K{i}", f.selected_contactor_main, "POWER")
-            devs += cls._dev(f"-G{i}", f.selected_soft_starter, "POWER", clearance=100.0)
-            devs += cls._dev(f"-U{i}", f.selected_vfd, "POWER", clearance=100.0)
+                devs += cls._dev(feeder_reference_tag(i, 'contactor_main'), f.selected_contactor_main, "POWER")
+            devs += cls._dev(feeder_reference_tag(i, 'drive'), f.selected_soft_starter, "POWER", clearance=100.0)
+            devs += cls._dev(feeder_reference_tag(i, 'drive'), f.selected_vfd, "POWER", clearance=100.0)
         n_steps = len(summary.cap_bank_steps) or 1
         devs += cls._dev("-Qcap", summary.cap_bank_protection, "PFC")
         devs += cls._dev("-Kcap", summary.cap_bank_contactor, "PFC", qty=n_steps)
@@ -304,6 +306,7 @@ class PanelLayoutGenerator:
         return "".join(elems)
 
     @classmethod
+    @preliminary_drawing
     def generate_svg(cls, project: ProjectSpec, feeders: List[FeederCalcOutput],
                      summary: PanelSummaryOutput) -> str:
         require_current_calculation(project, summary, feeders)

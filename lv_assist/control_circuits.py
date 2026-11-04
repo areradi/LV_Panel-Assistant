@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """اتوماسیون مدارهای کنترلی: دیاگرام نردبانی SVG، لیست سیم‌ها و خروجی اتصالات سازگار با EPLAN."""
+from lv_assist.drawing_status import preliminary_drawing
+from lv_assist.models import feeder_reference_tag
 from lv_assist.calculation_state import require_current_calculation
 import csv
 from datetime import datetime
@@ -62,7 +64,7 @@ class ControlCircuitGenerator:
             wires.append(cls._w(f"W{p}-{n:02d}", fd, ft, td, tt, remark))
             n += 1
         x1, x2 = "-X1", "-X2"
-        q, k = f"-Q{idx}", f"-K{idx}"
+        q, k = feeder_reference_tag(idx, 'protection'), feeder_reference_tag(idx, 'contactor_main')
         s0, s1 = f"-S{idx}0", f"-S{idx}1"
         h1, h2 = f"-H{idx}1", f"-H{idx}2"
 
@@ -78,8 +80,8 @@ class ControlCircuitGenerator:
             w(k, "54", h1, "X1", tr("ctrl_run_lamp"))
             w(h1, "X2", x2, "1", tr("ctrl_m"))
         elif f.load_type == LoadType.MOTOR_STAR_DELTA:
-            ky, kd, kt = f"-K{idx}Y", f"-K{idx}D", f"-K{idx}T"
-            fb = f"-F{idx}"
+            ky, kd, kt = feeder_reference_tag(idx, 'contactor_star'), feeder_reference_tag(idx, 'contactor_delta'), feeder_reference_tag(idx, 'timer')
+            fb = feeder_reference_tag(idx, 'overload')
             w(x1, "1", fb, "95", tr("ctrl_bimetal_aux"))
             w(fb, "96", s0, "11", tr("ctrl_bimetal_aux"))
             w(s0, "12", s1, "13", tr("ctrl_stop"))
@@ -100,7 +102,7 @@ class ControlCircuitGenerator:
             w(fb, "98", h2, "X1", tr("ctrl_fault_lamp"))
             w(h2, "X2", x2, "1", tr("ctrl_m"))
         elif f.load_type == LoadType.MOTOR_SOFT_STARTER:
-            g = f"-G{idx}"
+            g = feeder_reference_tag(idx, 'drive')
             w(x1, "1", s0, "11", tr("ctrl_stop"))
             w(s0, "12", s1, "13", tr("ctrl_stop"))
             w(s1, "14", g, "DI1", tr("ctrl_soft_di"))
@@ -112,7 +114,7 @@ class ControlCircuitGenerator:
             w(g, "96", h2, "X1", tr("ctrl_fault_lamp"))
             w(h2, "X2", x2, "1", tr("ctrl_m"))
         elif f.load_type == LoadType.MOTOR_VFD:
-            u = f"-U{idx}"
+            u = feeder_reference_tag(idx, 'drive')
             w(x1, "1", s0, "11", tr("ctrl_stop"))
             w(s0, "12", u, "DI_EN", tr("ctrl_vfd_en"))
             w(x1, "1", s1, "13", tr("ctrl_start"))
@@ -184,29 +186,30 @@ class ControlCircuitGenerator:
             title = tr("ctrl_block_feeder", a=f.feeder_id, b=tr("lt_" + f.load_type.value)) + f" — {f.description[:40]}"
             if f.load_type == LoadType.MOTOR_DOL:
                 rungs = [
-                    [(f"-Q{idx}", "95 / 96", "nc"), (f"-S{idx}0", "11 / 12", "nc"), (f"-S{idx}1", "13 / 14", "no"), (f"-K{idx}", "A1 / A2", "coil")],
-                    [(f"-K{idx}", "13 / 14", "no"), (f"-K{idx}", "53 / 54", "no"), (f"-H{idx}1", "X1 / X2", "lamp")],
+                    [(feeder_reference_tag(idx, 'protection'), "95 / 96", "nc"), (f"-S{idx}0", "11 / 12", "nc"), (f"-S{idx}1", "13 / 14", "no"), (feeder_reference_tag(idx, 'contactor_main'), "A1 / A2", "coil")],
+                    [(feeder_reference_tag(idx, 'contactor_main'), "13 / 14", "no"), (feeder_reference_tag(idx, 'contactor_main'), "53 / 54", "no"), (f"-H{idx}1", "X1 / X2", "lamp")],
                 ]
             elif f.load_type == LoadType.MOTOR_STAR_DELTA:
                 rungs = [
-                    [(f"-F{idx}", "95 / 96", "nc"), (f"-S{idx}0", "11 / 12", "nc"), (f"-S{idx}1", "13 / 14", "no"), (f"-K{idx}Y", "A1 / A2", "coil"), (f"-K{idx}T", "A1 / A2", "coil")],
-                    [(f"-K{idx}T", "15 / 18", "no"), (f"-K{idx}Y", "21 / 22", "nc"), (f"-K{idx}D", "A1 / A2", "coil")],
-                    [(f"-K{idx}D", "53 / 54", "no"), (f"-H{idx}1", "X1 / X2", "lamp"), (f"-F{idx}", "97 / 98", "no"), (f"-H{idx}2", "X1 / X2", "lamp")],
+                    [(feeder_reference_tag(idx, 'overload'), "95 / 96", "nc"), (f"-S{idx}0", "11 / 12", "nc"), (f"-S{idx}1", "13 / 14", "no"), (feeder_reference_tag(idx, 'contactor_star'), "A1 / A2", "coil"), (feeder_reference_tag(idx, 'timer'), "A1 / A2", "coil")],
+                    [(feeder_reference_tag(idx, 'timer'), "15 / 18", "no"), (feeder_reference_tag(idx, 'contactor_star'), "21 / 22", "nc"), (feeder_reference_tag(idx, 'contactor_delta'), "A1 / A2", "coil")],
+                    [(feeder_reference_tag(idx, 'contactor_delta'), "53 / 54", "no"), (f"-H{idx}1", "X1 / X2", "lamp"), (feeder_reference_tag(idx, 'overload'), "97 / 98", "no"), (f"-H{idx}2", "X1 / X2", "lamp")],
                 ]
             elif f.load_type == LoadType.MOTOR_SOFT_STARTER:
                 rungs = [
-                    [(f"-S{idx}0", "11 / 12", "nc"), (f"-S{idx}1", "13 / 14", "no"), (f"-G{idx}", "DI1 / COM", "io")],
-                    [(f"-G{idx}", "13 / 14", "no"), (f"-H{idx}1", "X1 / X2", "lamp"), (f"-G{idx}", "95 / 96", "nc"), (f"-H{idx}2", "X1 / X2", "lamp")],
+                    [(f"-S{idx}0", "11 / 12", "nc"), (f"-S{idx}1", "13 / 14", "no"), (feeder_reference_tag(idx, 'drive'), "DI1 / COM", "io")],
+                    [(feeder_reference_tag(idx, 'drive'), "13 / 14", "no"), (f"-H{idx}1", "X1 / X2", "lamp"), (feeder_reference_tag(idx, 'drive'), "95 / 96", "nc"), (f"-H{idx}2", "X1 / X2", "lamp")],
                 ]
             else:  # MOTOR_VFD
                 rungs = [
-                    [(f"-S{idx}0", "11 / 12", "nc"), (f"-U{idx}", "DI_EN / COM", "io"), (f"-S{idx}1", "13 / 14", "no"), (f"-U{idx}", "DI_RUN / COM", "io")],
-                    [(f"-U{idx}", "R1A / R1C", "no"), (f"-H{idx}1", "X1 / X2", "lamp"), (f"-U{idx}", "R2A / R2C", "no"), (f"-H{idx}2", "X1 / X2", "lamp")],
+                    [(f"-S{idx}0", "11 / 12", "nc"), (feeder_reference_tag(idx, 'drive'), "DI_EN / COM", "io"), (f"-S{idx}1", "13 / 14", "no"), (feeder_reference_tag(idx, 'drive'), "DI_RUN / COM", "io")],
+                    [(feeder_reference_tag(idx, 'drive'), "R1A / R1C", "no"), (f"-H{idx}1", "X1 / X2", "lamp"), (feeder_reference_tag(idx, 'drive'), "R2A / R2C", "no"), (f"-H{idx}2", "X1 / X2", "lamp")],
                 ]
             specs.append(("feeder", title, f"W{idx:02d}", "#1F4E78", rungs))
         return specs
 
     @classmethod
+    @preliminary_drawing
     def generate_svg(cls, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> str:
         require_current_calculation(project, summary, feeders)
         wires_all = cls.build_all_wires(project, feeders, summary)

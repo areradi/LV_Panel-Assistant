@@ -121,51 +121,13 @@ class ExcelExporter:
 
         ws4 = wb.create_sheet("04_BOM")
         _append_safe(ws4, [tr("rpt_b_dt"), tr("rpt_b_func"), tr("rpt_b_loc"), tr("rpt_b_bmk"), tr("rpt_b_cat"), tr("rpt_b_man"), tr("rpt_b_pn"), tr("rpt_b_desc"), tr("rpt_b_qty"), tr("rpt_b_unit"), tr("rpt_b_loss"), tr("rpt_b_status")])
-        def add_bom(func, loc, bmk, cat, dev: CatalogDevice, note="", qty=1):
-            _append_safe(ws4, [f"{func}{loc}{bmk}", func, loc, bmk, cat, dev.manufacturer, dev.part_number, f"{dev.series} ({dev.device_type})" + (f" - {note}" if note else ""), qty, "PCS", dev.power_loss_w, dev.data_quality.value])
-
-        if summary.main_breaker: add_bom("=INCOMING", project.panel_tag, "-Q0", tr("bom_main"), summary.main_breaker, f"In={summary.main_breaker.rated_current_in_a}A")
-        if summary.selected_spd:
-            spd = summary.selected_spd
-            add_bom("=INCOMING", project.panel_tag, "-F9", tr("bom_spd"), spd,
-                    f"Uc={spd.spd_uc_v:g}V Up={spd.spd_up_kv:g}kV")
-            if spd.spd_backup_fuse_a > 0:
-                _append_safe(ws4, [f"=INCOMING{project.panel_tag}-F9F", "=INCOMING", project.panel_tag, "-F9F",
-                                   tr("bom_spd_fuse"), "To be purchased",
-                                   tr("bom_spd_fuse_spec", a=f"{spd.spd_backup_fuse_a:g}", b=spd.spd_class),
-                                   tr("bom_spd_fuse"), 1, "PCS", 0.0, DataQuality.ESTIMATED.value])
-        if summary.selected_psu_primary_mcb: add_bom("=CTRL", project.panel_tag, "-Q01", tr("bom_psu_mcb"), summary.selected_psu_primary_mcb, "6A")
-        if summary.selected_psu_24v: add_bom("=CTRL", project.panel_tag, "-G1", tr("bom_psu"), summary.selected_psu_24v, f"Des={summary.ctrl_24v_design_current_with_spare_a}A")
-        if summary.selected_dc_selectivity_mod: add_bom("=CTRL", project.panel_tag, "-F0", tr("bom_selmod"), summary.selected_dc_selectivity_mod, "4-Ch")
-
-        for idx, f in enumerate(feeders, start=1):
-            if f.selected_protection: add_bom(f.func_tag, f.loc_tag, f"-Q{idx}", tr("bom_prot"), f.selected_protection)
-            if f.load_type == LoadType.MOTOR_STAR_DELTA:
-                if f.selected_contactor_main: add_bom(f.func_tag, f.loc_tag, f"-K{idx}M", tr("bom_km"), f.selected_contactor_main)
-                if f.selected_contactor_delta: add_bom(f.func_tag, f.loc_tag, f"-K{idx}D", tr("bom_kd"), f.selected_contactor_delta)
-                if f.selected_contactor_star: add_bom(f.func_tag, f.loc_tag, f"-K{idx}Y", tr("bom_ky"), f.selected_contactor_star)
-                if f.selected_bimetal: add_bom(f.func_tag, f.loc_tag, f"-F{idx}", tr("bom_bim"), f.selected_bimetal)
-                if f.selected_timer_yd: add_bom(f.func_tag, f.loc_tag, f"-K{idx}T", tr("bom_timer"), f.selected_timer_yd)
-            else:
-                if f.selected_contactor_main: add_bom(f.func_tag, f.loc_tag, f"-K{idx}", tr("bom_contactor"), f.selected_contactor_main)
-            if f.selected_vfd: add_bom(f.func_tag, f.loc_tag, f"-U{idx}", tr("bom_vfd"), f.selected_vfd)
-            if f.selected_soft_starter: add_bom(f.func_tag, f.loc_tag, f"-G{idx}", tr("bom_soft_starter"), f.selected_soft_starter)
-            if f.selected_rcd: add_bom(f.func_tag, f.loc_tag, f"-F{idx}R", tr("bom_rcd"), f.selected_rcd)
-            ws4.append([f"{f.func_tag}{f.loc_tag}-W{idx}", f.func_tag, f.loc_tag, f"-W{idx}", tr("bom_cable"), "IEC 60502-1", f.cable_designation_str, f"Iz={'?' if f.cable_derated_iz_a is None else f.cable_derated_iz_a}A", int(f.cable_length_m), "M", 0.0, DataQuality.ESTIMATED.value])
-            if f.suggested_spec_str:
-                _append_safe(ws4, [f"{f.func_tag}{f.loc_tag}-SUG{idx}", f.func_tag, f.loc_tag, f"-SUG{idx}", tr("bom_suggested"), "To be purchased", f.suggested_spec_str, tr("bom_suggested"), 1, "PCS", 0.0, DataQuality.ESTIMATED.value])
-
-        if summary.selected_fan: add_bom("=COOLING", project.panel_tag, "-E1", tr("bom_fan"), summary.selected_fan)
-        if summary.selected_enclosure: add_bom("=CABINET", project.panel_tag, "-U0", tr("bom_enclosure"), summary.selected_enclosure)
-        if summary.cap_bank_installed_kvar > 0:
-            steps_txt = " + ".join(f"{s:g}" for s in summary.cap_bank_steps)
-            n_steps = len(summary.cap_bank_steps) or 1
-            if summary.cap_bank_protection: add_bom("=PFC", project.panel_tag, "-Qcap", tr("bom_cap_prot"), summary.cap_bank_protection)
-            if summary.cap_bank_contactor: add_bom("=PFC", project.panel_tag, "-Kcap", tr("bom_cap_contactor"), summary.cap_bank_contactor, f"{n_steps}x", qty=n_steps)
-            if summary.cap_bank_reactor_dev: add_bom("=PFC", project.panel_tag, "-Lcap", tr("bom_cap_reactor"), summary.cap_bank_reactor_dev, f"p={summary.cap_bank_detuned_pct:g}%", qty=n_steps)
-            if summary.cap_bank_module_dev: add_bom("=PFC", project.panel_tag, "-Ccap", tr("bom_cap_module"), summary.cap_bank_module_dev, steps_txt, qty=n_steps)
-            if summary.cap_bank_suggested_str:
-                _append_safe(ws4, [f"=PFC{project.panel_tag}-SUGcap", "=PFC", project.panel_tag, "-SUGcap", tr("bom_suggested"), "To be purchased", summary.cap_bank_suggested_str, tr("bom_suggested"), 1, "PCS", 0.0, DataQuality.ESTIMATED.value])
+        from lv_assist.bom import build_bom
+        for item in build_bom(project, feeders, summary):
+            dev = item.device
+            _append_safe(ws4, [f'{item.func_loc}{item.tag}', item.func_loc, item.panel, item.tag,
+                              item.category, item.manufacturer, item.part_number,
+                              item.description + (' | ' + item.tech_spec if item.tech_spec else ''),
+                              item.qty, item.unit, dev.power_loss_w if dev else None, item.notes])
 
         ws5 = wb.create_sheet("05_Control_Circuits")
         _append_safe(ws5, ["Wire No.", "From device", "From terminal", "To device", "To terminal", "Color", "Section (mm2)", "Remark"])
@@ -199,11 +161,28 @@ class ExcelExporter:
             if value is not None:
                 _append_safe(scenario_sheet, [name, value])
 
-        try:
-            from lv_assist.commercial import CommercialEngine
-            CommercialEngine.append_commercial_sheet(wb, project, feeders, summary)
-        except Exception:
-            pass
+        from lv_assist.commercial import CommercialEngine
+        CommercialEngine.append_commercial_sheet(wb, project, feeders, summary)
+
+        from lv_assist.gui_output_bridge import GuiOutputBridge
+        wires, terminals = GuiOutputBridge.generate_all_wire_and_terminal_schedules(project, feeders, summary)
+        for sheet_name, records, columns in (
+            ('Wire_Schedule', wires, ['wire_no', 'feeder_id', 'potential_role', 'from_pin', 'to_pin', 'wire_spec']),
+            ('Terminal_Schedule', terminals, ['feeder_id', 'terminal_strip', 'terminal_pin', 'internal_wire_no',
+                                             'internal_target', 'cable_tag', 'cable_core', 'cable_spec', 'external_location', 'external_target'])):
+            sheet = wb.create_sheet(sheet_name)
+            _append_safe(sheet, columns)
+            for record in records:
+                _append_safe(sheet, [record.get(column, '') for column in columns])
+        qc_sheet = wb.create_sheet('Routine_Verification')
+        _append_safe(qc_sheet, ['Clause', 'Inspection / test', 'Status', 'Measured result', 'Inspector', 'Date'])
+        for clause, task in (
+            ('11.2', 'Degree of protection of enclosures'), ('11.3', 'Clearances and creepage distances'),
+            ('11.4', 'Protective circuit continuity and electric shock protection'), ('11.5', 'Incorporated components'),
+            ('11.6', 'Internal electrical circuits and connections'), ('11.7', 'External conductor terminals'),
+            ('11.8', 'Mechanical operation'), ('11.9', 'Dielectric properties'),
+            ('11.10', 'Wiring, operational performance and function')):
+            _append_safe(qc_sheet, [clause, task, 'NOT_TESTED', '', '', ''])
 
         assumption_sheet = wb.create_sheet('Assumed_Defaults')
         _append_safe(assumption_sheet, ['Target', 'Field', 'Value', 'Status'])
@@ -215,7 +194,9 @@ class ExcelExporter:
         for ws in wb.worksheets:
             for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal="center", vertical="center")
             for row in ws.iter_rows(min_row=2):
-                for cell in row: cell.border = thin_border
+                for cell in row:
+                    cell.border = thin_border
+                    cell.value = _xl_safe(cell.value)
             for col in ws.columns:
                 max_len = max(len(str(c.value or "")) for c in col)
                 ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 4, 13), 48)

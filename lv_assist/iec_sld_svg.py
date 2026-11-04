@@ -5,6 +5,7 @@ LV-PanelAssist Dynamic IEC 60617 Single-Line Diagram (SLD) SVG Generator
 No hardcoded project or feeder values.
 """
 
+from lv_assist.drawing_status import preliminary_drawing
 import html
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
@@ -21,7 +22,7 @@ class SLDFeederDTO(BaseModel):
     protection_tag: str
     protection_part: str
     protection_in_a: float
-    protection_icu_ka: float
+    protection_icu_ka: Optional[float]
     switching_tag: str = ""
     switching_part: str = ""
     overload_tag: str = ""
@@ -40,11 +41,11 @@ class SLDPanelDTO(BaseModel):
     nominal_voltage_v: float
     frequency_hz: float
     earthing_system: str
-    prospective_ik_ka: float
+    prospective_ik_ka: Optional[float]
     main_breaker_tag: str = "-Q0"
     main_breaker_part: str
     main_breaker_in_a: float
-    main_breaker_icu_ka: float
+    main_breaker_icu_ka: Optional[float]
     design_main_current_a: float
     busbar_spec: str
     pe_busbar_spec: str
@@ -60,6 +61,7 @@ class IECSldSvgGenerator:
     """تولیدکننده پویا نقشه تک‌خطی (SLD) بر اساس نمادهای استاندارد IEC 60617"""
 
     @classmethod
+    @preliminary_drawing
     def render_sld_svg(cls, data: SLDPanelDTO) -> str:
         n_feeders = max(1, len(data.feeders))
         col_pitch = 175
@@ -71,7 +73,7 @@ class IECSldSvgGenerator:
         bus_x2 = left_margin + (n_feeders - 1) * col_pitch + 60
         main_x = (bus_x1 + bus_x2) // 2
 
-        esc = lambda s: html.escape(str(s or ""))
+        esc = lambda s: html.escape("?" if s is None else str(s))
 
         feeder_columns_svg = []
         for idx, f in enumerate(data.feeders):

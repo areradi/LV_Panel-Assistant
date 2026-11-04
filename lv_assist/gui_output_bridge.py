@@ -8,6 +8,7 @@ Transforms live calculation outputs from gui.py / engine.py into:
   4. Automatic HTML Engineering Report Injection (Zero Hardcoding, Zero Calc Engine Modification)
 """
 
+from lv_assist.models import feeder_reference_tag
 from lv_assist.calculation_state import require_current_calculation
 import os
 import html
@@ -58,18 +59,18 @@ class GuiOutputBridge:
                 ky_p = getattr(cont_star, "part_number", "")
                 sw_part = f"2x{cont_main.part_number} + {ky_p}"
             elif vfd:
-                sw_tag = f"-U{idx}"
+                sw_tag = feeder_reference_tag(idx, 'drive')
                 sw_part = getattr(vfd, "part_number", "")
             elif cont_main:
-                sw_tag = f"-K{idx}M"
+                sw_tag = feeder_reference_tag(idx, 'contactor_main')
                 sw_part = getattr(cont_main, "part_number", "")
             elif rcd:
-                sw_tag = f"-F{idx}R"
+                sw_tag = feeder_reference_tag(idx, 'rcd')
                 sw_part = getattr(rcd, "part_number", "")
 
             ol_tag, ol_part, ol_range = "", "", ""
             if bimetal:
-                ol_tag = f"-F{idx}"
+                ol_tag = feeder_reference_tag(idx, 'overload')
                 ol_part = getattr(bimetal, "part_number", "")
                 s_min = getattr(bimetal, "setting_min_a", 0.0)
                 s_max = getattr(bimetal, "setting_max_a", 0.0)
@@ -87,10 +88,10 @@ class GuiOutputBridge:
                 load_type=ltype,
                 power_kw=float(getattr(f, "power_kw", 0.0)),
                 design_current_ib_a=float(getattr(f, "design_current_ib_a", 0.0)),
-                protection_tag=f"-Q{idx}",
+                protection_tag=feeder_reference_tag(idx, 'protection'),
                 protection_part=str(getattr(prot, "part_number", "UNSELECTED")),
                 protection_in_a=float(getattr(prot, "rated_current_in_a", 0.0)),
-                protection_icu_ka=float(getattr(prot, "icu_ka_400v", 0.0)),
+                protection_icu_ka=getattr(f, "protection_icu_ka", None),
                 switching_tag=sw_tag,
                 switching_part=sw_part,
                 overload_tag=ol_tag,
@@ -113,7 +114,9 @@ class GuiOutputBridge:
         psu_a = getattr(summary, "ctrl_24v_design_current_with_spare_a", 0.0)
         psu_str = f"24VDC Load = {psu_w}W ({psu_a}A w/Spare)" if psu_w else "24VDC Control Circuit"
 
-        ik_val = getattr(summary, "ik_total_ka", None) or getattr(project, "prospective_ik_ka", 25.0) or 25.0
+        ik_val = summary.ik_bus_total_ka or summary.ik_used_ka
+        from lv_assist.catalog import catalog_repo
+        main_icu = catalog_repo.get_device_icu_at_voltage(main_brk.part_number, project.nominal_voltage_v) if main_brk else None
 
         return SLDPanelDTO(
             project_name=str(getattr(project, "project_name", "LV Switchboard")),
@@ -122,17 +125,17 @@ class GuiOutputBridge:
             nominal_voltage_v=float(getattr(project, "nominal_voltage_v", 400.0)),
             frequency_hz=float(getattr(project, "frequency_hz", 50.0)),
             earthing_system=cls._val_str(getattr(project, "earthing_system", "TN-S")),
-            prospective_ik_ka=float(ik_val),
+            prospective_ik_ka=ik_val,
             main_breaker_tag="-Q0",
             main_breaker_part=str(getattr(main_brk, "part_number", "Main Breaker")),
             main_breaker_in_a=float(getattr(main_brk, "rated_current_in_a", 0.0)),
-            main_breaker_icu_ka=float(getattr(main_brk, "icu_ka_400v", 0.0)),
+            main_breaker_icu_ka=main_icu,
             design_main_current_a=float(getattr(summary, "design_main_current_a", 0.0)),
             busbar_spec=str(bus_spec),
             pe_busbar_spec=str(pe_spec),
             incoming_cable_spec=str(inc_cable),
             psu_tag="-G1",
-            psu_part=str(getattr(psu, "part_number", "SITOP 24VDC")),
+            psu_part=str(getattr(psu, "part_number", "UNSELECTED")),
             psu_rating_str=psu_str,
             feeders=sld_feeders
         )
@@ -167,23 +170,23 @@ class GuiOutputBridge:
             ib_a=float(getattr(feeder_out, "design_current_ib_a", 0.0)),
             delta_current_a=float(getattr(feeder_out, "delta_loop_current_a", 0.0) or 0.0),
             star_current_a=float(getattr(feeder_out, "star_current_a", 0.0) or 0.0),
-            prot_tag=f"-Q{idx}",
+            prot_tag=feeder_reference_tag(idx, 'protection'),
             prot_part=str(getattr(prot, "part_number", "NONE")),
             prot_in_a=float(getattr(prot, "rated_current_in_a", 0.0)),
-            km_tag=f"-K{idx}M" if km else "",
+            km_tag=feeder_reference_tag(idx, 'contactor_main') if km else "",
             km_part=str(getattr(km, "part_number", "")) if km else "",
-            kd_tag=f"-K{idx}D" if kd else "",
+            kd_tag=feeder_reference_tag(idx, 'contactor_delta') if kd else "",
             kd_part=str(getattr(kd, "part_number", "")) if kd else "",
-            ky_tag=f"-K{idx}Y" if ky else "",
+            ky_tag=feeder_reference_tag(idx, 'contactor_star') if ky else "",
             ky_part=str(getattr(ky, "part_number", "")) if ky else "",
-            bimetal_tag=f"-F{idx}" if bm else "",
+            bimetal_tag=feeder_reference_tag(idx, 'overload') if bm else "",
             bimetal_part=str(getattr(bm, "part_number", "")) if bm else "",
-            timer_tag=f"-K{idx}T" if tmr else "",
+            timer_tag=feeder_reference_tag(idx, 'timer') if tmr else "",
             timer_part=str(getattr(tmr, "part_number", "")) if tmr else "",
-            vfd_tag=f"-U{idx}" if vfd else "",
+            vfd_tag=feeder_reference_tag(idx, 'drive') if vfd else "",
             vfd_part=str(getattr(vfd, "part_number", "")) if vfd else "",
             power_cable_str=str(getattr(feeder_out, "cable_designation_str", "")),
-            psu_part=str(getattr(psu, "part_number", "SITOP 24VDC"))
+            psu_part=str(getattr(psu, "part_number", "UNSELECTED"))
         )
 
     @classmethod

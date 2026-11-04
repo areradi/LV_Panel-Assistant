@@ -193,7 +193,8 @@ class TestExcelIO:
         wb = openpyxl.load_workbook(str(out_path))
         assert wb.sheetnames == ["01_Project_Summary", "02_Feeder_Cable_Schedule",
                                  "03_Validation_Log", "04_BOM", "05_Control_Circuits",
-                                 "06_Design_Verification", "Scenario_Inputs", "07_Commercial_Quote", "Assumed_Defaults"]
+                                 "06_Design_Verification", "Scenario_Inputs", "07_Commercial_Quote",
+                                 "Wire_Schedule", "Terminal_Schedule", "Routine_Verification", "Assumed_Defaults"]
 
     def test_altitude_loaded_from_excel(self, tmp_path):
         path = tmp_path / "input.xlsx"
@@ -1006,7 +1007,7 @@ class TestPhase5ControlCircuits:
         project, outs, summary = self._motor_project()
         svg = ControlCircuitGenerator.generate_svg(project, outs, summary)
         assert "<svg" in svg and "</svg>" in svg
-        for tag in ("-Q01", "-G1", "-K1", "-K2Y", "-K2D", "-G3", "-U4"):
+        for tag in ("-Q01", "-G1", "-K1M", "-K2Y", "-K2D", "-U3", "-U4"):
             assert tag in svg
 
     def test_connections_csv(self, tmp_path):
@@ -1985,7 +1986,7 @@ class TestPhase13Spd:
         ws4 = wb["04_BOM"]
         bom_rows = [[str(c.value) for c in r] for r in ws4.iter_rows(min_row=2)]
         assert any("-F9" in r[0] and summary.selected_spd.part_number in r[6] for r in bom_rows)
-        assert any("-F9F" in r[0] and "gG" in r[6] for r in bom_rows)
+        assert any("-F9F" in r[0] and r[6] == "None" and "gG" in r[7] for r in bom_rows)
 
     def test_html_contains_spd(self, tmp_path):
         project, outs, summary, validations = self._run()

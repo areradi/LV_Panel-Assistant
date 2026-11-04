@@ -4,6 +4,7 @@ lv_assist/iec_ladder_svg.py
 موتور ترسیم نقشه نردبانی مدار فرمان (IEC 60617 / IEC 61082 / IEC 81346)
 با مدل توپولوژیک Rung، نمایش مسیر تحریک بوبین و اعتبارسنجی الکتریکی مدار
 """
+from lv_assist.drawing_status import preliminary_drawing
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple, Union
 import html
@@ -117,6 +118,8 @@ class IECLadderSvgGenerator:
         w = d.feeder_index * 10
         x_base = (d.feeder_index - 1) * 4 + 1
         lt = (d.load_type or "MOTOR_DOL").upper()
+        if not lt.startswith('MOTOR_'):
+            return []
 
         f_tag = d.bimetal_tag or f"-F{d.feeder_index}"
         s0_tag = f"-S{d.feeder_index}0"
@@ -182,7 +185,7 @@ class IECLadderSvgGenerator:
                 ),
             ]
 
-        if "VFD" in lt:
+        if "VFD" in lt or "SOFT" in lt:
             u_tag = d.vfd_tag or f"-U{d.feeder_index}"
             k_run = f"-K{d.feeder_index}R"
             return [
@@ -191,7 +194,7 @@ class IECLadderSvgGenerator:
                     title="مسیر ۱: فرمان اجرای درایو (Run Enable) با خودنگهدار و فالت درایو",
                     elements=[
                         Contact("-F0", "NO", "1-2", "MCB 24V"),
-                        Contact(f"{u_tag}:FLT", "NC", "R1B-R1C", "VFD Fault NC"),
+                        Contact(f"{u_tag}:FLT", "NC", "R1B-R1C", "Drive fault NC (verify OEM terminals)"),
                         Terminal("-X2", str(x_base)),
                         Contact(s0_tag, "PB_NC", "11-12", "Stop PB"),
                         Branch(paths=[
@@ -335,10 +338,11 @@ class IECLadderSvgGenerator:
         return {"wires": wires, "terminals": terminal_rows}
 
     @classmethod
+    @preliminary_drawing
     def render_feeder_ladder_svg(cls, d: FeederLadderDTO) -> str:
         rungs = cls._build_rungs(d)
         issues = cls.validate_control_circuit(d)
-        rail_bottom = RUNG_TOP + (len(rungs) - 1) * RUNG_STEP + 75.0
+        rail_bottom = RUNG_TOP + (max(1, len(rungs)) - 1) * RUNG_STEP + 75.0
         svg_h = rail_bottom + 145.0
 
         parts: List[str] = [
@@ -415,7 +419,9 @@ class IECLadderSvgGenerator:
 
         # نوار وضعیت اعتبارسنجی الکتریکی مدار در پایین شیت (بند ۹.۵ دستورکار)
         y_stat = rail_bottom + 28.0
-        if not issues:
+        if not rungs:
+            parts.append(f'<text x="38" y="{y_stat + 20:.0f}" font-size="11">No motor control circuit derived for this feeder.</text>')
+        elif not issues:
             parts.append(
                 f'<rect x="24" y="{y_stat:.0f}" width="{SVG_W - 48:.0f}" height="32" rx="6" fill="#DCFCE7" stroke="#16A34A" stroke-width="1"/>'
                 f'<text x="38" y="{y_stat + 20:.0f}" font-size="11" font-weight="bold" fill="#166534">'

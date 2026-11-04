@@ -3,7 +3,10 @@
 lv_assist/bom.py
 موتور یکپارچه تولید، دسته‌بندی، فیلتر، تجمیع و خروجی Bill of Materials (BOM)
 """
+from lv_assist.models import feeder_reference_tag
 from lv_assist.calculation_state import require_current_calculation
+from lv_assist.models import ProjectSpec, FeederCalcOutput, PanelSummaryOutput, CatalogDevice, LoadType
+from lv_assist.i18n import tr
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 import csv
@@ -54,6 +57,7 @@ class BomItem:
     func_loc: str
     notes: str = ""
     missing_part_number: bool = False
+    device: Optional[CatalogDevice] = None
 
 
 def _clean_pn(pn: Optional[str]) -> str:
@@ -63,168 +67,101 @@ def _clean_pn(pn: Optional[str]) -> str:
     return val
 
 
-def build_bom(project: Any, feeders_out: List[Any], summary: Any) -> List[BomItem]:
-    """استخراج دقیق BOM از مدل واقعی پروژه، فیدرها و خلاصه تابلو بدون داده ساختگی."""
+def iter_device_entries(project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> List[tuple]:
+    """فهرست تجهیزات BOM به صورت [(func, loc, bmk, cat, dev|None, suggested_spec|None, qty)]."""
+    require_current_calculation(project, summary, feeders)
+    entries: List[tuple] = []
+    def add(func, loc, bmk, cat, dev: CatalogDevice, qty=1):
+        if dev is not None:
+            entries.append((func, loc, bmk, cat, dev, None, qty))
+    def add_suggested(func, loc, bmk, cat, spec: str):
+        entries.append((func, loc, bmk, cat, None, spec, 1))
+
+    if summary.main_breaker:
+        add("=INCOMING", project.panel_tag, "-Q0", tr("bom_main"), summary.main_breaker)
+    elif summary.suggested_main_breaker_str:
+        add_suggested("=INCOMING", project.panel_tag, "-Q0", tr("bom_main"), summary.suggested_main_breaker_str)
+    if summary.selected_spd:
+        add("=INCOMING", project.panel_tag, "-F9", tr("bom_spd"), summary.selected_spd)
+        add_suggested("=INCOMING", project.panel_tag, "-F9F", tr("bom_spd_fuse"),
+                      tr("bom_spd_fuse_spec", a=summary.selected_spd.spd_backup_fuse_a, b=summary.selected_spd.spd_class))
+    if summary.selected_psu_primary_mcb:
+        add("=CTRL", project.panel_tag, "-Q01", tr("bom_psu_mcb"), summary.selected_psu_primary_mcb)
+    if summary.selected_psu_24v:
+        add("=CTRL", project.panel_tag, "-G1", tr("bom_psu"), summary.selected_psu_24v)
+    elif summary.suggested_psu_str:
+        add_suggested("=CTRL", project.panel_tag, "-G1", tr("bom_psu"), summary.suggested_psu_str)
+    if summary.selected_dc_selectivity_mod:
+        add("=CTRL", project.panel_tag, "-F0", tr("bom_selmod"), summary.selected_dc_selectivity_mod)
+    for idx, f in enumerate(feeders, start=1):
+        if f.selected_protection:
+            add(f.func_tag, f.loc_tag, feeder_reference_tag(idx, 'protection'), tr("bom_prot"), f.selected_protection)
+        elif f.suggested_spec_str:
+            add_suggested(f.func_tag, f.loc_tag, feeder_reference_tag(idx, 'protection'), tr("bom_prot"), f.suggested_spec_str)
+        if f.load_type == LoadType.MOTOR_STAR_DELTA:
+            if f.selected_contactor_main: add(f.func_tag, f.loc_tag, feeder_reference_tag(idx, 'contactor_main'), tr("bom_km"), f.selected_contactor_main)
+            if f.selected_contactor_delta: add(f.func_tag, f.loc_tag, feeder_reference_tag(idx, 'contactor_delta'), tr("bom_kd"), f.selected_contactor_delta)
+            if f.selected_contactor_star: add(f.func_tag, f.loc_tag, feeder_reference_tag(idx, 'contactor_star'), tr("bom_ky"), f.selected_contactor_star)
+            if f.selected_bimetal: add(f.func_tag, f.loc_tag, feeder_reference_tag(idx, 'overload'), tr("bom_bim"), f.selected_bimetal)
+            if f.selected_timer_yd: add(f.func_tag, f.loc_tag, feeder_reference_tag(idx, 'timer'), tr("bom_timer"), f.selected_timer_yd)
+        elif f.selected_contactor_main:
+            add(f.func_tag, f.loc_tag, feeder_reference_tag(idx, 'contactor_main'), tr("bom_contactor"), f.selected_contactor_main)
+        if f.selected_vfd: add(f.func_tag, f.loc_tag, feeder_reference_tag(idx, 'drive'), tr("bom_vfd"), f.selected_vfd)
+        if f.selected_soft_starter: add(f.func_tag, f.loc_tag, feeder_reference_tag(idx, 'drive'), tr("bom_soft_starter"), f.selected_soft_starter)
+        if f.selected_rcd: add(f.func_tag, f.loc_tag, feeder_reference_tag(idx, 'rcd'), tr("bom_rcd"), f.selected_rcd)
+    if summary.selected_fan: add("=COOLING", project.panel_tag, "-E1", tr("bom_fan"), summary.selected_fan)
+    if summary.selected_enclosure: add("=CABINET", project.panel_tag, "-U0", tr("bom_enclosure"), summary.selected_enclosure)
+    if summary.cap_bank_installed_kvar > 0:
+        n_steps = len(summary.cap_bank_steps) or 1
+        steps_txt = " + ".join(f"{s:g}" for s in summary.cap_bank_steps)
+        if summary.cap_bank_protection: add("=PFC", project.panel_tag, "-Qcap", tr("bom_cap_prot"), summary.cap_bank_protection)
+        if summary.cap_bank_contactor: add("=PFC", project.panel_tag, "-Kcap", tr("bom_cap_contactor"), summary.cap_bank_contactor, qty=n_steps)
+        if summary.cap_bank_reactor_dev: add("=PFC", project.panel_tag, "-Lcap", tr("bom_cap_reactor"), summary.cap_bank_reactor_dev, qty=n_steps)
+        if summary.cap_bank_module_dev: add("=PFC", project.panel_tag, "-Ccap", tr("bom_cap_module"), summary.cap_bank_module_dev, qty=n_steps)
+        if summary.cap_bank_suggested_str and not (summary.cap_bank_protection and summary.cap_bank_contactor and summary.cap_bank_module_dev):
+            add_suggested("=PFC", project.panel_tag, "-SUGcap", tr("bom_cap_bank"), f"{summary.cap_bank_suggested_str} ({steps_txt} kvar)")
+    return entries
+
+
+
+def build_bom(project: Any, feeders_out: List[Any], summary: Any, final: bool = False) -> List[BomItem]:
     require_current_calculation(project, summary, feeders_out)
-    items: List[BomItem] = []
-    panel_tag = getattr(project, "loc_tag", "+MCC1") or "+MCC1"
-    func_root = getattr(project, "func_tag", "=PLANT") or "=PLANT"
+    items = []
 
-    def add(tag: str, cat: str, desc: str, mfr: str, pn: str, spec: str, qty: float = 1.0, unit: str = "pcs", fl: str = "", note: str = ""):
-        clean = _clean_pn(pn)
-        missing = clean == ""
-        note_final = note
-        if missing and "پارت‌نامبر" not in note_final:
-            note_final = (note_final + " | پارت‌نامبر تعیین نشده").strip(" |")
-        items.append(
-            BomItem(
-                item_no=len(items) + 1,
-                tag=tag,
-                category=CATEGORIES.get(cat, CATEGORIES["OTHER"]),
-                description=desc,
-                manufacturer=(mfr or "").strip() if not missing else (mfr or "").strip(),
-                part_number=clean,
-                tech_spec=spec,
-                qty=qty,
-                unit=unit,
-                panel=panel_tag,
-                func_loc=fl or f"{func_root}/{panel_tag}",
-                notes=note_final,
-                missing_part_number=missing,
-            )
-        )
+    def add(tag, category, description, device=None, spec='', qty=1, unit='pcs', func_loc=''):
+        verified = device is not None and device.has_verified_datasheet
+        items.append(BomItem(
+            item_no=len(items) + 1, tag=tag, category=category, description=description,
+            manufacturer=device.manufacturer if device else '',
+            part_number=device.part_number if device else '', tech_spec=spec,
+            qty=qty, unit=unit, panel=project.panel_tag, func_loc=func_loc,
+            notes='VERIFIED_OEM_CATALOG' if verified else 'GENERIC_ESTIMATE; engineering review required',
+            missing_part_number=device is None, device=device))
 
-    # ۱. کلید اصلی ورودی تابلو
-    inc = getattr(summary, "incoming_breaker", None)
-    if inc:
-        add(
-            tag="-Q0",
-            cat="PROTECTION",
-            desc="Incoming Main Circuit Breaker",
-            mfr=getattr(inc, "manufacturer", ""),
-            pn=getattr(inc, "part_number", ""),
-            spec=f"{getattr(inc, 'device_type', 'MCCB/ACB')} In={getattr(inc, 'rated_current_in_a', 0)}A, Icu={getattr(inc, 'icu_ka_400v', 0)}kA",
-        )
+    for func, loc, tag, category, device, suggestion, qty in iter_device_entries(project, feeders_out, summary):
+        add(tag, category, f'{device.series} ({device.device_type})' if device else (suggestion or category),
+            device, suggestion or '', qty, func_loc=f'{func}{loc}')
+    for index, feeder in enumerate(feeders_out, 1):
+        add(f'-W{index}', CATEGORIES['CABLES'], f'Power cable ({feeder.feeder_id})',
+            spec=feeder.cable_designation_str, qty=feeder.cable_length_m, unit='m',
+            func_loc=f'{feeder.func_tag}{feeder.loc_tag}')
 
-    # ۲. حفاظت اضافه ولتاژ (SPD) و فیوز پشتیبان
-    spd = getattr(summary, "selected_spd", None)
-    if spd:
-        add(
-            tag="-F9",
-            cat="PROTECTION",
-            desc="Surge Protective Device (SPD)",
-            mfr=getattr(spd, "manufacturer", ""),
-            pn=getattr(spd, "part_number", ""),
-            spec=f"Type {getattr(spd, 'spd_type', '2')}",
-        )
-        add(
-            tag="-F9F",
-            cat="PROTECTION",
-            desc="SPD Backup Fuse gG",
-            mfr=getattr(spd, "manufacturer", ""),
-            pn=getattr(spd, "backup_fuse_part", ""),
-            spec="Backup fuse gG",
-        )
-
-    # ۳. منبع تغذیه ۲۴ ولت فرمان
-    psu = getattr(summary, "control_psu", None) or getattr(summary, "selected_psu", None)
-    if psu:
-        add(
-            tag="-T1",
-            cat="POWER_SUPPLY",
-            desc="24VDC Control Power Supply",
-            mfr=getattr(psu, "manufacturer", "Siemens"),
-            pn=getattr(psu, "part_number", ""),
-            spec=f"24VDC / {getattr(psu, 'rated_current_a', getattr(psu, 'rated_current_in_a', 5))}A",
-        )
-
-    # ۴. سلول بدنه و شینه مسی
-    enc = getattr(summary, "selected_enclosure", None)
-    if enc:
-        add(
-            tag=panel_tag,
-            cat="MECHANICAL",
-            desc="Switchgear Enclosure Cabinet",
-            mfr=getattr(enc, "manufacturer", ""),
-            pn=getattr(enc, "part_number", ""),
-            spec=f"{getattr(enc, 'width_mm', 800)}x{getattr(enc, 'height_mm', 2000)}x{getattr(enc, 'depth_mm', 600)} mm",
-        )
-
-    # ۵. تجهیزات هر فیدر
-    for idx, f in enumerate(feeders_out, start=1):
-        fid = getattr(f, "feeder_id", f"F{idx:02d}")
-        floc = f"{getattr(f, 'func_tag', func_root)}/{getattr(f, 'loc_tag', panel_tag)} ({fid})"
-
-        cb = getattr(f, "selected_breaker", None)
-        if cb:
-            add(
-                tag=f"-Q{idx}",
-                cat="PROTECTION",
-                desc=f"Feeder Breaker ({fid})",
-                mfr=getattr(cb, "manufacturer", ""),
-                pn=getattr(cb, "part_number", ""),
-                spec=f"{getattr(cb, 'device_type', 'MCCB/MPCB')} In={getattr(cb, 'rated_current_in_a', 0)}A",
-                fl=floc,
-            )
-
-        km = getattr(f, "selected_contactor", None)
-        if km:
-            add(
-                tag=f"-K{idx}M",
-                cat="SWITCHING",
-                desc=f"Main Contactor ({fid})",
-                mfr=getattr(km, "manufacturer", ""),
-                pn=getattr(km, "part_number", ""),
-                spec=f"AC-3 Ie={getattr(km, 'rated_current_in_a', 0)}A, Coil 24VDC",
-                fl=floc,
-            )
-
-        ol = getattr(f, "selected_overload", None)
-        if ol:
-            add(
-                tag=f"-F{idx}",
-                cat="PROTECTION",
-                desc=f"Thermal Overload Relay ({fid})",
-                mfr=getattr(ol, "manufacturer", ""),
-                pn=getattr(ol, "part_number", ""),
-                spec=f"Class 10A ({fid})",
-                fl=floc,
-            )
-
-        vfd = getattr(f, "selected_vfd", None)
-        if vfd:
-            add(
-                tag=f"-U{idx}",
-                cat="CONTROL",
-                desc=f"Variable Frequency Drive ({fid})",
-                mfr=getattr(vfd, "manufacturer", ""),
-                pn=getattr(vfd, "part_number", ""),
-                spec=f"{getattr(vfd, 'power_kw', getattr(f, 'power_kw', 0))} kW, 400V",
-                fl=floc,
-            )
-
-        cable_size = getattr(f, "cable_size_mm2", None)
-        cable_len = float(getattr(f, "cable_length_m", 0) or 0)
-        if cable_size and cable_len > 0:
-            add(
-                tag=f"-W{idx}",
-                cat="CABLES",
-                desc=f"Power Cable ({fid})",
-                mfr="",
-                pn="",
-                spec=f"Cu XLPE/PVC {cable_size} mm²",
-                qty=cable_len,
-                unit="m",
-                fl=floc,
-                note="کابل قدرت فیدر",
-            )
-
-    # ۶. ترمینال‌های قدرت (-X1) و فرمان (-X2)
-    n_power_terms = 5 + len(feeders_out) * 4
-    n_ctrl_terms = 2 + len(feeders_out) * 2
-    add("-X1", "TERMINALS", "Power Terminal Strip Block", "Phoenix Contact", "UT-6-PE-SET", f"{n_power_terms} points", qty=float(n_power_terms), unit="pcs")
-    add("-X2", "TERMINALS", "24VDC Control Terminal Strip", "Phoenix Contact", "UT-2.5-CTRL", f"{n_ctrl_terms} points", qty=float(n_ctrl_terms), unit="pcs")
-
+    from lv_assist.gui_output_bridge import GuiOutputBridge
+    wires, terminals = GuiOutputBridge.generate_all_wire_and_terminal_schedules(project, feeders_out, summary)
+    strips = {}
+    for terminal in terminals:
+        strips.setdefault(terminal['terminal_strip'], set()).add(terminal['terminal_pin'])
+    for strip, pins in sorted(strips.items()):
+        add(strip, CATEGORIES['TERMINALS'], 'Control terminal points', qty=len(pins), spec='Select terminal ratings and accessories')
+    known = {item.tag for item in items}
+    for wire in wires:
+        for pin in (wire['from_pin'], wire['to_pin']):
+            tag = pin.split(':')[0]
+            if tag.startswith(('-S', '-H', '-K')) and tag not in known:
+                add(tag, CATEGORIES['CONTROL'], 'Control device / auxiliary contact; select from diagram requirements')
+                known.add(tag)
+    if final and any(item.missing_part_number or item.notes != 'VERIFIED_OEM_CATALOG' for item in items):
+        raise ValueError('Final BOM requires verified OEM evidence and assigned parts for every item')
     return items
 
 

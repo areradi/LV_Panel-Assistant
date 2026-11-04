@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from lv_assist.drawing_status import preliminary_drawing
 from lv_assist.calculation_state import require_current_calculation
 import csv
 import math
@@ -134,6 +135,7 @@ class SldGenerator:
         return parts
 
     @staticmethod
+    @preliminary_drawing
     def generate_svg(project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> str:
         require_current_calculation(project, summary, feeders)
         n = max(1, len(feeders))
@@ -199,7 +201,7 @@ class SldGenerator:
             if f.selected_contactor_main:
                 parts.append(f'<line x1="{x}" y1="{y_cur - 4}" x2="{x}" y2="{y_cur}" stroke="#566573" stroke-width="{SldGenerator.LINE_W_CONTROL}"/>')
                 parts.append(f'<rect x="{x - 20}" y="{y_cur}" width="40" height="24" rx="3" fill="#EBF5FB" stroke="#1F4E78" stroke-width="1.5"/>')
-                parts.append(f'<text x="{x}" y="{y_cur + 16}" text-anchor="middle" font-size="9" fill="#1F4E78" font-weight="bold">-K{idx + 1}</text>')
+                parts.append(f'<text x="{x}" y="{y_cur + 16}" text-anchor="middle" font-size="9" fill="#1F4E78" font-weight="bold">-K{idx + 1}M</text>')
                 y_cur += 48
             if f.selected_soft_starter or f.selected_vfd:
                 dev = f.selected_soft_starter or f.selected_vfd
@@ -275,6 +277,7 @@ class TccGenerator:
         return f'<polyline points="{coords}" fill="none" stroke="{color}" stroke-width="{width}"{d}/>'
 
     @staticmethod
+    @preliminary_drawing
     def generate_svg(project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> str:
         require_current_calculation(project, summary, feeders)
         parts: List[str] = [
@@ -440,59 +443,8 @@ class PdfExporter:
 
 
 def _bom_entries(project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> List[tuple]:
-    """فهرست تجهیزات BOM به صورت [(func, loc, bmk, cat, dev|None, suggested_spec|None, qty)]."""
-    require_current_calculation(project, summary, feeders)
-    entries: List[tuple] = []
-    def add(func, loc, bmk, cat, dev: CatalogDevice, qty=1):
-        if dev is not None:
-            entries.append((func, loc, bmk, cat, dev, None, qty))
-    def add_suggested(func, loc, bmk, cat, spec: str):
-        entries.append((func, loc, bmk, cat, None, spec, 1))
-
-    if summary.main_breaker:
-        add("=INCOMING", project.panel_tag, "-Q0", tr("bom_main"), summary.main_breaker)
-    elif summary.suggested_main_breaker_str:
-        add_suggested("=INCOMING", project.panel_tag, "-Q0", tr("bom_main"), summary.suggested_main_breaker_str)
-    if summary.selected_spd:
-        add("=INCOMING", project.panel_tag, "-F9", tr("bom_spd"), summary.selected_spd)
-        add_suggested("=INCOMING", project.panel_tag, "-F9F", tr("bom_spd_fuse"),
-                      tr("bom_spd_fuse_spec", a=summary.selected_spd.spd_backup_fuse_a, b=summary.selected_spd.spd_class))
-    if summary.selected_psu_primary_mcb:
-        add("=CTRL", project.panel_tag, "-Q01", tr("bom_psu_mcb"), summary.selected_psu_primary_mcb)
-    if summary.selected_psu_24v:
-        add("=CTRL", project.panel_tag, "-G1", tr("bom_psu"), summary.selected_psu_24v)
-    elif summary.suggested_psu_str:
-        add_suggested("=CTRL", project.panel_tag, "-G1", tr("bom_psu"), summary.suggested_psu_str)
-    if summary.selected_dc_selectivity_mod:
-        add("=CTRL", project.panel_tag, "-F0", tr("bom_selmod"), summary.selected_dc_selectivity_mod)
-    for idx, f in enumerate(feeders, start=1):
-        if f.selected_protection:
-            add(f.func_tag, f.loc_tag, f"-Q{idx}", tr("bom_prot"), f.selected_protection)
-        elif f.suggested_spec_str:
-            add_suggested(f.func_tag, f.loc_tag, f"-Q{idx}", tr("bom_prot"), f.suggested_spec_str)
-        if f.load_type == LoadType.MOTOR_STAR_DELTA:
-            if f.selected_contactor_main: add(f.func_tag, f.loc_tag, f"-K{idx}M", tr("bom_km"), f.selected_contactor_main)
-            if f.selected_contactor_delta: add(f.func_tag, f.loc_tag, f"-K{idx}D", tr("bom_kd"), f.selected_contactor_delta)
-            if f.selected_contactor_star: add(f.func_tag, f.loc_tag, f"-K{idx}Y", tr("bom_ky"), f.selected_contactor_star)
-            if f.selected_bimetal: add(f.func_tag, f.loc_tag, f"-F{idx}", tr("bom_bim"), f.selected_bimetal)
-            if f.selected_timer_yd: add(f.func_tag, f.loc_tag, f"-K{idx}T", tr("bom_timer"), f.selected_timer_yd)
-        elif f.selected_contactor_main:
-            add(f.func_tag, f.loc_tag, f"-K{idx}", tr("bom_contactor"), f.selected_contactor_main)
-        if f.selected_vfd: add(f.func_tag, f.loc_tag, f"-U{idx}", tr("bom_vfd"), f.selected_vfd)
-        if f.selected_soft_starter: add(f.func_tag, f.loc_tag, f"-G{idx}", tr("bom_soft_starter"), f.selected_soft_starter)
-        if f.selected_rcd: add(f.func_tag, f.loc_tag, f"-F{idx}R", tr("bom_rcd"), f.selected_rcd)
-    if summary.selected_fan: add("=COOLING", project.panel_tag, "-E1", tr("bom_fan"), summary.selected_fan)
-    if summary.selected_enclosure: add("=CABINET", project.panel_tag, "-U0", tr("bom_enclosure"), summary.selected_enclosure)
-    if summary.cap_bank_installed_kvar > 0:
-        n_steps = len(summary.cap_bank_steps) or 1
-        steps_txt = " + ".join(f"{s:g}" for s in summary.cap_bank_steps)
-        if summary.cap_bank_protection: add("=PFC", project.panel_tag, "-Qcap", tr("bom_cap_prot"), summary.cap_bank_protection)
-        if summary.cap_bank_contactor: add("=PFC", project.panel_tag, "-Kcap", tr("bom_cap_contactor"), summary.cap_bank_contactor, qty=n_steps)
-        if summary.cap_bank_reactor_dev: add("=PFC", project.panel_tag, "-Lcap", tr("bom_cap_reactor"), summary.cap_bank_reactor_dev, qty=n_steps)
-        if summary.cap_bank_module_dev: add("=PFC", project.panel_tag, "-Ccap", tr("bom_cap_module"), summary.cap_bank_module_dev, qty=n_steps)
-        if summary.cap_bank_suggested_str and not (summary.cap_bank_protection and summary.cap_bank_contactor and summary.cap_bank_module_dev):
-            add_suggested("=PFC", project.panel_tag, "-SUGcap", tr("bom_cap_bank"), f"{summary.cap_bank_suggested_str} ({steps_txt} kvar)")
-    return entries
+    from lv_assist.bom import iter_device_entries
+    return iter_device_entries(project, feeders, summary)
 
 
 class EplanExporter:

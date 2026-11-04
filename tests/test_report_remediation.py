@@ -17,6 +17,9 @@ from lv_assist.core_verification import calculate_network_ik_profile
 from lv_assist.pe_spd_engine import calculate_pe_adiabatic_section, select_pe_k_factor
 from lv_assist.busbar import BusbarEngine
 from lv_assist.models import CatalogDevice
+from lv_assist.commercial import CommercialEngine
+from lv_assist.layout import PanelLayoutGenerator
+import openpyxl
 
 
 @pytest.fixture
@@ -224,3 +227,48 @@ def test_assumptions_and_rule_categories_are_exported(calculation, tmp_path):
     assert 'transformer_uk_pct' in document
     assert 'IEC_MANDATORY_CLAUSE' in document
     assert 'ENGINEERING_DESIGN_PRACTICE' in document
+
+
+@pytest.mark.parametrize('kind', ['MOTOR_DOL', 'MOTOR_STAR_DELTA', 'MOTOR_SOFT_STARTER', 'MOTOR_VFD'])
+def test_selected_feeder_tags_agree_across_bom_and_drawings(kind):
+    project = ProjectSpec(project_name='Tag test', prospective_ik_ka=10)
+    source = FeederInput(feeder_id='F01', description='Tag test', load_type=kind, power_kw=7.5)
+    outputs, summary, _ = EngineeringEngine(CatalogRepository.get_default_catalog()).process_project(project, [source])
+    items = build_bom(project, outputs, summary)
+    tags = {item.tag for item in items}
+    assert '-Q0' in tags and '-Q1' in tags and '-G1' in tags and '-W1' in tags
+    dto = GuiOutputBridge.to_feeder_ladder_dto(project, outputs[0], summary)
+    for tag in [dto.prot_tag, dto.km_tag, dto.kd_tag, dto.ky_tag, dto.vfd_tag, dto.timer_tag]:
+        if tag:
+            assert tag in tags
+    sld = GuiOutputBridge.generate_sld_svg(project, outputs, summary)
+    ladder = GuiOutputBridge.generate_feeder_ladder_svg(project, outputs[0], summary)
+    layout = PanelLayoutGenerator.generate_svg(project, outputs, summary)
+    assert 'PRELIMINARY' in sld and 'PRELIMINARY' in ladder and 'PRELIMINARY' in layout
+    for tag in [dto.km_tag, dto.vfd_tag]:
+        if tag:
+            assert tag in sld and tag in ladder and tag in layout
+    assert all(not item.part_number for item in items if item.missing_part_number)
+    with pytest.raises(ValueError, match='Final BOM'):
+        build_bom(project, outputs, summary, final=True)
+    quote = CommercialEngine.build_quote(project, outputs, summary)
+    assert any('-Q1' in line.tag for line in quote.lines)
+
+
+def test_unknown_short_circuit_stays_unknown_in_sld():
+    project = ProjectSpec(project_name='Unknown supply')
+    outputs, summary, _ = EngineeringEngine(CatalogRepository.get_default_catalog()).process_project(project, [feeder()])
+    dto = GuiOutputBridge.to_sld_dto(project, outputs, summary)
+    assert dto.prospective_ik_ka is None
+    assert 'Ik' in GuiOutputBridge.generate_sld_svg(project, outputs, summary)
+
+
+def test_schedule_and_qc_workbook_exports_actual_records(calculation, tmp_path):
+    project, _, outputs, summary, checks, _ = calculation
+    path = tmp_path / 'schedules.xlsx'
+    ExcelExporter.export_to_excel(str(path), project, outputs, summary, checks)
+    wb = openpyxl.load_workbook(path)
+    assert {'Terminal_Schedule', 'Wire_Schedule', 'Routine_Verification'} <= set(wb.sheetnames)
+    qc = list(wb['Routine_Verification'].values)
+    assert len(qc) == 10
+    assert all(row[2] == 'NOT_TESTED' and row[3] is None for row in qc[1:])

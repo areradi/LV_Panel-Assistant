@@ -12,6 +12,15 @@ def compute_input_hash(project, feeders) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False,
                                      separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
+
+def feeder_reference_tag(index: int, role: str) -> str:
+    if index < 1:
+        raise ValueError('Feeder index must be positive')
+    templates = {'protection': '-Q{}', 'contactor_main': '-K{}M', 'contactor_delta': '-K{}D',
+                 'contactor_star': '-K{}Y', 'overload': '-F{}', 'timer': '-K{}T',
+                 'drive': '-U{}', 'rcd': '-F{}R', 'cable': '-W{}'}
+    return templates[role].format(index)
+
 class EarthingSystem(str, Enum):
     TN_S = "TN-S"
     TN_C_S = "TN-C-S"
