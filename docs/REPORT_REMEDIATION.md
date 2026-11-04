@@ -34,3 +34,13 @@ Validation: the existing 375-test baseline passed with these guards; 22 targeted
 | P3-01 | Build data currently includes mutable development files; restrict distribution inputs. Windows executable acceptance requires Windows. |
 
 No source change or test result constitutes IEC certification or substitutes for manufacturer data and engineering sign-off. The report's exact OEM/DIN/IEC reference tables and Windows clean-machine acceptance cannot be invented from the audit text.
+
+## Stage 3: feeder electrical safety (BKL-P0-03/04, P1-02)
+
+Removed the unsupported 50% reduction of PE fault current. PE sizing now uses the actual conductor/insulation k-factor and refuses unsupported combinations or times outside the adiabatic domain. Automatic phase sizing includes thermal withstand and the second overload condition. Clearing-time estimates use the upper instantaneous pickup tolerance; a legacy policy flag can no longer silently cap a long trip at five seconds.
+
+The main calculation path now reports feeder-end maximum/minimum fault currents with explicit hot-conductor resistance and source/sequence assumptions. It evaluates TN disconnection, TT RCD/electrode data, VFD RCD compatibility, and phase/PE thermal energy. These approximate-curve checks cannot produce manufacturer-verified completion. The type-2 current-rating check no longer claims tested coordination, and an unavailable protective device is reported as `CATALOG_MATCH_FAILED` instead of substituting a lower-breaking-capacity device.
+
+Validation: 392 passed, 1 PDF test deselected; 45 targeted input/electrical safety tests passed after the final wording/disconnection-limit adjustment. Updated three legacy expectations that encoded the removed half-current assumption, hardcoded copper k-factor, and unqualified fault-model completion. Independent arithmetic checks cover hot-loop impedance, full-current PE sizing, aluminium, phase thermal sizing and fuse I2 overload sizing.
+
+Still requires external evidence: real source positive/negative/zero-sequence impedances, protective-device clearing/let-through curves, OEM starter coordination tables and independent IEC reference cases. The implementation reports these limits; it does not claim a complete IEC 60909/60364 verified design. Automatic resizing currently covers ampacity, voltage drop, phase thermal withstand and I2; an end-of-line ADS failure is reported for redesign rather than automatically changing a user's network/protection design.

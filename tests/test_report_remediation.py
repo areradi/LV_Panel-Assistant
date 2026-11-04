@@ -1,3 +1,5 @@
+import math
+
 import pytest
 from pydantic import ValidationError
 
@@ -10,6 +12,9 @@ from lv_assist.exporters import ExcelExporter, PrintableReportExporter
 from lv_assist.gui_output_bridge import GuiOutputBridge
 from lv_assist.outputs import SldGenerator
 from lv_assist.bom import build_bom
+from lv_assist.engine import CableSizingEngine
+from lv_assist.core_verification import calculate_network_ik_profile
+from lv_assist.pe_spd_engine import calculate_pe_adiabatic_section, select_pe_k_factor
 
 
 @pytest.fixture
@@ -114,3 +119,64 @@ def test_serialized_calculation_remains_verifiable(calculation):
     restored.calculation_inputs[0].cable_length_m = 200
     with pytest.raises(StaleCalculationStateError):
         require_current_calculation(project, restored, outputs)
+
+
+def test_pe_uses_full_fault_current_and_correct_material():
+    required = 10_000 * math.sqrt(0.02) / 115
+    selected = CableSizingEngine.calculate_pe_section(2.5, 10, 0.02, "Cu", "PVC", "in_cable")
+    assert required == pytest.approx(12.2975, rel=1e-4)
+    assert selected == 16
+    assert CableSizingEngine.calculate_pe_section(2.5, 10, 0.02, "Al", "PVC", "in_cable") == 25
+
+
+@pytest.mark.parametrize("time", [5.01, float("inf"), float("nan"), 0])
+def test_pe_does_not_accept_invalid_adiabatic_time(time):
+    assert CableSizingEngine.calculate_pe_section(10, 10, time) is None
+    with pytest.raises(ValueError):
+        calculate_pe_adiabatic_section(10_000, time)
+
+
+def test_unknown_material_cannot_use_a_copper_fallback():
+    with pytest.raises(ValueError):
+        select_pe_k_factor("Unknown", "PVC", "in_cable")
+
+
+def test_cable_autosizing_checks_phase_thermal_withstand():
+    result = CableSizingEngine.select_feeder_cable(
+        10, 16, False, 10, 1, 400, 3, 30, 1, 5, LoadType.SUB_FEEDER,
+        fault_current_ka=25, clear_time_s=0.02)
+    assert result[0] >= 25_000 * math.sqrt(0.02) / 115
+
+
+def test_fuse_second_overload_condition_increases_required_ampacity():
+    result = CableSizingEngine.select_feeder_cable(
+        50, 63, False, 10, 1, 400, 3, 30, 1, 5, LoadType.SUB_FEEDER,
+        overload_i2_factor=1.6)
+    assert result[3] >= 1.6 * 63 / 1.45
+
+
+def test_hot_fault_loop_matches_independent_impedance_calculation():
+    result = calculate_network_ik_profile(None, None, source_ik_ka=10, source_r_x=0.3,
+        feeder_cable_length_m=100, feeder_phase_mm2=10, feeder_pe_mm2=10)
+    z = 1.05 * (400 / math.sqrt(3)) / 10_000
+    x = z / math.sqrt(1 + 0.3**2)
+    r = x * 0.3
+    hot_r = 0.017241 * (1 + 0.00393 * 140) * 100 * (1/10 + 1/10)
+    expected = 0.95 * (400 / math.sqrt(3)) / math.hypot(2*r + hot_r, 2*x + 2*0.00008*100) / 1000
+    assert result.ik_feeder_end_min_1p_ka == pytest.approx(expected, abs=0.0005)
+
+
+def test_long_tn_feeder_fails_disconnection_check():
+    project = ProjectSpec(project_name="Long TN", prospective_ik_ka=10)
+    item = feeder(cable_length_m=2000, cable_section_mm2=2.5)
+    _, _, checks = EngineeringEngine(CatalogRepository.get_default_catalog()).process_project(project, [item])
+    assert any(v.rule_id == "RULE-ADS-TN" and v.status.value == "ERROR" for v in checks)
+
+
+def test_tt_requires_rcd_and_vfd_rejects_ac_type():
+    engine = EngineeringEngine(CatalogRepository.get_default_catalog())
+    project = ProjectSpec(project_name="TT drive", prospective_ik_ka=10, earthing_system="TT")
+    item = FeederInput(feeder_id="F01", description="Drive", power_kw=5, load_type="MOTOR_VFD", rcd_type="AC")
+    _, _, checks = engine.process_project(project, [item])
+    assert any(v.rule_id == "RULE-ADS-TT" and v.status.value == "INSUFFICIENT_DATA" for v in checks)
+    assert any(v.rule_id == "RULE-RCD-VFD" and v.status.value == "ERROR" for v in checks)

@@ -36,7 +36,8 @@ def test_audit_f2_transformer_ik_differs_from_feeder_end_ik():
         feeder_phase_mm2=16.0,
         feeder_pe_mm2=16.0,
     )
-    assert profile.scope_status == ValidationStatus.COMPLETED
+    assert profile.scope_status == ValidationStatus.WARNING
+    assert "ASSUMED_DEFAULT" in profile.scope_warning_note
     assert profile.ik_transformer_3p_ka > profile.ik_main_busbar_3p_ka
     assert profile.ik_main_busbar_3p_ka > profile.ik_feeder_end_max_3p_ka
     assert profile.ik_feeder_end_max_3p_ka > profile.ik_feeder_end_min_1p_ka

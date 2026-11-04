@@ -172,6 +172,7 @@ class ProjectSpec(EngineeringInput):
     enclosure_depth_mm: Optional[float] = Field(default=None, gt=0)
     scenario_inputs: ScenarioInputs = Field(default_factory=ScenarioInputs)
     prospective_ik_ka: Optional[float] = Field(default=None, gt=0)
+    source_r_x: Optional[float] = Field(default=None, ge=0)
     transformer_kva: Optional[float] = Field(default=None, gt=0)
     transformer_uk_pct: float = Field(default=6.0, gt=0.0, le=20.0)
     ambient_temp_c: float = Field(default=40.0, ge=-20.0, le=60.0)
@@ -211,6 +212,9 @@ class FeederInput(EngineeringInput):
     installation_method: InstallationMethod = InstallationMethod.C
     fire_resistant: bool = Field(default=False)
     thdi_pct: Optional[float] = Field(default=None, ge=0.0, le=200.0)
+    rcd_type: Optional[Literal['AC', 'A', 'F', 'B']] = None
+    rcd_sensitivity_ma: Optional[float] = Field(default=None, gt=0)
+    earth_resistance_ohm: Optional[float] = Field(default=None, gt=0)
 
 class CatalogDevice(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
@@ -248,6 +252,7 @@ class CatalogDevice(BaseModel):
     spd_iimp_ka: float = 0.0
     spd_poles: str = "4P"
     spd_backup_fuse_a: float = 0.0
+    overload_i2_factor: Optional[float] = Field(default=None, ge=1)
 
 class SelectivityRuleRecord(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
@@ -365,6 +370,9 @@ class FeederCalcOutput(BaseModel):
     cable_total_derating_k: float = 1.0
     cable_method_ref_str: str = ""
     pe_basis_str: str = ""
+    ik_end_min_ka: Optional[float] = None
+    ik_end_max_ka: Optional[float] = None
+    clearing_time_s: Optional[float] = None
     protection_icu_ka: Optional[float] = None
     voltage_drop_percent: float = 0.0
     assumptions_used: List[str] = []

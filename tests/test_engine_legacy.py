@@ -72,7 +72,7 @@ class TestCableSizing:
 
     def test_pe_section_adiabatic_dominates_with_default_fault(self):
         # 10kA / 20ms ⇒ S_min ≈ 5 mm² → کوچکترین مقطع استاندارد PE برابر 6 mm²
-        assert CableSizingEngine.calculate_pe_section(2.5) == 6.0
+        assert CableSizingEngine.calculate_pe_section(2.5) == 10.0
 
     def test_auto_sizing_meets_iz_and_vdrop(self):
         s_ph, s_n, s_pe, iz, vd, _ = CableSizingEngine.select_feeder_cable(
@@ -1370,7 +1370,7 @@ class TestPhase7AuditFixes:
             return outs[0]
         f_low, f_high = run(6.0), run(25.0)
         norm = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
-        assert "143" in f_low.pe_basis_str.translate(norm) and "143" in f_high.pe_basis_str.translate(norm)
+        assert "115" in f_low.pe_basis_str.translate(norm) and "115" in f_high.pe_basis_str.translate(norm)
         assert f_high.cable_designation_str != f_low.cable_designation_str
 
     def test_f006_icu_at_voltage_in_excel_and_html(self, tmp_path):

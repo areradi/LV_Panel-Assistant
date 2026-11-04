@@ -12,7 +12,7 @@ Covers:
 import math
 from enum import Enum
 from typing import List, Optional, Dict, Tuple
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class AutomationSignalType(str, Enum):
@@ -23,6 +23,7 @@ class AutomationSignalType(str, Enum):
 
 
 class FieldInstrumentInput(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, validate_assignment=True)
     tag_id: str = Field(..., min_length=1, description="مثلاً PT-101 یا XV-201")
     higher_func: str = Field(default="==PROCESS", description="IEC 81346 (==)")
     func_group: str = Field(default="=INST", description="IEC 81346 (=)")

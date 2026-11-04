@@ -163,8 +163,12 @@ def calculate_network_ik_profile(
     feeder_pe_mm2: Optional[float] = None,
     voltage_factor_c_max: float = 1.05,
     voltage_factor_c_min: float = 0.95,
+    source_ik_ka: Optional[float] = None,
+    source_r_x: Optional[float] = None,
+    conductor: str = "CU",
+    insulation: str = "PVC",
 ) -> ShortCircuitProfile:
-    if not transformer_kva or not uk_percent or transformer_kva <= 0 or uk_percent <= 0:
+    if source_ik_ka is None and (not transformer_kva or not uk_percent or transformer_kva <= 0 or uk_percent <= 0):
         return ShortCircuitProfile(
             ik_transformer_3p_ka=None,
             ik_main_busbar_3p_ka=None,
@@ -176,8 +180,11 @@ def calculate_network_ik_profile(
             scope_warning_note="مشخصات ترانسفورماتور وارد نشده است."
         )
 
-    z_tr_ohm = (uk_percent / 100.0) * ((line_voltage_v ** 2) / (transformer_kva * 1000.0))
-    r_tr_ohm = 0.3 * z_tr_ohm
+    z_tr_ohm = (voltage_factor_c_max * line_voltage_v / math.sqrt(3) / (source_ik_ka * 1000)
+                if source_ik_ka is not None else
+                (uk_percent / 100.0) * ((line_voltage_v ** 2) / (transformer_kva * 1000.0)))
+    rx = source_r_x if source_r_x is not None else 0.3
+    r_tr_ohm = z_tr_ohm * rx / math.sqrt(1 + rx * rx)
     x_tr_ohm = math.sqrt(max(0.0, z_tr_ohm ** 2 - r_tr_ohm ** 2))
 
     u_phase_v = line_voltage_v / math.sqrt(3.0)
@@ -185,7 +192,7 @@ def calculate_network_ik_profile(
 
     r_bus = r_tr_ohm
     x_bus = x_tr_ohm
-    rho_cu_20 = 0.018
+    rho_cu_20 = 0.017241 if conductor == "CU" else 0.028264
     x_per_m = 0.00008
 
     if incomer_cable_length_m and incomer_cable_mm2 and incomer_cable_length_m > 0 and incomer_cable_mm2 > 0:
@@ -213,7 +220,9 @@ def calculate_network_ik_profile(
     ik_end_max_3p_ka = (voltage_factor_c_max * u_phase_v) / (z_feeder_max * 1000.0)
 
     pe_s = feeder_pe_mm2 if (feeder_pe_mm2 and feeder_pe_mm2 > 0) else feeder_phase_mm2
-    rho_hot = rho_cu_20 * 1.5
+    alpha = 0.00393 if conductor == "CU" else 0.00403
+    final_temp = 160 if insulation == "PVC" else 250
+    rho_hot = rho_cu_20 * (1 + alpha * (final_temp - 20))
     r_loop_min = (2.0 * r_bus) + rho_hot * feeder_cable_length_m * ((1.0 / feeder_phase_mm2) + (1.0 / pe_s))
     x_loop_min = (2.0 * x_bus) + (2.0 * x_per_m * feeder_cable_length_m)
     z_loop_min = math.hypot(r_loop_min, x_loop_min)
@@ -226,8 +235,10 @@ def calculate_network_ik_profile(
         ik_feeder_end_max_3p_ka=round(ik_end_max_3p_ka, 3),
         ik_feeder_end_min_1p_ka=round(ik_end_min_1p_ka, 3),
         is_attenuated_by_feeder_cable=True,
-        scope_status=ValidationStatus.COMPLETED,
-        scope_warning_note="جریان اتصال کوتاه تا انتهای فیدر محاسبه شد."
+        scope_status=ValidationStatus.WARNING,
+        scope_warning_note=("Preliminary loop model; equal source sequence impedances assumed. "
+                            + ("ASSUMED_DEFAULT: source R/X=0.3. " if source_r_x is None else "")
+                            + f"Hot conductor temperature={final_temp} C; verify source/return-path impedances.")
     )
 
 

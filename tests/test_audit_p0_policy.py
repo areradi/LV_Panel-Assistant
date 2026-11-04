@@ -4,13 +4,13 @@ import types
 from lv_assist import engine as eng
 
 
-def test_estimate_clear_time_legacy_cap(monkeypatch):
+def test_estimate_clear_time_cannot_be_silently_capped(monkeypatch):
     class Prot:
         series = "TEST"; rated_current_in_a = 100.0
     monkeypatch.setattr(eng.TripCurveRepository, "instantaneous_band_a", lambda s, i: (1000.0, 0.0))
     monkeypatch.setattr(eng.TripCurveRepository, "thermal_time_s", lambda s, m: 8.0)
     monkeypatch.setattr(eng, "ENGINE_AUDIT_STRICT_CLEAR_TIME", False)
-    assert eng.EngineeringEngine._estimate_clear_time_s(Prot(), 0.3) == 5.0
+    assert eng.EngineeringEngine._estimate_clear_time_s(Prot(), 0.3) == 8.0
 
 
 def test_estimate_clear_time_strict_mode_returns_real_curve_time(monkeypatch):

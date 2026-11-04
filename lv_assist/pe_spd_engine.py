@@ -49,9 +49,7 @@ def select_pe_k_factor(
     key = (material, insulation, arrangement)
     k = PE_K_FACTOR_TABLE.get(key)
     if k is None:
-        return 143, (
-            f"ضریب پیش‌فرض k=143 اعمال شد (کلید {key} در جدول IEC 60364-5-54 نیست)."
-        )
+        raise ValueError(f"Unsupported PE material/insulation/arrangement: {key}")
     return k, f"ضریب k={k} بر اساس ({material}/{insulation}/{arrangement})."
 
 
@@ -69,10 +67,10 @@ def calculate_pe_adiabatic_section(
     - ``k_factor_used``    — the k value applied
     - ``engineering_note`` — human-readable explanation
     """
-    if fault_current_a <= 0:
+    if not math.isfinite(fault_current_a) or fault_current_a <= 0:
         raise ValueError("fault_current_a must be > 0")
-    if clearing_time_s <= 0:
-        raise ValueError("clearing_time_s must be > 0")
+    if not math.isfinite(clearing_time_s) or not 0 < clearing_time_s <= 5:
+        raise ValueError("Adiabatic clearing_time_s must be finite and in (0, 5]")
 
     k, note = select_pe_k_factor(material, insulation, arrangement)
     s_mm2 = (fault_current_a * math.sqrt(clearing_time_s)) / k
