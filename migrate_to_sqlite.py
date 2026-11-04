@@ -215,7 +215,7 @@ PHASE_EXTENSION_SCRIPTS = (
 )
 
 
-def _run_phase_extensions() -> None:
+def _run_phase_extensions(data_dir: Path = DATA_DIR) -> None:
     """اجرای Idempotent توسعه‌های داده فاز ۵/۶/۷ پیش از محاسبه هش و مهاجرت (TECH-02)."""
     scripts_dir = BASE_DIR / "scripts"
     if not scripts_dir.is_dir():
@@ -230,6 +230,7 @@ def _run_phase_extensions() -> None:
                 continue
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
+            module.DATA_DIR = str(data_dir)
             if callable(getattr(module, "main", None)):
                 module.main()
     finally:
@@ -550,7 +551,7 @@ def build_or_migrate_database(
     force: bool = False,
 ) -> Path:
     """ساخت دیتابیس SQLite و مهاجرت خودکار در صورت نبود فایل یا تغییر هش فایل‌های JSON."""
-    _run_phase_extensions()
+    _run_phase_extensions(data_dir)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     json_files = [
         data_dir / "catalog_devices.json",

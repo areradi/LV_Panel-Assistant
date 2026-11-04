@@ -70,3 +70,19 @@ Connected the existing clipboard parser to an atomic GUI import action with a vi
 Added source R/X and actual busbar geometry to advanced project inputs and RCD type/sensitivity/electrode resistance to the scrollable feeder editor. Preserved all existing model fields when editing a feeder. Assumption metadata now survives model/GUI/JSON roundtrips and is removed when the corresponding field is explicitly edited. Spreadsheet project defaults are recorded as assumptions. `ui_theme.py` now supplies the existing calculate-button colors without changing the palette; removed its unsupported blanket WCAG claim.
 
 The existing single window, advanced-field toggle and formula drawer already provide the guided/expert workflow. No replacement UI or new design assets were needed. All three language files have the same 1081 keys. The unchanged calculate-button pairing was measured at 5.86:1. Validation: 409 passed, 1 PDF check deselected, including live GUI clipboard import, atomic rejection, RCD editing, preserved drafts and language changes.
+
+## Stage 7: clean distribution inputs and measured coverage (BKL-P3-01, P0-01)
+
+Both PyInstaller routes now package an explicit file list and a fresh database generated from copied seed files, rather than the mutable development database or whole directories. Migration extensions operate on the requested data directory. The build script also creates a clean release ZIP and preserves an existing portable user's database. CustomTkinter data is collected without copying its Python cache/source directory wholesale. Repository `.git` and project skills are not distribution inputs; deleting development instructions was unnecessary.
+
+Validation: 412 passed, 1 PDF check deselected. Distribution tests check SQLite integrity, seed preservation, clean archive membership and preservation of existing portable user data. These tests exercise data/archive preparation with a test compiler; they do not establish a successful PyInstaller compilation or Windows execution.
+
+Measured statement coverage across the five requested core modules is **93.07%** (1154 statements, 80 missed): engine 96%, busbar 96%, core verification 90%, TCC 81%, PE/SPD 61%. The combined 85% threshold passed. Coverage tooling is in `requirements-dev.txt`. Per-module gaps remain visible; the combined percentage is not a claim that each module reached 85%.
+
+Run the measured check with Python 3.12 and an available desktop/X display:
+
+```bash
+python -B -m pytest -q -k 'not test_html_to_pdf_roundtrip' --cov=lv_assist.engine --cov=lv_assist.busbar --cov=lv_assist.pe_spd_engine --cov=lv_assist.tcc_analyzer --cov=lv_assist.core_verification --cov-report=term-missing --cov-fail-under=85
+```
+
+Windows executable creation/acceptance remains unrun on this Linux worker. The browser PDF failure is a separate recorded runtime limitation, not a passing or skipped-by-default test.

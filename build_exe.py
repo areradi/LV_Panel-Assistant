@@ -2,14 +2,16 @@
 """
 build_exe.py
 اسکریپت ساخت خودکار فایل اجرایی تک‌فایلی ویندوز (LV-PanelAssist.exe) با PyInstaller.
-این اسکریپت به صورت خودکار پوشه‌های data (دیتابیس SQLite و JSONها)، translations و
-پکیج customtkinter را درون فایل اجرایی بسته‌بندی می‌کند.
+دیتابیس تمیز از بذرهای پروژه ساخته می‌شود؛ داده‌های محلی کاربر وارد بسته انتشار نمی‌شوند.
 """
 import os
 import sys
 import shutil
 import subprocess
+import tempfile
+import zipfile
 from pathlib import Path
+from lv_assist.distribution import prepare_release_data
 
 ROOT = Path(__file__).resolve().parent
 APP_NAME = "PanelCalc-Pro"
@@ -25,21 +27,19 @@ def ensure_pyinstaller():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
 
 
-def get_customtkinter_path() -> str:
-    import customtkinter
-    return os.path.dirname(customtkinter.__file__)
-
-
 def build():
     ensure_pyinstaller()
-    ctk_dir = get_customtkinter_path()
-    sep = ";" if os.name == "nt" else ":"
+    (ROOT / 'build').mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='release-data-', dir=ROOT / 'build') as temporary:
+        release_files = prepare_release_data(ROOT / 'lv_assist' / 'data', Path(temporary))
+        _build_with_data(release_files)
 
-    data_args = [
-        f"--add-data={ROOT / 'lv_assist' / 'data'}{sep}lv_assist/data",
-        f"--add-data={ROOT / 'lv_assist' / 'translations'}{sep}lv_assist/translations",
-        f"--add-data={ctk_dir}{sep}customtkinter",
-    ]
+
+def _build_with_data(release_files):
+    sep = ";" if os.name == "nt" else ":"
+    data_args = [f'--add-data={path}{sep}lv_assist/data' for path in release_files]
+    data_args += [f"--add-data={ROOT / 'lv_assist' / 'translations' / (lang + '.json')}{sep}lv_assist/translations"
+                  for lang in ('fa', 'en', 'de')]
 
     template_xlsx = ROOT / "templates" / "Input_Load_List_Template.xlsx"
     if template_xlsx.exists():
@@ -58,6 +58,7 @@ def build():
         "--hidden-import=defusedxml",
         "--hidden-import=sqlite3",
         "--hidden-import=customtkinter",
+        "--collect-data=customtkinter",
         "--collect-all=rapidfuzz",
         *data_args,
         str(ENTRY_SCRIPT),
@@ -73,9 +74,8 @@ def build():
     # کپی پوشه data و قالب اکسل در کنار فایل exe برای پایداری تغییرات دیتابیس کاربر
     target_data = dist_dir / "data"
     target_data.mkdir(parents=True, exist_ok=True)
-    src_data = ROOT / "lv_assist" / "data"
-    for item in src_data.glob("*"):
-        if item.is_file():
+    for item in release_files:
+        if not (target_data / item.name).exists():
             shutil.copy2(item, target_data / item.name)
 
     if template_xlsx.exists():
@@ -83,9 +83,18 @@ def build():
         target_templates.mkdir(parents=True, exist_ok=True)
         shutil.copy2(template_xlsx, target_templates / template_xlsx.name)
 
+    release_zip = dist_dir / f'{APP_NAME}-release.zip'
+    with zipfile.ZipFile(release_zip, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.write(exe_file, exe_file.name)
+        for item in release_files:
+            archive.write(item, f'data/{item.name}')
+        if template_xlsx.exists():
+            archive.write(template_xlsx, f'templates/{template_xlsx.name}')
+
     print("\n" + "=" * 68)
     print(f"[SUCCESS] فایل اجرایی با موفقیت ساخته شد:")
     print(f"  -> {exe_file}")
+    print(f"  -> Clean release archive: {release_zip}")
     print(f"  -> دیتابیس قابل ویرایش کنار فایل اجرایی: {target_data / 'lv_assist.db'}")
     print("=" * 68)
 
