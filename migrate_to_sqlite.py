@@ -28,6 +28,7 @@ DATA_DIR = (
     else BASE_DIR / "data"
 )
 DEFAULT_DB_PATH = DATA_DIR / "lv_assist.db"
+MIGRATION_VERSION = "2-evidence-scoped-selectivity"
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -428,6 +429,8 @@ def migrate_catalog_devices(conn: sqlite3.Connection, data_dir: Path) -> None:
 
 
 def migrate_selectivity_and_curves(conn: sqlite3.Connection, data_dir: Path) -> None:
+    from lv_assist.models import SelectivityRuleRecord
+
     # ۱. مهاجرت قواعد سلکتیویته رسمی (selectivity_rules.json)
     sel_path = data_dir / "selectivity_rules.json"
     sel_data = _load_json_safe(sel_path)
@@ -441,6 +444,8 @@ def migrate_selectivity_and_curves(conn: sqlite3.Connection, data_dir: Path) -> 
     for rule in rules:
         if not isinstance(rule, dict):
             continue
+        record = SelectivityRuleRecord(**rule)
+        verified = record.has_verified_source
         up_series = str(rule.get("upstream_series") or rule.get("upstream") or "")
         dn_series = str(rule.get("downstream_series") or rule.get("downstream") or "")
         up_min = rule.get("upstream_min_in_a")
@@ -454,6 +459,8 @@ def migrate_selectivity_and_curves(conn: sqlite3.Connection, data_dir: Path) -> 
         )
         if sel_type not in ("VERIFIED_TOTAL", "VERIFIED_PARTIAL", "TOTAL", "PARTIAL"):
             sel_type = "VERIFIED_PARTIAL"
+        if not verified:
+            sel_type = "TOTAL" if record.is_total_up_to_icu else "PARTIAL"
 
         conn.execute(
             """
@@ -462,11 +469,12 @@ def migrate_selectivity_and_curves(conn: sqlite3.Connection, data_dir: Path) -> 
                 upstream_in_min_a, upstream_in_max_a, downstream_in_max_a,
                 min_ratio, limit_ka, selectivity_type, voltage_v,
                 is_verified_manufacturer_rule, raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 400.0, 1, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 up_series, dn_series, up_min, up_max, dn_max,
-                min_ratio, limit_ka, sel_type, json.dumps(rule, ensure_ascii=False),
+                min_ratio, limit_ka, sel_type, record.voltage_v or 400.0, int(verified),
+                record.model_dump_json(),
             ),
         )
 
@@ -560,7 +568,7 @@ def build_or_migrate_database(
         data_dir / "trip_curves.json",
     ]
     combined_hash = hashlib.sha256(
-        "|".join(_compute_file_sha256(p) for p in json_files).encode("utf-8")
+        (MIGRATION_VERSION + "|" + "|".join(_compute_file_sha256(p) for p in json_files)).encode("utf-8")
     ).hexdigest()
 
     if db_path.exists() and not force:

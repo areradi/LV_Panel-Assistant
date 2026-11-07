@@ -305,6 +305,35 @@ class SelectivityRuleRecord(BaseModel):
     selectivity_limit_is_ka: float
     is_total_up_to_icu: bool = False
     catalog_reference: str
+    manufacturer: Optional[str] = None
+    datasheet_revision: Optional[str] = None
+    source_page: Optional[int] = Field(default=None, gt=0)
+    table_ref: Optional[str] = None
+    voltage_v: Optional[float] = Field(default=None, gt=0)
+    upstream_part_numbers: List[str] = Field(default_factory=list)
+    downstream_part_numbers: List[str] = Field(default_factory=list)
+    upstream_max_in_a: Optional[float] = Field(default=None, gt=0)
+    data_quality: Literal['REAL_VERIFIED', 'ESTIMATED', 'UNVERIFIED'] = 'UNVERIFIED'
+    is_verified_manufacturer_rule: bool = False
+
+    @property
+    def has_verified_source(self) -> bool:
+        fields = (self.manufacturer, self.catalog_reference, self.datasheet_revision, self.table_ref)
+        missing = {'', 'unknown', 'generic', 'unspecified', 'n/a', 'verified entry'}
+        return (
+            self.is_verified_manufacturer_rule
+            and self.data_quality == DataQuality.REAL_VERIFIED
+            and all(str(value or '').strip().casefold() not in missing for value in fields)
+            and self.source_page is not None
+            and self.voltage_v is not None
+            and bool(self.upstream_part_numbers)
+            and bool(self.downstream_part_numbers)
+            and all(part.strip() for part in self.upstream_part_numbers + self.downstream_part_numbers)
+            and self.upstream_min_in_a > 0
+            and self.downstream_max_in_a > 0
+            and self.selectivity_limit_is_ka > 0
+            and (self.upstream_max_in_a is None or self.upstream_max_in_a >= self.upstream_min_in_a)
+        )
 
 class ValidationResult(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)

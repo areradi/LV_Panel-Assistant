@@ -128,6 +128,14 @@ Final selected suite: **434 passed, 1 browser PDF test deselected**, on both Pyt
 
 Remaining prerequisites are specific OEM datasets/curves, approved thermal and busbar reference tables, real installation/source data and a Windows acceptance environment. This record does not close those items or claim the application is ready to certify an assembly.
 
+## Stage 9: enforce the source and application scope of selectivity tables (2026-11-07)
+
+Source review found that the legacy migration marked every JSON selectivity rule as a verified manufacturer rule. Those rows did not establish an edition, page, tested part pair or voltage. The runtime also matched by series alone and applied a rating-ratio heuristic before checking a manufacturer table.
+
+Rules now need an explicit reviewed-quality flag, manufacturer, document reference/revision, page/table reference, voltage and exact upstream/downstream part numbers. The migration derives its verification flag from that evidence instead of assigning it unconditionally. Existing databases are guarded at read time too. The engine passes the actual project voltage. A fully scoped table is evaluated before the preliminary ratio heuristic; it cannot apply to another manufacturer, part or voltage. The bundled legacy rules remain available for review but cannot establish verified selectivity.
+
+Validation: **219 passed, 1 PDF test deselected** across the legacy engine suite and the new evidence regressions. Synthetic reviewed rules are explicitly named TEST fixtures; they are not delivered as manufacturer data. The unchanged pre-edit baseline was **434 passed, 1 deselected** with a local X display. The separate PDF roundtrip was attempted and failed: this worker's Chromium aborts because its SUID sandbox helper is not configured. No browser sandbox protection was disabled in application code. Windows acceptance and the external engineering datasets remain open.
+
 ### Delivery checks for the changed scope
 
 - PASS, R-26: clipboard import and advanced/edit controls have exercised handlers, with atomic failure and stale-result behavior tested.
