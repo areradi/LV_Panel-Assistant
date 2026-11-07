@@ -321,9 +321,15 @@ class CatalogRepository:
     def load_selectivity_rules(self) -> List[SelectivityRuleRecord]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT raw_json FROM selectivity_rules WHERE is_verified_manufacturer_rule = 1"
+                "SELECT raw_json, is_verified_manufacturer_rule FROM selectivity_rules"
             ).fetchall()
-            return [SelectivityRuleRecord(**json.loads(r["raw_json"])) for r in rows]
+            rules = []
+            for row in rows:
+                rule = SelectivityRuleRecord(**json.loads(row["raw_json"]))
+                if not row["is_verified_manufacturer_rule"]:
+                    rule.is_verified_manufacturer_rule = False
+                rules.append(rule)
+            return rules
 
     @property
     def selectivity_rules(self) -> List[SelectivityRuleRecord]:
@@ -611,18 +617,25 @@ class SiemensSelectivityRepository:
         return CatalogRepository.get_selectivity_rules()
 
     @classmethod
-    def evaluate_pair(cls, upstream: CatalogDevice, downstream: CatalogDevice, prospective_ik_ka: float):
+    def evaluate_pair(cls, upstream: CatalogDevice, downstream: CatalogDevice, prospective_ik_ka: float,
+                      voltage_v: float = 400.0):
+        if (not math.isfinite(prospective_ik_ka) or prospective_ik_ka <= 0
+                or not math.isfinite(voltage_v) or voltage_v <= 0):
+            return (SelectivityEvalState.PRELIMINARY_RATIO_ONLY, None, tr("sel_ref_no_ik"))
         ratio = upstream.rated_current_in_a / max(1.0, downstream.rated_current_in_a)
-        if ratio < 1.25:
-            return (SelectivityEvalState.VIOLATION, 0.0, tr("sel_ref_violation", up=upstream.rated_current_in_a, down=downstream.rated_current_in_a, ratio=f"{ratio:.2f}"))
-
         matching_rules = [
             r for r in cls.get_selectivity_rules()
-            if r.upstream_series == upstream.series
+            if r.has_verified_source
+            and r.manufacturer.strip().casefold() == upstream.manufacturer.strip().casefold()
+            and r.manufacturer.strip().casefold() == downstream.manufacturer.strip().casefold()
+            and math.isclose(r.voltage_v, voltage_v, rel_tol=0, abs_tol=1e-6)
+            and upstream.part_number in r.upstream_part_numbers
+            and downstream.part_number in r.downstream_part_numbers
+            and r.upstream_series == upstream.series
             and upstream.rated_current_in_a >= r.upstream_min_in_a
+            and (r.upstream_max_in_a is None or upstream.rated_current_in_a <= r.upstream_max_in_a)
             and r.downstream_series == downstream.series
-            and downstream.rated_current_in_a <= r.downstream_max_in_a
-            and ratio >= 1.6
+            and 0 < downstream.rated_current_in_a <= r.downstream_max_in_a
         ]
 
         if matching_rules:
@@ -631,6 +644,9 @@ class SiemensSelectivityRepository:
                 return (SelectivityEvalState.VERIFIED_TOTAL, best_rule.selectivity_limit_is_ka, best_rule.catalog_reference)
             else:
                 return (SelectivityEvalState.VERIFIED_PARTIAL, best_rule.selectivity_limit_is_ka, best_rule.catalog_reference)
+
+        if ratio < 1.25:
+            return (SelectivityEvalState.VIOLATION, 0.0, tr("sel_ref_violation", up=upstream.rated_current_in_a, down=downstream.rated_current_in_a, ratio=f"{ratio:.2f}"))
 
         if ratio >= 1.6:
             # بازه آنی پایین‌دست تا آستانه آنی بالادست رسیده باشد، تقاطع قطعی از منحنی

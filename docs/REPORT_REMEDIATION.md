@@ -105,7 +105,7 @@ Distribution-demand, individual motor-efficiency, hot-loop impedance, full-curre
 
 A real screenshot review exposed a worker issue that logical GUI tests missed: managed Python 3.12/Tk 9 returned zero width for Persian glyphs. System Python 3.13/Tk 8.6 exposes installed fonts and renders them. A separate GUI environment was installed, real windows/screenshots and startup calculations were checked, and the reusable installation/startup draft was updated. Both interpreters passed the full selected suite. See [cloud development instructions](CLOUD_DEVELOPMENT.md). The saved draft is not an environment publication.
 
-## Final validation and open requirements
+## Validation after stage 8 and open requirements
 
 Final selected suite: **434 passed, 1 browser PDF test deselected**, on both Python 3.12 and Python 3.13/Tk 8.6. Python 3.12 core statement coverage: **95.65%** (1219 statements, 53 missed); engine 96%, busbar 96%, core verification 91%, PE/SPD 98%, TCC 96%. Each measured module exceeds 85%. The PDF test previously failed after a 120-second Chromium timeout, independently reproduced on minimal local HTML; it is not counted as passed. Real Persian window/editor rendering and the demo event loop were also checked.
 
@@ -127,6 +127,32 @@ Final selected suite: **434 passed, 1 browser PDF test deselected**, on both Pyt
 | P3-01 | Clean release data/archive preparation tested; actual PyInstaller compilation and clean Windows-machine acceptance are unrun. |
 
 Remaining prerequisites are specific OEM datasets/curves, approved thermal and busbar reference tables, real installation/source data and a Windows acceptance environment. This record does not close those items or claim the application is ready to certify an assembly.
+
+## Stage 9: enforce the source and application scope of selectivity tables (2026-11-07)
+
+Source review found that the legacy migration marked every JSON selectivity rule as a verified manufacturer rule. Those rows did not establish an edition, page, tested part pair or voltage. The runtime also matched by series alone and applied a rating-ratio heuristic before checking a manufacturer table.
+
+Rules now need an explicit reviewed-quality flag, manufacturer, document reference/revision, page/table reference, voltage and exact upstream/downstream part numbers. The migration derives its verification flag from that evidence instead of assigning it unconditionally. Existing databases are guarded at read time too. The engine passes the actual project voltage. A fully scoped table is evaluated before the preliminary ratio heuristic; it cannot apply to another manufacturer, part or voltage. The bundled legacy rules remain available for review but cannot establish verified selectivity.
+
+Validation: **219 passed, 1 PDF test deselected** across the legacy engine suite and the new evidence regressions. Synthetic reviewed rules are explicitly named TEST fixtures; they are not delivered as manufacturer data. The unchanged pre-edit baseline was **434 passed, 1 deselected** with a local X display. The separate PDF roundtrip was attempted and failed: this worker's Chromium aborts because its SUID sandbox helper is not configured. No browser sandbox protection was disabled in application code. Windows acceptance and the external engineering datasets remain open.
+
+## Stage 10: import and audit the newly attached reference data (2026-11-07)
+
+Reviewed `New Microsoft Word Document.docx` as a proposed data-library design and `cleaned_data.zip` as extracted source material. These are additional sources, distinct from the audit used for stages 1–8. The Word suggestions do not override the user's instruction to continue the existing remediation without repeating completed changes or publishing the environment.
+
+Added Pydantic extraction/normalization models, a read-only query API and a transactional, idempotent CSV-to-SQLite importer. The library preserves raw occurrences, source hashes/pages, conservative header/brand/unit normalization, duplicate aliases and quarantine reasons. It also indexes the Markdown references by content hash; their claimed standard editions remain separate from the calculation registry. Explicit unit annotations do not infer equipment models, conditions or tested coordination.
+
+The actual attachment contains **4880 extracted tables** in eight CSV files, rather than the zero claimed by its `summary.json`. There are **3928 unique source tables** after merging **952 duplicate occurrences**, including identical numbered source copies. All 4880 original occurrences remain traceable. The **55 Markdown files** contain **53 distinct documents**. Basic checks leave **422 tables pending review** and **3506 quarantined**; all have **UNVERIFIED** quality. Unknown/conflicting manufacturers, ambiguous categories, standard examples and PLC configuration are retained for review, not silently used as equipment data. The full [summary](data/cleaned_data_import_summary.json) records file hashes, categories and issue counts.
+
+The separate local `reference_library.db` passed SQLite integrity and foreign-key checks. Reimports preserve counts, prior source versions and metadata conflicts. The importer refuses the application catalog as a target, and distribution tests explicitly exclude the reference library from release data. See [the importer guide](REFERENCE_LIBRARY.md) for the reproducible commands and remaining row-review requirements.
+
+Validation on both Python 3.12 and Python 3.13/Tk 8.6: **506 passed, 1 PDF test deselected** on each interpreter. Python 3.12 statement coverage across the five original core modules and the two new library modules is **95.35%** (1526 statements, 71 missed); every measured module exceeds 85%. The independent PDF attempt remains a failed check, as recorded in stage 9. These results validate the importer and evidence guards, not the engineering accuracy of the unreviewed attachments.
+
+```bash
+DISPLAY=:99 .venv/bin/python -B -m pytest -q -k 'not test_html_to_pdf_roundtrip' --cov=lv_assist.engine --cov=lv_assist.busbar --cov=lv_assist.pe_spd_engine --cov=lv_assist.tcc_analyzer --cov=lv_assist.core_verification --cov=lv_assist.data_validator --cov=lv_assist.reference_library --cov-report=term-missing --cov-fail-under=85
+```
+
+Still open: row-level OEM review and complete coordination/clearing data; checked thermal/busbar method coefficients and applicability; real installation/source inputs; browser PDF acceptance; actual Windows compilation and clean-machine acceptance. The reference importer makes the supplied evidence traceable and reviewable; it does not close those prerequisites. No environment configuration was published and no application deployment was performed.
 
 ### Delivery checks for the changed scope
 
