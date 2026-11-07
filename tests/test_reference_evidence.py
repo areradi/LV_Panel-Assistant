@@ -4,7 +4,7 @@ import sqlite3
 import pytest
 
 from lv_assist.catalog import CatalogRepository, SiemensSelectivityRepository
-from lv_assist.models import CatalogDevice, SelectivityEvalState, SelectivityRuleRecord
+from lv_assist.models import CatalogDevice, FeederInput, LoadType, ProjectSpec, SelectivityEvalState, SelectivityRuleRecord
 from migrate_to_sqlite import SCHEMA_SQL, migrate_selectivity_and_curves
 
 
@@ -98,3 +98,19 @@ def test_legacy_database_flag_alone_is_not_evidence(tmp_path):
         conn.execute('INSERT INTO selectivity_rules (upstream_series, downstream_series, selectivity_type, raw_json) VALUES (?, ?, ?, ?)',
                      ('UP', 'DOWN', 'VERIFIED_TOTAL', json.dumps(legacy)))
     assert not CatalogRepository(db).selectivity_rules[0].has_verified_source
+
+
+def test_engine_passes_project_voltage_to_selectivity_evaluation(monkeypatch):
+    from lv_assist.engine import EngineeringEngine
+
+    seen = []
+
+    def evaluate(cls, upstream, downstream, fault, voltage_v=400):
+        seen.append(voltage_v)
+        return SelectivityEvalState.PRELIMINARY_RATIO_ONLY, None, 'TEST FIXTURE'
+
+    monkeypatch.setattr(SiemensSelectivityRepository, 'evaluate_pair', classmethod(evaluate))
+    project = ProjectSpec(project_name='Scope test', nominal_voltage_v=415, prospective_ik_ka=10)
+    feeder = FeederInput(feeder_id='F01', description='Test', load_type=LoadType.HEATER_RESISTIVE, power_kw=10)
+    EngineeringEngine(CatalogRepository.get_default_catalog()).process_project(project, [feeder])
+    assert seen == [415]
