@@ -2608,3 +2608,19 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
     if hasattr(widget, "bind"):
         widget.bind("<KeyRelease>", _clear_assumed, add="+")
     return dot
+
+    def _attach_assumed_field_indicator(self, parent_row, field_name: str, widget):
+        spec = getattr(self, 'current_project', None) or getattr(self, 'project_spec', None)
+        assumed = getattr(spec, 'assumed_fields', set()) or set()
+        dot = ctk.CTkLabel(parent_row, text='●' if field_name in assumed else '', font=('Consolas', 14, 'bold'), text_color='#38BDF8', width=16)
+        dot.pack(side='right', padx=2)
+        def _clear_assumed(_event=None):
+            cur_assumed = getattr(spec, 'assumed_fields', None)
+            if isinstance(cur_assumed, set):
+                cur_assumed.discard(field_name)
+            elif isinstance(cur_assumed, list) and field_name in cur_assumed:
+                cur_assumed.remove(field_name)
+            dot.configure(text='')
+        if hasattr(widget, 'bind'):
+            widget.bind('\x3cKeyRelease\x3e', _clear_assumed, add='+')
+        return dot
