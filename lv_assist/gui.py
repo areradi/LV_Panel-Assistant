@@ -2624,3 +2624,109 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         if hasattr(widget, 'bind'):
             widget.bind('\x3cKeyRelease\x3e', _clear_assumed, add='+')
         return dot
+def _build_s201_inquiry_timeline(self, parent):
+        timeline_frame = ctk.CTkFrame(
+            parent,
+            fg_color=("#F8FAFC", "#0F172A"),
+            corner_radius=8,
+            border_width=1,
+            border_color="#38BDF8",
+        )
+        timeline_frame.pack(fill="x", padx=10, pady=8)
+
+        ctk.CTkLabel(
+            timeline_frame,
+            text="گاه‌شمار استعلام فنی تجهیز پیش‌نمایش",
+            font=("Vazirmatn", 13, "bold"),
+            text_color="#38BDF8",
+            anchor="e",
+        ).pack(fill="x", padx=12, pady=(10, 2))
+
+        steps = [
+            ("۱", "استخراج نمودار و شناسایی ابهام", "تکمیل‌شده", "#10B981", False),
+            ("۲", "ارسال نامه استعلام به سازنده", "تکمیل‌شده", "#10B981", False),
+            ("۳", "دریافت پاسخ و جداول آزمون آزمایشگاهی", "در انتظار پاسخ رسمی سازنده", "#F59E0B", True),
+            ("۴", "ادغام در هسته محاسبات مهندسی", "معلق تا تایید نهایی اسناد", "#64748B", False),
+        ]
+
+        for num, title, status, color, hi in steps:
+            card = ctk.CTkFrame(
+                timeline_frame,
+                fg_color=("#FEF3C7", "#1E293B") if hi else ("#F1F5F9", "#0F172A"),
+                corner_radius=6,
+                border_width=2 if hi else 1,
+                border_color=color,
+            )
+            card.pack(fill="x", padx=12, pady=4)
+
+            ctk.CTkLabel(
+                card,
+                text=f"گام {num} — {status}",
+                font=("Vazirmatn", 11, "bold"),
+                text_color=color,
+                anchor="e",
+            ).pack(fill="x", padx=10, pady=(6, 0))
+
+            ctk.CTkLabel(
+                card,
+                text=title,
+                font=("Vazirmatn", 13 if hi else 12, "bold" if hi else "normal"),
+                text_color=("#0F172A", "#F8FAFC"),
+                anchor="e",
+            ).pack(fill="x", padx=10, pady=(2, 6))
+
+        return timeline_frame
+
+    def _prompt_export_guardrail_dialog(self, on_confirmed_callback):
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("تاییدیه وضعیت ارزیابی اسناد پیش از صدور خروجی")
+        dlg.geometry("540x260")
+        dlg.transient(self)
+        dlg.grab_set()
+
+        warn_banner = ctk.CTkFrame(
+            dlg,
+            fg_color=("#FEF3C7", "#1E293B"),
+            border_width=1,
+            border_color="#F59E0B",
+            corner_radius=8,
+        )
+        warn_banner.pack(fill="x", padx=16, pady=(16, 10))
+
+        ctk.CTkLabel(
+            warn_banner,
+            text="داده‌های حفاظتی تجهیزات در مرحله ارزیابی اسناد بوده و مشمول تأییدیه نهایی کارخانه نمی‌باشد",
+            font=("Vazirmatn", 12),
+            text_color=("#0F172A", "#F8FAFC"),
+            anchor="e",
+            wraplength=490,
+        ).pack(fill="x", padx=12, pady=10)
+
+        ack_var = ctk.BooleanVar(value=False)
+        btn_confirm = ctk.CTkButton(
+            dlg,
+            text="تایید و صدور فایل خروجی",
+            font=("Vazirmatn", 12, "bold"),
+            fg_color="#10B981",
+            state="disabled",
+        )
+
+        def _on_toggle():
+            btn_confirm.configure(state="normal" if ack_var.get() else "disabled")
+
+        ctk.CTkCheckBox(
+            dlg,
+            text="وضعیت ارزیابی اسناد و درج واترمارک احتیاطی در خروجی را تایید می‌کنم",
+            font=("Vazirmatn", 12),
+            variable=ack_var,
+            command=_on_toggle,
+        ).pack(fill="x", padx=20, pady=10)
+
+        def _execute():
+            if ack_var.get():
+                dlg.destroy()
+                on_confirmed_callback()
+
+        btn_confirm.configure(command=_execute)
+        btn_confirm.pack(side="right", padx=20, pady=10)
+        ctk.CTkButton(dlg, text="انصراف", fg_color="#64748B", command=dlg.destroy).pack(side="left", padx=20, pady=10)

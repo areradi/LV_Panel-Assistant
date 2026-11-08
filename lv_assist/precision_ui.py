@@ -193,6 +193,39 @@ nav = ctk.CTkFrame(body, width=185, **card)
         self._apply_status()
         self._refresh_precision_context()
         self.after_idle(self._apply_windows_backdrop)
+def _build_evidence_drawer(self, parent):
+        self._drawer_wrapper = ctk.CTkFrame(
+            parent, width=290, fg_color=("#F1F5F9", "#1E293B"),
+            corner_radius=8, border_width=1, border_color=("#CAD5E2", "#34485E")
+        )
+        self._drawer_wrapper.pack(side="right", fill="y", padx=(6, 10), pady=10)
+        
+        header = ctk.CTkFrame(self._drawer_wrapper, fg_color="transparent")
+        header.pack(fill="x", padx=8, pady=8)
+        
+        self._drawer_toggle_btn = ctk.CTkButton(
+            header, text="بستن پنل مدرک", width=110, height=28,
+            font=("Vazirmatn", 11, "bold"), command=self.toggle_evidence_drawer
+        )
+        self._drawer_toggle_btn.pack(side="left", padx=4)
+        
+        ctk.CTkLabel(
+            header, text="جزئیات مدرک فنی", font=("Vazirmatn", 13, "bold"),
+            text_color="#38BDF8", anchor="e"
+        ).pack(side="right", padx=6)
+        return self._drawer_wrapper
+
+    def toggle_evidence_drawer(self):
+        if not hasattr(self, "_drawer_wrapper"):
+            return
+        if getattr(self, "_drawer_open", True):
+            self._drawer_wrapper.configure(width=48)
+            self._drawer_toggle_btn.configure(text="مدرک", width=40)
+            self._drawer_open = False
+        else:
+            self._drawer_wrapper.configure(width=290)
+            self._drawer_toggle_btn.configure(text="بستن پنل مدرک", width=110)
+            self._drawer_open = True
 
     def _open_precision_settings(self):
         dialog = ctk.CTkToplevel(self)
