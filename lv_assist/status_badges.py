@@ -72,12 +72,11 @@ class StatusBadge(ctk.CTkFrame):
 
     @classmethod
     def apply_treeview_tag(cls, tree, status):
-        """همان پالت را به‌صورت tag روی ttk.Treeview اعمال می‌کند (برای UI-04)."""
+        """فقط foreground را رنگی می‌کند، background پیش‌فرض می‌ماند."""
         style = cls.STYLES.get(status, cls.STYLES["insufficient"])
         dark = ctk.get_appearance_mode() == "Dark"
         idx = 1 if dark else 0
         tree.tag_configure(
             "badge_" + status,
-            background=style["fg_color"][idx],
             foreground=style["text_color"][idx],
         )
