@@ -51,6 +51,7 @@ pass  # [v0.8 REMOVED] from lv_assist.eplan_macro import EplanMacroExporter
 pass  # [v0.8 REMOVED] from lv_assist.eplan_macro_files import EplanMacroFileExporter, EplanPageMacroExporter
 pass  # [v0.8 REMOVED] from lv_assist.eplan_field_test import EplanFieldTestKit
 from lv_assist.i18n import tr, i18n
+from lv_assist.status_badges import StatusBadge
 from lv_assist.gui_output_bridge import GuiOutputBridge
 from lv_assist.field_wizard_engine import (
     AutomationSignalType, FieldInstrumentInput, IndustrialAutomationEngine,
@@ -1716,6 +1717,23 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         self.s201_preview_switch.deselect()
         self.s201_preview_switch.pack(side=_pv_side)
 
+        # UI-05: فیلترهای سریع
+        filter_bar = ctk.CTkFrame(parent, fg_color="transparent")
+        filter_bar.pack(fill="x", padx=12, pady=(4, 0))
+        self._cat_filter_var = ctk.StringVar(value="all")
+        _filters = [
+            ("all", "همه", "#334155"),
+            ("preview", "پیش‌نمایش", "#38BDF8"),
+            ("awaiting", "در انتظار", "#F59E0B"),
+            ("insufficient", "داده ناکافی", "#64748B"),
+        ]
+        for val, txt, color in _filters:
+            btn = ctk.CTkRadioButton(filter_bar, text=txt, variable=self._cat_filter_var, value=val,
+                                     font=ctk.CTkFont(family=i18n.font_family(), size=11),
+                                     text_color=(color, color))
+            btn.pack(side="right" if i18n.direction() == "rtl" else "left", padx=8)
+        self._cat_filter_var.trace_add("write", lambda *_: self._refresh_catalog_tree())
+
         bar = ctk.CTkFrame(parent)
         bar.pack(fill="x", padx=12, pady=4)
         self.ent_cat_search = ctk.CTkEntry(bar, width=260, font=font, placeholder_text=tr("cat_search"))
@@ -1733,15 +1751,27 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             ctk.CTkButton(bar, text=tr(key), fg_color=color, font=font, height=32,
                           command=command).grid(row=1+index // 3, column=column, sticky='ew', padx=6, pady=4)
 
-        cols = ("part", "mfg", "series", "type", "in_a", "icu", "kw", "loss", "price", "quality")
+        cols = ("status", "part", "mfg", "series", "type", "in_a", "icu", "kw", "loss", "price", "quality")
         self.tree_catalog = ttk.Treeview(parent, columns=cols, show="headings")
-        for c, key, w in (("part", "cat_col_part", 170), ("mfg", "cat_col_mfg", 110),
-                          ("series", "cat_col_series", 150), ("type", "cat_col_type", 115),
-                          ("in_a", "cat_col_in", 75), ("icu", "cat_col_icu", 75),
-                          ("kw", "cat_col_kw", 85), ("loss", "cat_col_loss", 85),
-                          ("price", "cat_col_price", 95), ("quality", "cat_col_quality", 110)):
-            self.tree_catalog.heading(c, text=tr(key))
-            self.tree_catalog.column(c, width=w, anchor="center")
+        col_specs = [
+            ("status", "col_status", 90, "center"),
+            ("part", "cat_col_part", 150, "w"),
+            ("mfg", "cat_col_mfg", 100, "center"),
+            ("series", "cat_col_series", 140, "w"),
+            ("type", "cat_col_type", 100, "center"),
+            ("in_a", "cat_col_in", 60, "w"),
+            ("icu", "cat_col_icu", 60, "w"),
+            ("kw", "cat_col_kw", 70, "w"),
+            ("loss", "cat_col_loss", 70, "w"),
+            ("price", "cat_col_price", 80, "w"),
+            ("quality", "cat_col_quality", 100, "center"),
+        ]
+        for c, key, w, anchor in col_specs:
+            self.tree_catalog.heading(c, text="وضعیت" if c == "status" else tr(key))
+            self.tree_catalog.column(c, width=w, anchor=anchor)
+        for st in ["verified", "preview", "awaiting", "insufficient", "unverified"]:
+            StatusBadge.apply_treeview_tag(self.tree_catalog, st)
+
         self.tree_catalog.pack(fill="both", expand=True, padx=12, pady=6)
         self._prices_cache = CatalogRepository().list_prices()
 
@@ -1796,7 +1826,24 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         for d in devices:
             price = self._prices_cache.get(d.part_number)
             price_txt = f"{price['unit_price']:g} {price['currency']}" if price else "-"
-            self.tree_catalog.insert("", "end", values=(
+            # UI-04: تعیین وضعیت Badge
+            pn = getattr(d, "part_number", "")
+            dq = getattr(d, "data_quality", "")
+            if pn == "S201-C10":
+                badge = "preview"
+            elif dq == "REAL_VERIFIED":
+                badge = "verified"
+            elif dq == "ESTIMATED":
+                badge = "unverified"
+            else:
+                badge = "insufficient"
+
+            # UI-05: اعمال فیلتر
+            active_filter = getattr(self, "_cat_filter_var", None) and self._cat_filter_var.get() or "all"
+            if active_filter != "all" and badge != active_filter:
+                continue
+
+            self.tree_catalog.insert("", "end", tags=("badge_" + badge,), values=(
                 d.part_number, d.manufacturer, d.series, d.device_type,
                 d.rated_current_in_a, d.icu_ka_400v, d.motor_kw_400v, d.power_loss_w,
                 price_txt, tr(f"quality_{d.data_quality.value}")))
