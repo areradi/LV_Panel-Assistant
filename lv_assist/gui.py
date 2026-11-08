@@ -1164,6 +1164,8 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 variable.trace_add("write", self._on_project_input_change)
                 ent.grid(row=r, column=input_column, padx=(8, 16), pady=6, sticky="ew")
                 self.wiz_entries[key] = ent
+                # UI-08: نشانگر نقطه‌ای برای فیلد فرضی
+                self.after_idle(lambda w=ent, k=key: self._attach_assumed_field_indicator(form, k, w))
             else:
                 prefix = {"wiz_panel_type": "panel_", "wiz_scenario": "scenario_", "wiz_mounting": "mount_"}.get(key)
                 menu_class = LocalizedOptionMenu if prefix else DirectionalOptionMenu
@@ -1216,6 +1218,35 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         self._advanced_fields_visible = not self._advanced_fields_visible if force is None else force
         for widget in self._advanced_widgets:
             widget.grid() if self._advanced_fields_visible else widget.grid_remove()
+
+    def _attach_assumed_field_indicator(self, parent_row, field_name: str, widget):
+        """UI-08: نشانگر نقطه‌ای آبی برای فیلدهای با مقدار فرضی (assumed_fields).
+        اگر کاربر مقداری دستی وارد کند، نشانگر پاک می‌شود.
+        """
+        spec = getattr(self, 'current_project', None) or getattr(self, 'project_spec', None)
+        assumed = getattr(spec, 'assumed_fields', None) or set()
+        is_assumed = field_name in assumed
+        dot = ctk.CTkLabel(
+            parent_row,
+            text='●' if is_assumed else '',
+            font=('Consolas', 14, 'bold'),
+            text_color='#38BDF8',
+            width=16,
+        )
+        dot.pack(side='right', padx=2)
+
+        def _clear_assumed(_event=None):
+            cur_spec = getattr(self, 'current_project', None) or getattr(self, 'project_spec', None)
+            cur_assumed = getattr(cur_spec, 'assumed_fields', None)
+            if isinstance(cur_assumed, set):
+                cur_assumed.discard(field_name)
+            elif isinstance(cur_assumed, list) and field_name in cur_assumed:
+                cur_assumed.remove(field_name)
+            dot.configure(text='')
+
+        if hasattr(widget, 'bind'):
+            widget.bind('<KeyRelease>', _clear_assumed, add='+')
+        return dot
 
     def _fill_project_form(self, project: ProjectSpec):
         self._project_form_loading = True
@@ -1717,6 +1748,9 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         self.s201_preview_switch.deselect()
         self.s201_preview_switch.pack(side=_pv_side)
 
+        # UI-09: گاهشمار استعلام فنی ABB S201-C10
+        self._build_s201_inquiry_timeline(_pv)
+
         # UI-05: فیلترهای سریع
         filter_bar = ctk.CTkFrame(parent, fg_color="transparent")
         filter_bar.pack(fill="x", padx=12, pady=(4, 0))
@@ -2186,12 +2220,15 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             return
         path = filedialog.asksaveasfilename(defaultextension=".zip", initialfile="LV_Panel_Design_Bundle.zip", filetypes=[("ZIP", "*.zip")])
         if not path: return
-        f_outs, summary, validations = self.last_results
-        try:
-            n = LVAssistApp.build_document_bundle(path, self.current_project, f_outs, summary, validations)
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_all_done", n=n))
-        except Exception as ex:
-            messagebox.showerror(tr("msg_error"), str(ex))
+        # UI-12: دیالوگ واترمارک اجباری پیش از صدور
+        def _do_export():
+            f_outs, summary, validations = self.last_results
+            try:
+                n = LVAssistApp.build_document_bundle(path, self.current_project, f_outs, summary, validations)
+                messagebox.showinfo(tr("msg_success"), tr("msg_export_all_done", n=n))
+            except Exception as ex:
+                messagebox.showerror(tr("msg_error"), str(ex))
+        self._prompt_export_guardrail_dialog(_do_export)
 
     @staticmethod
     def build_document_bundle(zip_path: str, project: ProjectSpec, f_outs, summary, validations, include_pdf: bool = True) -> int:
@@ -2288,13 +2325,16 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         res = self._get_results()
         if not res: return
         path = filedialog.asksaveasfilename(defaultextension=".pdf", initialfile="LV_Panel_Engineering_Report.pdf", filetypes=[("PDF", "*.pdf")])
-        if path:
+        if not path: return
+        # UI-12: دیالوگ واترمارک اجباری پیش از صدور PDF
+        def _do_pdf():
             tmp_html = os.path.join(os.environ.get("TEMP", get_app_working_dir()), "lvassist_report_temp.html")
             PrintableReportExporter.generate_html_report(tmp_html, self.current_project, res[0], res[1], res[2])
             if PdfExporter.export_html_to_pdf(tmp_html, path):
                 messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
             else:
                 messagebox.showwarning(tr("msg_warning"), tr("msg_pdf_fail"))
+        self._prompt_export_guardrail_dialog(_do_pdf)
 
     def action_export_eplan(self):
         res = self._get_results()
@@ -2581,3 +2621,125 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         }
         for status, (bg, fg) in tags.items():
             tree.tag_configure(status, background=bg, foreground=fg)
+
+    # --- UI-09: گاهشمار استعلام فنی ABB S201-C10 ---
+    def _build_s201_inquiry_timeline(self, parent):
+        """ویجت گاهشمار عمودی ۴ مرحله‌ای وضعیت مکاتبه با سازنده تجهیز پیش‌نمایش."""
+        font = i18n.font_family()
+        timeline_frame = ctk.CTkFrame(
+            parent,
+            fg_color=('#F8FAFC', '#0F172A'),
+            corner_radius=8,
+            border_width=1,
+            border_color='#38BDF8',
+        )
+        timeline_frame.pack(fill='x', padx=10, pady=8)
+
+        ctk.CTkLabel(
+            timeline_frame,
+            text='گاه‌شمار استعلام فنی تجهیز پیش‌نمایش',
+            font=(font, 13, 'bold'),
+            text_color='#38BDF8',
+            anchor='e',
+        ).pack(fill='x', padx=12, pady=(10, 2))
+
+        # (شماره، عنوان گام، وضعیت، رنگ، آیا برجسته)
+        steps = [
+            ('۱', 'استخراج نمودار و شناسایی ابهام', 'تکمیل‌شده', '#10B981', False),
+            ('۲', 'ارسال نامه استعلام به سازنده', 'تکمیل‌شده', '#10B981', False),
+            ('۳', 'دریافت پاسخ و جداول آزمون آزمایشگاهی', 'در انتظار پاسخ رسمی سازنده', '#F59E0B', True),
+            ('۴', 'ادغام در هسته محاسبات مهندسی', 'معلق تا تایید نهایی اسناد', '#64748B', False),
+        ]
+
+        for num, title, status, color, highlight in steps:
+            card = ctk.CTkFrame(
+                timeline_frame,
+                fg_color=('#FEF3C7', '#1E293B') if highlight else ('#F1F5F9', '#0F172A'),
+                corner_radius=6,
+                border_width=2 if highlight else 1,
+                border_color=color,
+            )
+            card.pack(fill='x', padx=12, pady=4)
+            ctk.CTkLabel(
+                card,
+                text=f'گام {num} \u2014 {status}',
+                font=(font, 11, 'bold'),
+                text_color=color,
+                anchor='e',
+            ).pack(fill='x', padx=10, pady=(6, 0))
+            ctk.CTkLabel(
+                card,
+                text=title,
+                font=(font, 13 if highlight else 12, 'bold' if highlight else 'normal'),
+                text_color=('#0F172A', '#F8FAFC'),
+                anchor='e',
+            ).pack(fill='x', padx=10, pady=(2, 6))
+
+        return timeline_frame
+
+    # --- UI-12: دیالوگ واترمارک احتیاطی پیش از صدور خروجی ---
+    def _prompt_export_guardrail_dialog(self, on_confirmed_callback):
+        """دیالوگ تاییدیه اجباری قبل از صدور هر فایل خروجی رسمی."""
+        font = i18n.font_family()
+        dlg = ctk.CTkToplevel(self)
+        dlg.title('تاییدیه وضعیت ارزیابی اسناد پیش از صدور خروجی')
+        dlg.geometry('560x280')
+        dlg.transient(self)
+        dlg.grab_set()
+        dlg.bind('<Escape>', lambda _: dlg.destroy())
+
+        warn_banner = ctk.CTkFrame(
+            dlg,
+            fg_color=('#FEF3C7', '#1E293B'),
+            border_width=1,
+            border_color='#F59E0B',
+            corner_radius=8,
+        )
+        warn_banner.pack(fill='x', padx=16, pady=(16, 10))
+        ctk.CTkLabel(
+            warn_banner,
+            text=(
+                '\u062f\u0627\u062f\u0647\u200c\u0647\u0627\u06cc \u062d\u0641\u0627\u0638\u062a\u06cc \u062a\u062c\u0647\u06cc\u0632\u0627\u062a \u062f\u0631 \u0645\u0631\u062d\u0644\u0647 \u0627\u0631\u0632\u06cc\u0627\u0628\u06cc \u0627\u0633\u0646\u0627\u062f \u0628\u0648\u062f\u0647\n'
+                '\u0648 \u0645\u0634\u0645\u0648\u0644 \u062a\u0623\u06cc\u06cc\u062f\u06cc\u0647 \u0646\u0647\u0627\u06cc\u06cc \u06a9\u0627\u0631\u062e\u0627\u0646\u0647 \u0646\u0645\u06cc\u200c\u0628\u0627\u0634\u062f'
+            ),
+            font=(font, 12),
+            text_color=('#0F172A', '#F8FAFC'),
+            anchor='e',
+            justify='right',
+        ).pack(fill='x', padx=12, pady=10)
+
+        ack_var = ctk.BooleanVar(value=False)
+
+        btn_confirm = ctk.CTkButton(
+            dlg,
+            text='\u062a\u0627\u06cc\u06cc\u062f \u0648 \u0635\u062f\u0648\u0631 \u0641\u0627\u06cc\u0644 \u062e\u0631\u0648\u062c\u06cc',
+            font=(font, 12, 'bold'),
+            fg_color='#10B981',
+            state='disabled',
+        )
+
+        def _on_toggle():
+            btn_confirm.configure(state='normal' if ack_var.get() else 'disabled')
+
+        ctk.CTkCheckBox(
+            dlg,
+            text='\u0648\u0636\u0639\u06cc\u062a \u0627\u0631\u0632\u06cc\u0627\u0628\u06cc \u0627\u0633\u0646\u0627\u062f \u0648 \u062f\u0631\u062c \u0648\u0627\u062a\u0631\u0645\u0627\u0631\u06a9 \u0627\u062d\u062a\u06cc\u0627\u0637\u06cc \u062f\u0631 \u062e\u0631\u0648\u062c\u06cc \u0631\u0627 \u062a\u0627\u06cc\u06cc\u062f \u0645\u06cc\u200c\u06a9\u0646\u0645',
+            font=(font, 12),
+            variable=ack_var,
+            command=_on_toggle,
+        ).pack(fill='x', padx=20, pady=10)
+
+        btn_bar = ctk.CTkFrame(dlg, fg_color='transparent')
+        btn_bar.pack(fill='x', padx=16, pady=(0, 12))
+
+        def _execute():
+            if ack_var.get():
+                dlg.destroy()
+                on_confirmed_callback()
+
+        btn_confirm.configure(command=_execute)
+        btn_confirm.pack(in_=btn_bar, side='right', padx=8)
+        ctk.CTkButton(
+            btn_bar, text='\u0627\u0646\u0635\u0631\u0627\u0641',
+            fg_color='#64748B', command=dlg.destroy
+        ).pack(side='left', padx=8)

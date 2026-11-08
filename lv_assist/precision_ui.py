@@ -49,26 +49,103 @@ class PrecisionShell:
         if ctk.get_appearance_mode() == 'Light':
             self._theme_switch.select()
         self._theme_switch.pack(side='right', padx=12)
+        # --- UI-06: نوار راهبری سراسری (Global Guardrail Bar) ---
+        self._guardrail_bar = ctk.CTkFrame(
+            self, height=36, corner_radius=0,
+            fg_color=('#F8FAFC', '#0F172A'),
+            border_width=1, border_color=('#E2E8F0', '#334155')
+        )
+        self._guardrail_bar.pack(fill='x', padx=0, pady=0)
+        self._guardrail_bar.pack_propagate(False)
+        _gfont = (font, 11, 'bold')
+        ctk.CTkLabel(
+            self._guardrail_bar,
+            text='[ISOLATED PREVIEW: S201-C10 LOCKED]',
+            font=('Consolas', 11, 'bold'), text_color='#38BDF8'
+        ).pack(side='left', padx=12, pady=6)
+        ctk.CTkLabel(
+            self._guardrail_bar,
+            text='موتور فعال بر فرضیات پایه',
+            font=_gfont, text_color='#F59E0B'
+        ).pack(side='right', padx=12, pady=6)
+        ctk.CTkLabel(
+            self._guardrail_bar,
+            text='۱۰۲ تجهیز',
+            font=_gfont, text_color=('#0F172A', '#F8FAFC')
+        ).pack(side='right', padx=12, pady=6)
+        ctk.CTkLabel(
+            self._guardrail_bar,
+            text='۱۹۴ سند یکتا / ۲۴۶ مدرک بررسی‌شده',
+            font=_gfont, text_color='#10B981'
+        ).pack(side='right', padx=12, pady=6)
+
         body = ctk.CTkFrame(self, fg_color='transparent')
         body.pack(fill='both', expand=True, padx=16, pady=(4, 14))
         body.grid_rowconfigure(0, weight=1)
         body.grid_columnconfigure(1, weight=1)
-        nav = ctk.CTkFrame(body, width=185, **card)
+
+        # --- UI-07: سایدبار با دو بلوک مجزا ---
+        nav = ctk.CTkFrame(body, width=200, **card)
         nav.grid(row=0, column=0, sticky='nsew', padx=(0, 10))
         nav.grid_propagate(False)
         nav.grid_columnconfigure(0, weight=1)
-        nav.grid_rowconfigure(7, weight=1)
         nav_identity = ctk.CTkLabel(nav, text='LV / IEC', text_color=('#39516A', '#A8C1DA'), font=('Consolas', 13))
-        nav_identity.grid(row=0, column=0, pady=22)
+        nav_identity.pack(pady=(16, 10))
+
+        # بلوک اول: پروژه فعال (ایندکس 0 تا 3)
+        lbl_block1 = ctk.CTkLabel(
+            nav, text='پروژه فعال',
+            font=(font, 11, 'bold'), text_color='#10B981',
+            anchor='e' if i18n.direction() == 'rtl' else 'w'
+        )
+        lbl_block1.pack(fill='x', padx=12, pady=(4, 2))
+
         self._nav_buttons = []
-        for index, key in enumerate(self.NAV_KEYS):
-            button = ctk.CTkButton(nav, text=textwrap.fill(tr(key), width=22, break_long_words=False), height=46, anchor='e' if i18n.direction() == 'rtl' else 'w',
-                                   font=(font, 14), command=lambda i=index: self._switch_view(i))
-            button.grid(row=index+1, column=0, sticky='ew', padx=10, pady=5)
+        project_keys = self.NAV_KEYS[:4]
+        for index, key in enumerate(project_keys):
+            button = ctk.CTkButton(
+                nav,
+                text=textwrap.fill(tr(key), width=22, break_long_words=False),
+                height=40,
+                anchor='e' if i18n.direction() == 'rtl' else 'w',
+                font=(font, 13),
+                command=lambda i=index: self._switch_view(i)
+            )
+            button.pack(fill='x', padx=10, pady=3)
             self._nav_buttons.append(button)
-        ctk.CTkButton(nav, text=self._shell_copy[13], height=42, fg_color='transparent',
-                      text_color=('#203449', '#DFEAF6'), border_width=1,
-                      command=self._open_precision_settings).grid(row=8, column=0, sticky='ew', padx=10, pady=14)
+
+        # خط جداکننده بصری
+        divider = ctk.CTkFrame(nav, height=2, fg_color=('#CAD5E2', '#34485E'))
+        divider.pack(fill='x', padx=14, pady=10)
+
+        # بلوک دوم: مرکز اعتبارسنجی اسناد (ایندکس 4 به بعد)
+        lbl_block2 = ctk.CTkLabel(
+            nav, text='مرکز اعتبارسنجی اسناد',
+            font=(font, 11, 'bold'), text_color='#38BDF8',
+            anchor='e' if i18n.direction() == 'rtl' else 'w'
+        )
+        lbl_block2.pack(fill='x', padx=12, pady=(2, 2))
+
+        validation_keys = self.NAV_KEYS[4:]
+        for index, key in enumerate(validation_keys):
+            abs_index = index + 4
+            button = ctk.CTkButton(
+                nav,
+                text=textwrap.fill(tr(key), width=22, break_long_words=False),
+                height=40,
+                anchor='e' if i18n.direction() == 'rtl' else 'w',
+                font=(font, 13),
+                command=lambda i=abs_index: self._switch_view(i)
+            )
+            button.pack(fill='x', padx=10, pady=3)
+            self._nav_buttons.append(button)
+
+        # دکمه تنظیمات در پایین سایدبار
+        ctk.CTkButton(
+            nav, text=self._shell_copy[13], height=38,
+            fg_color='transparent', text_color=('#203449', '#DFEAF6'),
+            border_width=1, command=self._open_precision_settings
+        ).pack(side='bottom', fill='x', padx=10, pady=12)
         middle = ctk.CTkFrame(body, fg_color='transparent')
         middle.grid(row=0, column=1, sticky='nsew')
         stepper = ctk.CTkFrame(middle, **card)
@@ -98,11 +175,13 @@ class PrecisionShell:
                 tree.configure(xscrollcommand=scroll.set)
         ctk.CTkButton(middle, text=self._shell_copy[5], height=46, fg_color=TOKENS['calculate_primary'], hover_color=TOKENS['calculate_hover'],
                       command=self.action_recalculate, font=(font, 14, 'bold')).pack(fill='x', pady=(10, 0))
-        context = ctk.CTkFrame(body, width=350, fg_color='transparent')
+        context = ctk.CTkFrame(body, width=360, fg_color='transparent')
         context.grid(row=0, column=2, sticky='nsew', padx=(10, 0))
         context.grid_propagate(False)
         context.grid_columnconfigure(0, weight=1)
         context.grid_rowconfigure(1, weight=1)
+        # UI-10: Evidence Drawer در ستون راست (پنل کشویی جزئیات مدرک)
+        self._build_evidence_drawer(context)
         summary = ctk.CTkFrame(context, **card)
         summary.grid(row=0, column=0, sticky='ew', pady=(0, 10))
         ctk.CTkLabel(summary, text=self._shell_copy[0], font=(font, 17, 'bold')).pack(pady=(14, 8))
@@ -150,6 +229,78 @@ class PrecisionShell:
         self._apply_status()
         self._refresh_precision_context()
         self.after_idle(self._apply_windows_backdrop)
+
+    # --- UI-10: پنل کشویی Evidence Drawer ---
+    def _build_evidence_drawer(self, parent):
+        """ساخت پنل کشویی جزئیات مدرک در ستون سوم."""
+        self._drawer_open = True
+        self._drawer_wrapper = ctk.CTkFrame(
+            parent, width=290,
+            fg_color=('#F1F5F9', '#1E293B'),
+            corner_radius=8, border_width=1,
+            border_color=('#CAD5E2', '#34485E')
+        )
+        self._drawer_wrapper.pack(fill='y', expand=False, pady=(0, 10))
+        self._drawer_wrapper.pack_propagate(False)
+
+        header = ctk.CTkFrame(self._drawer_wrapper, fg_color='transparent')
+        header.pack(fill='x', padx=8, pady=8)
+
+        self._drawer_toggle_btn = ctk.CTkButton(
+            header, text='بستن پنل', width=90, height=28,
+            font=(i18n.font_family(), 11), command=self.toggle_evidence_drawer
+        )
+        self._drawer_toggle_btn.pack(side='left', padx=4)
+
+        ctk.CTkLabel(
+            header, text='جزئیات مدرک فنی',
+            font=(i18n.font_family(), 13, 'bold'),
+            text_color='#38BDF8', anchor='e'
+        ).pack(side='right', padx=6)
+
+        sep = ctk.CTkFrame(self._drawer_wrapper, height=1, fg_color=('#CAD5E2', '#334155'))
+        sep.pack(fill='x', padx=10, pady=2)
+
+        # محتوای پنل (پیش‌فرض)
+        self._drawer_content = ctk.CTkScrollableFrame(
+            self._drawer_wrapper, fg_color='transparent'
+        )
+        self._drawer_content.pack(fill='both', expand=True, padx=8, pady=8)
+
+        # ردیف‌های اطلاعات مدرک
+        font = i18n.font_family()
+        for label, value in (
+            ('نام فایل مرجع', '—'),
+            ('کد ویرایش سازنده', '—'),
+            ('شماره صفحه', '—'),
+            ('نوع سند', '—'),
+            ('خلاصه استخراج', '—'),
+        ):
+            row = ctk.CTkFrame(self._drawer_content, fg_color='transparent')
+            row.pack(fill='x', pady=3)
+            ctk.CTkLabel(
+                row, text=label, font=(font, 11, 'bold'),
+                text_color=('#475569', '#94A3B8'), anchor='e'
+            ).pack(fill='x')
+            lbl_val = ctk.CTkLabel(
+                row, text=value, font=(font, 11),
+                text_color=('#1E293B', '#F1F5F9'), anchor='e', wraplength=240
+            )
+            lbl_val.pack(fill='x', padx=4)
+        return self._drawer_wrapper
+
+    def toggle_evidence_drawer(self):
+        """باز/بسته کردن پنل Evidence Drawer."""
+        if not hasattr(self, '_drawer_wrapper'):
+            return
+        if getattr(self, '_drawer_open', True):
+            self._drawer_wrapper.configure(width=42)
+            self._drawer_toggle_btn.configure(text='◀', width=36)
+            self._drawer_open = False
+        else:
+            self._drawer_wrapper.configure(width=290)
+            self._drawer_toggle_btn.configure(text='بستن پنل', width=90)
+            self._drawer_open = True
 
     def _open_precision_settings(self):
         dialog = ctk.CTkToplevel(self)
