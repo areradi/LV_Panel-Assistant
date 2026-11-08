@@ -1,4 +1,5 @@
 
+# --- UI-PHASE1-APPLIED ---
 # --- Stubs for removed EPLAN/AutoCAD modules (v0.8 cleanup) ---
 class _RemovedExporterStub:
     def __init__(self, *args, **kwargs): pass
@@ -1583,6 +1584,32 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             self.tree_rules.heading(col, text=tr(key))
             self.tree_rules.column(col, width=w, anchor=anchor)
         self._apply_tree_tags(self.tree_rules)
+
+        # --- UI-02: بنر هشدار ایمنی سلکتیویتی ---
+        _sel_d = {
+            "fa": "هشدار مهندسی: هیچ‌یک از ۱۲ قاعدهٔ سلکتیویتی فعلی با جداول آزمون "
+                  "آزمایشگاهی سازنده (Manufacturer Lab Test Tables) برای ترکیب "
+                  "بالادست/پایین‌دست تطبیق نهایی نشده است.",
+            "en": "Engineering warning: none of the 12 current selectivity rules has "
+                  "been verified against manufacturer lab test tables for the "
+                  "upstream/downstream combination.",
+            "de": "Technische Warnung: Keine der 12 aktuellen Selektivitätsregeln "
+                  "wurde gegen die Laborprüftabellen des Herstellers für die "
+                  "Kombination Ober-/Unterspeisung abgeglichen.",
+        }
+        _sel_frame = ctk.CTkFrame(tab_rules, fg_color=("#FEF3C7", "#78350F"),
+                                  border_color="#F59E0B", border_width=2,
+                                  corner_radius=8)
+        _sel_frame.pack(fill="x", padx=6, pady=(6, 4))
+        ctk.CTkLabel(
+            _sel_frame,
+            text=_sel_d.get(i18n.get_language(), _sel_d["en"]),
+            font=ctk.CTkFont(family=i18n.font_family(), size=12, weight="bold"),
+            text_color=("#B45309", "#FBBF24"),
+            wraplength=800,
+            justify="right" if i18n.direction() == "rtl" else "left",
+        ).pack(anchor="e" if i18n.direction() == "rtl" else "w", padx=12, pady=8)
+
         self.tree_rules.pack(fill="both", expand=True, padx=6, pady=6)
 
     def _results_tab_changed(self):
@@ -1663,6 +1690,32 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         font = ctk.CTkFont(family=i18n.font_family(), size=12)
         ctk.CTkLabel(parent, text=tr("cat_title"), font=ctk.CTkFont(family=i18n.font_family(), size=14, weight="bold")).pack(anchor="e", padx=14, pady=(10, 4))
 
+        # --- UI-01: کانتینر ایزولهٔ پیش‌نمایش ABB S201-C10 ---
+        _pv_side = "right" if i18n.direction() == "rtl" else "left"
+        _pv = ctk.CTkFrame(parent, fg_color="transparent", border_width=2,
+                           border_color="#38BDF8", corner_radius=8)
+        _pv.pack(fill="x", padx=12, pady=(4, 8))
+        ctk.CTkLabel(_pv, text="[PREVIEW ONLY / PR #13]",
+                     font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
+                     text_color="#38BDF8").pack(anchor="e" if i18n.direction() == "rtl" else "w", padx=10, pady=(8, 2))
+        _rtl = i18n.direction() == "rtl"
+        ctk.CTkLabel(_pv, text="پیش‌نمایش ایزوله است و وارد محاسبات اصلی نمی‌شود.",
+                     font=ctk.CTkFont(family=i18n.font_family(), size=11),
+                     text_color=("#475569", "#94A3B8"),
+                     justify="right" if _rtl else "left"
+                     ).pack(fill="x", padx=10, pady=0, anchor="e" if _rtl else "w")
+        ctk.CTkLabel(_pv, text="ABB S201-C10 | I2t ~17,000 A2s (SOC, unverified) | 40,000 / 42,000 A2s = class-3 limits, NOT continuous",
+                     font=ctk.CTkFont(family="Consolas", size=11),
+                     text_color=("#38BDF8", "#7DD3FC"), justify="left"
+                     ).pack(fill="x", padx=10, pady=2, anchor="w")
+
+        _pv_row = ctk.CTkFrame(_pv, fg_color="transparent")
+        _pv_row.pack(fill="x", padx=10, pady=(4, 10))
+        self.s201_preview_switch = ctk.CTkSwitch(
+            _pv_row, text="OFF / locked", command=self._on_s201_switch_toggle)
+        self.s201_preview_switch.deselect()
+        self.s201_preview_switch.pack(side=_pv_side)
+
         bar = ctk.CTkFrame(parent)
         bar.pack(fill="x", padx=12, pady=4)
         self.ent_cat_search = ctk.CTkEntry(bar, width=260, font=font, placeholder_text=tr("cat_search"))
@@ -1707,6 +1760,13 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 if did:
                     ids.add(str(did))
         return ids
+
+    def _on_s201_switch_toggle(self):
+        from tkinter import messagebox
+        if self.s201_preview_switch.get() == 1:
+            self.s201_preview_switch.deselect()
+            messagebox.showwarning("ایزولاسیون پیش‌نمایش",
+                                   "غیرفعال ماند. داده ایزوله است و وارد محاسبات نمی‌شود.")
 
     def _refresh_catalog_tree(self):
         if not hasattr(self, "tree_catalog"):
@@ -1979,7 +2039,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         for item in self.tree_rules.get_children():
             self.tree_rules.delete(item)
         for v in validations:
-            self.tree_rules.insert("", "end", tags=(v.status.value,), values=(tr(f"status_{v.status.value}"), v.rule_id, v.feeder_id, v.standard_ref, v.description, v.supporting_evidence, v.recommended_action))
+            self.tree_rules.insert("", "end", tags=(v.status.value,), values=(tr(f"status_{v.status.value}") + {"fa": " [تئوریک / فاقد آزمون سازنده]", "en": " [Theoretical / no manufacturer test]", "de": " [Theoretisch / kein Herstellertest]"}.get(i18n.get_language(), " [Theoretical]"), v.rule_id, v.feeder_id, v.standard_ref, v.description, v.supporting_evidence, v.recommended_action))
         self._refresh_precision_context()
 
     # ================================================================= اکشن‌ها
