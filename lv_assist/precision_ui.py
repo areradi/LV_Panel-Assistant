@@ -53,19 +53,62 @@ class PrecisionShell:
         body.pack(fill='both', expand=True, padx=16, pady=(4, 14))
         body.grid_rowconfigure(0, weight=1)
         body.grid_columnconfigure(1, weight=1)
-        nav = ctk.CTkFrame(body, width=185, **card)
+nav = ctk.CTkFrame(body, width=185, **card)
         nav.grid(row=0, column=0, sticky='nsew', padx=(0, 10))
         nav.grid_propagate(False)
         nav.grid_columnconfigure(0, weight=1)
-        nav.grid_rowconfigure(7, weight=1)
+        
         nav_identity = ctk.CTkLabel(nav, text='LV / IEC', text_color=('#39516A', '#A8C1DA'), font=('Consolas', 13))
-        nav_identity.grid(row=0, column=0, pady=22)
+        nav_identity.pack(pady=(16, 10))
+
+        # --- بلوک اول: پروژه فعال ---
+        lbl_block1 = ctk.CTkLabel(
+            nav, text="پروژه فعال",
+            font=(font, 12, "bold"), text_color="#10B981", anchor="e" if i18n.direction() == 'rtl' else "w"
+        )
+        lbl_block1.pack(fill="x", padx=12, pady=(4, 2))
+
         self._nav_buttons = []
-        for index, key in enumerate(self.NAV_KEYS):
-            button = ctk.CTkButton(nav, text=textwrap.fill(tr(key), width=22, break_long_words=False), height=46, anchor='e' if i18n.direction() == 'rtl' else 'w',
-                                   font=(font, 14), command=lambda i=index: self._switch_view(i))
-            button.grid(row=index+1, column=0, sticky='ew', padx=10, pady=5)
+        
+        # فرض بر این است که ۴ آیتم اول مربوط به پروژه فعال هستند
+        active_project_keys = self.NAV_KEYS[:4]
+        for index, key in enumerate(active_project_keys):
+            button = ctk.CTkButton(
+                nav, text=textwrap.fill(tr(key), width=22, break_long_words=False), height=38, 
+                anchor='e' if i18n.direction() == 'rtl' else 'w',
+                font=(font, 13), command=lambda i=index: self._switch_view(i)
+            )
+            button.pack(fill='x', padx=10, pady=3)
             self._nav_buttons.append(button)
+
+        # خط جداکننده بصری بین دو بلوک
+        divider = ctk.CTkFrame(nav, height=2, fg_color=('#CAD5E2', '#34485E'))
+        divider.pack(fill='x', padx=14, pady=10)
+
+        # --- بلوک دوم: مرکز اعتبارسنجی اسناد ---
+        lbl_block2 = ctk.CTkLabel(
+            nav, text="مرکز اعتبارسنجی اسناد",
+            font=(font, 12, "bold"), text_color="#38BDF8", anchor="e" if i18n.direction() == 'rtl' else "w"
+        )
+        lbl_block2.pack(fill="x", padx=12, pady=(2, 2))
+
+        validation_center_keys = self.NAV_KEYS[4:]
+        for index, key in enumerate(validation_center_keys):
+            absolute_index = index + 4
+            button = ctk.CTkButton(
+                nav, text=textwrap.fill(tr(key), width=22, break_long_words=False), height=38, 
+                anchor='e' if i18n.direction() == 'rtl' else 'w',
+                font=(font, 13), command=lambda i=absolute_index: self._switch_view(i)
+            )
+            button.pack(fill='x', padx=10, pady=3)
+            self._nav_buttons.append(button)
+
+        # دکمه تنظیمات پیشرفته در پایین سایدبار
+        ctk.CTkButton(
+            nav, text=self._shell_copy[13], height=38, fg_color='transparent',
+            text_color=('#203449', '#DFEAF6'), border_width=1,
+            command=self._open_precision_settings
+        ).pack(side='bottom', fill='x', padx=10, pady=14)
         ctk.CTkButton(nav, text=self._shell_copy[13], height=42, fg_color='transparent',
                       text_color=('#203449', '#DFEAF6'), border_width=1,
                       command=self._open_precision_settings).grid(row=8, column=0, sticky='ew', padx=10, pady=14)
@@ -231,3 +274,38 @@ class PrecisionShell:
                                                           ctypes.byref(setting), ctypes.sizeof(setting))
         except (OSError, AttributeError):
             pass
+def _build_global_guardrail_bar(self, parent):
+    import customtkinter as ctk
+    self._guardrail_bar = ctk.CTkFrame(
+        parent, height=40, corner_radius=0,
+        fg_color=("#F8FAFC", "#0F172A"),
+        border_width=1, border_color=("#E2E8F0", "#334155")
+    )
+    self._guardrail_bar.pack(side="top", fill="x")
+    self._guardrail_bar.pack_propagate(False)
+
+    font_fa = ("Vazirmatn", 12, "bold")
+    ctk.CTkLabel(
+        self._guardrail_bar,
+        text="۱۹۴ سند یکتا / ۲۴۶ مدرک بررسی‌شده",
+        font=font_fa, text_color="#10B981"
+    ).pack(side="right", padx=12, pady=6)
+
+    ctk.CTkLabel(
+        self._guardrail_bar,
+        text="۱۰۲ تجهیز",
+        font=font_fa, text_color=("#0F172A", "#F8FAFC")
+    ).pack(side="right", padx=12, pady=6)
+
+    ctk.CTkLabel(
+        self._guardrail_bar,
+        text="موتور فعال بر فرضیات پایه",
+        font=font_fa, text_color="#F59E0B"
+    ).pack(side="right", padx=12, pady=6)
+
+    self._s201_guardrail_badge = ctk.CTkLabel(
+        self._guardrail_bar,
+        text="[ISOLATED PREVIEW: S201-C10 LOCKED]",
+        font=("Consolas", 11, "bold"), text_color="#38BDF8"
+    )
+    self._s201_guardrail_badge.pack(side="left", padx=12, pady=6)

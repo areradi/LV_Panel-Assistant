@@ -2581,3 +2581,30 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         }
         for status, (bg, fg) in tags.items():
             tree.tag_configure(status, background=bg, foreground=fg)
+            def _attach_assumed_field_indicator(self, parent_row, field_name: str, widget):
+    import customtkinter as ctk
+    spec = getattr(self, "project_spec", None)
+    assumed = getattr(spec, "assumed_fields", set()) or set()
+    is_assumed = field_name in assumed
+
+    dot = ctk.CTkLabel(
+        parent_row,
+        text="●" if is_assumed else "",
+        font=("Consolas", 14, "bold"),
+        text_color="#38BDF8",
+        width=16,
+    )
+    dot.pack(side="right", padx=2)
+
+    def _clear_assumed(_event=None):
+        cur_spec = getattr(self, "project_spec", None)
+        cur_assumed = getattr(cur_spec, "assumed_fields", None)
+        if isinstance(cur_assumed, set):
+            cur_assumed.discard(field_name)
+        elif isinstance(cur_assumed, list) and field_name in cur_assumed:
+            cur_assumed.remove(field_name)
+        dot.configure(text="")
+
+    if hasattr(widget, "bind"):
+        widget.bind("<KeyRelease>", _clear_assumed, add="+")
+    return dot
