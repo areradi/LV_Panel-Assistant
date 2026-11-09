@@ -218,6 +218,7 @@ class ProjectSpec(EngineeringInput):
     preferred_manufacturer: str = Field(default="ANY", min_length=1)
     designer_name: Optional[str] = Field(default=None, min_length=1)
     spd_class: SpdClass = Field(default=SpdClass.T2)
+    has_external_lps: Optional[bool] = None
     spd_connection_length_m: float = Field(default=0.5, ge=0.0, le=10.0)
 
 class FeederInput(EngineeringInput):

@@ -1090,6 +1090,19 @@ class EngineeringEngine:
                         recommended_action=tr("val_no_action")))
                 spd_suggested = tr("sug_spd", a=cls_value, b=selected_spd.part_number, c=selected_spd.spd_up_kv)
 
+        # Provisional warning when external LPS status is unknown
+        if project.spd_class != SpdClass.NONE and project.has_external_lps is None:
+            vals.append(ValidationResult(
+                rule_id="RULE-SPD-PROVISIONAL",
+                feeder_id="PANEL",
+                standard_ref="IEC 61643-12",
+                status=ValidationStatus.WARNING,
+                description=tr("val_spd_provisional_desc"),
+                supporting_evidence=tr("val_spd_provisional_ev"),
+                consequence=tr("val_spd_provisional_cons"),
+                recommended_action=tr("val_spd_provisional_action"),
+            ))
+
         main_candidates = [d for d in self.catalog if d.device_type == "MCCB" and (d.rated_current_in_a * self._get_derating_factor(d, project.max_internal_temp_c)) >= i_main_req_a and self._icu_ok(d, project, ik_total_ka)]
         main_candidates.sort(key=lambda x: x.rated_current_in_a)
         main_breaker = main_candidates[0] if main_candidates else None
