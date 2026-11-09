@@ -389,7 +389,7 @@ class CatalogRepository:
                     conn.execute(
                         "INSERT OR REPLACE INTO device_breaking_capacities (device_id, voltage_v, icu_ka, ics_ka)"
                         " VALUES (?,?,?,?)",
-                        (device.part_number, v_level, float(device.icu_ka_400v), float(device.icu_ka_400v)))
+                        (device.part_number, v_level, float(device.icu_ka_400v), None))
             for temp, factor in ((40.0, device.derating_40c), (50.0, device.derating_50c)):
                 conn.execute(
                     "INSERT OR REPLACE INTO device_thermal_derating (device_id, temp_c, derating_factor)"
@@ -422,7 +422,7 @@ class CatalogRepository:
                     conn.execute(
                         "INSERT OR REPLACE INTO device_breaking_capacities (device_id, voltage_v, icu_ka, ics_ka)"
                         " VALUES (?,?,?,?)",
-                        (device.part_number, v_level, float(device.icu_ka_400v), float(device.icu_ka_400v)))
+                        (device.part_number, v_level, float(device.icu_ka_400v), None))
             for temp, factor in ((40.0, device.derating_40c), (50.0, device.derating_50c)):
                 conn.execute(
                     "INSERT OR REPLACE INTO device_thermal_derating (device_id, temp_c, derating_factor)"

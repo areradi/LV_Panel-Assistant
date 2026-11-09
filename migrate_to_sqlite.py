@@ -390,7 +390,11 @@ def migrate_catalog_devices(conn: sqlite3.Connection, data_dir: Path) -> None:
 
         # پر کردن جدول قدرت قطع بر حسب ولتاژ (رفع F-006)
         if icu_400 is not None and float(icu_400) > 0:
-            ics_400 = dev_copy.get("ics_ka_400v") or float(icu_400)
+            ics_value = dev_copy.get("ics_ka_400v")
+            if ics_value is None or ics_value == "":
+                ics_400 = None
+            else:
+                ics_400 = float(ics_value)
             for v_level in (400.0, 415.0):
                 conn.execute(
                     """
@@ -398,7 +402,7 @@ def migrate_catalog_devices(conn: sqlite3.Connection, data_dir: Path) -> None:
                     (device_id, voltage_v, icu_ka, ics_ka)
                     VALUES (?, ?, ?, ?)
                     """,
-                    (dev_id, v_level, float(icu_400), float(ics_400)),
+                    (dev_id, v_level, float(icu_400), ics_400),
                 )
         if isinstance(dev_copy.get("icu_by_voltage"), dict):
             for v_str, icu_val in dev_copy["icu_by_voltage"].items():
@@ -408,7 +412,7 @@ def migrate_catalog_devices(conn: sqlite3.Connection, data_dir: Path) -> None:
                     (device_id, voltage_v, icu_ka, ics_ka)
                     VALUES (?, ?, ?, ?)
                     """,
-                    (dev_id, float(v_str), float(icu_val), float(icu_val)),
+                    (dev_id, float(v_str), float(icu_val), None),
                 )
 
         # پر کردن جدول کاهش ظرفیت دمایی تا ۵۰ درجه (و دماهای بالاتر فقط در صورت وجود در دیتاشیت - رفع F-017)
