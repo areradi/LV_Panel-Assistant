@@ -92,12 +92,12 @@ class TestCableSizing:
 
 
 class TestSelectivity:
-    def test_3va2_3rv20_total_selectivity(self):
+    def test_legacy_3va2_3rv20_rule_requires_source_verification(self):
         upstream = next(d for d in CATALOG if d.part_number == "3VA2216-5HL32-0AA0")
         downstream = next(d for d in CATALOG if d.part_number == "3RV2021-4EA10")
         state, limit, ref = SiemensSelectivityRepository.evaluate_pair(upstream, downstream, 22.0)
-        assert state == SelectivityEvalState.VERIFIED_TOTAL
-        assert limit == 55.0
+        assert state in (SelectivityEvalState.PRELIMINARY, SelectivityEvalState.PRELIMINARY_RATIO_ONLY)
+        assert limit != 55.0
         assert ref
 
     def test_ratio_below_1_25_is_violation(self):

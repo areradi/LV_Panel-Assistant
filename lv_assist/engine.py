@@ -1113,7 +1113,8 @@ class EngineeringEngine:
                     f.selectivity_ref_doc = tr("sel_ref_no_ik")
                     vals.append(ValidationResult(rule_id="RULE-SEL-005", feeder_id=f.feeder_id, standard_ref="IEC 60947-2", status=ValidationStatus.WARNING, description=tr("val_sel_noik_desc"), supporting_evidence=tr("sel_ref_no_ik"), consequence=tr("val_sel_noik_cons"), recommended_action=tr("val_sel_noik_action")))
                     continue
-                sel_state, is_limit, ref_doc = SiemensSelectivityRepository.evaluate_pair(main_breaker, f.selected_protection, ik_ka)
+                sel_state, is_limit, ref_doc = SiemensSelectivityRepository.evaluate_pair(
+                    main_breaker, f.selected_protection, ik_ka, voltage_v=project.nominal_voltage_v)
                 f.selectivity_state = sel_state; f.selectivity_limit_is_ka = is_limit; f.selectivity_ref_doc = ref_doc
 
                 if sel_state == SelectivityEvalState.VERIFIED_TOTAL:
