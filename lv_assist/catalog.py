@@ -126,8 +126,12 @@ def _ensure_database(db_path: Path = DB_PATH) -> Path:
         user_rows, price_rows = _backup_user_data(db_path)
         build_or_migrate_database(db_path=db_path, data_dir=DATA_DIR)
         _ensure_user_tables(db_path)
+        from lv_assist.migrations import run_migrations
+        run_migrations(db_path)
         _restore_user_data(db_path, user_rows, price_rows)
     else:
+        from lv_assist.migrations import run_migrations
+        run_migrations(db_path)
         _ensure_user_tables(db_path)
     return db_path
 
