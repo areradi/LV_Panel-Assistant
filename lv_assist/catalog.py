@@ -108,12 +108,13 @@ def _restore_user_data(db_path: Path, user_rows, price_rows) -> None:
         pass
 
 
-def _ensure_database(db_path: Path = DB_PATH) -> Path:
+def _ensure_database(db_path: Optional[Path] = None) -> Path:
     """ساخت خودکار دیتابیس SQLite و اجرای مهاجرت در اولین بارگذاری.
 
     حفاظت داده کاربر: اگر بازسازی از JSON لازم شود، ابتدا ردیف‌های کاربر
     (is_user_entry=1) و قیمت‌ها پشتیبان‌گیری و پس از بازسازی بازگردانی می‌شوند.
     """
+    db_path = DB_PATH if db_path is None else Path(db_path)
     if not db_path.exists():
         try:
             from migrate_to_sqlite import build_or_migrate_database
@@ -139,7 +140,7 @@ def _ensure_database(db_path: Path = DB_PATH) -> Path:
 class CatalogRepository:
     """مخزن داده‌های مهندسی و کاتالوگ تجهیزات مبتنی بر SQLite."""
 
-    def __init__(self, db_path: Path = DB_PATH) -> None:
+    def __init__(self, db_path: Optional[Path] = None) -> None:
         self.db_path = _ensure_database(db_path)
         self._devices_cache: Optional[List[CatalogDevice]] = None
         self._rules_cache: Optional[List[SelectivityRuleRecord]] = None

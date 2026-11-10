@@ -54,3 +54,6 @@ Desktop.ini
 
 # Schema migration backups (test artifacts / runtime)
 *.backup-v*
+
+# Pytest bootstrap dirs (leaked on crash)
+.pytest-catalog-bootstrap-*
