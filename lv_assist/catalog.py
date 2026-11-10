@@ -359,6 +359,17 @@ class CatalogRepository:
         self._iz0_cache = None
         self._pe_cache = None
 
+    def _sync_singleton_if_same_db(self) -> None:
+        """Invalidate the module repository cache when another instance writes its database."""
+        import sys
+
+        module = sys.modules[__name__]
+        singleton = getattr(module, "catalog_repo", None)
+        if singleton is None or singleton is self:
+            return
+        if str(singleton.db_path) == str(self.db_path):
+            singleton.reload()
+
     @staticmethod
     def _device_row_values(device: CatalogDevice) -> tuple:
         return (
@@ -401,6 +412,7 @@ class CatalogRepository:
                     (device.part_number, float(unit_price), currency, price_source))
             conn.commit()
         self.reload()
+        self._sync_singleton_if_same_db()
 
     def update_device(self, device_id: str, device: CatalogDevice,
                       unit_price: Optional[float] = None, currency: Optional[str] = None) -> None:
@@ -437,6 +449,7 @@ class CatalogRepository:
                     (device.part_number, float(unit_price), currency))
             conn.commit()
         self.reload()
+        self._sync_singleton_if_same_db()
 
     def delete_device(self, device_id: str) -> bool:
         """حذف تجهیز از کاتالوگ (قیمت‌ها با FK CASCADE حذف می‌شوند)."""
@@ -446,6 +459,7 @@ class CatalogRepository:
             conn.execute("DELETE FROM device_prices WHERE device_id = ?", (device_id,))
             conn.commit()
         self.reload()
+        self._sync_singleton_if_same_db()
         return cur.rowcount > 0
 
     def set_device_price(self, device_id: str, unit_price: Optional[float], currency: str = "EUR", source: str = "MANUAL") -> None:
