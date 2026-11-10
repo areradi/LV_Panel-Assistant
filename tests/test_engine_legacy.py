@@ -1940,7 +1940,7 @@ class TestPhase13Spd:
         assert "RULE-SPD-034" not in statuses
 
     def test_t1_selection_and_coordination(self):
-        _, _, summary, validations = self._run(spd_class=SpdClass.T1)
+        _, _, summary, validations = self._run(spd_class=SpdClass.T1, has_external_lps=True)
         spd = summary.selected_spd
         assert spd.part_number == "FLT-SEC-P-T1-3S-350/25-FM"
         assert spd.spd_iimp_ka > 0
@@ -1949,7 +1949,7 @@ class TestPhase13Spd:
         assert statuses["RULE-SPD-034"] == ValidationStatus.COMPLETED
 
     def test_t1_t2_combined_selection(self):
-        _, _, summary, validations = self._run(spd_class=SpdClass.T1_T2)
+        _, _, summary, validations = self._run(spd_class=SpdClass.T1_T2, has_external_lps=True)
         assert summary.selected_spd.part_number == "OVR T1-T2 4L 25-440s P TS QS"
         assert summary.selected_spd.spd_uc_v == 440.0
         assert any(v.rule_id == "RULE-SPD-034" and v.status == ValidationStatus.COMPLETED

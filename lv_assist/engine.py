@@ -1079,15 +1079,51 @@ class EngineeringEngine:
                         status=ValidationStatus.ERROR, description=tr("val_spd_032_err_desc", a=f"{lead_m:g}"),
                         supporting_evidence=tr("val_spd_032_err_ev", a=f"{lead_m:g}"), consequence=tr("val_spd_032_err_cons"),
                         recommended_action=tr("val_spd_032_err_action")))
-                vals.append(ValidationResult(rule_id="RULE-SPD-033", feeder_id="PANEL", standard_ref="IEC 61643-11",
-                    status=ValidationStatus.COMPLETED, description=tr("val_spd_033_desc", a=selected_spd.spd_backup_fuse_a),
-                    supporting_evidence=tr("val_spd_033_ev", pn=selected_spd.part_number, a=selected_spd.spd_backup_fuse_a),
-                    consequence=tr("val_spd_033_cons"), recommended_action=tr("val_no_action")))
+                backup_fuse = selected_spd.spd_backup_fuse_a
+                if backup_fuse is None or backup_fuse <= 0:
+                    vals.append(ValidationResult(
+                        rule_id="RULE-SPD-033",
+                        feeder_id="PANEL",
+                        standard_ref="IEC 61643-11",
+                        status=ValidationStatus.INSUFFICIENT_DATA,
+                        description=tr("val_spd_033_insufficient_desc"),
+                        supporting_evidence=tr("val_spd_033_insufficient_ev", pn=selected_spd.part_number),
+                        consequence=tr("val_spd_033_insufficient_cons"),
+                        recommended_action=tr("val_spd_033_insufficient_action"),
+                    ))
+                else:
+                    vals.append(ValidationResult(rule_id="RULE-SPD-033", feeder_id="PANEL", standard_ref="IEC 61643-11",
+                        status=ValidationStatus.COMPLETED, description=tr("val_spd_033_desc", a=selected_spd.spd_backup_fuse_a),
+                        supporting_evidence=tr("val_spd_033_ev", pn=selected_spd.part_number, a=selected_spd.spd_backup_fuse_a),
+                        consequence=tr("val_spd_033_cons"), recommended_action=tr("val_no_action")))
                 if project.spd_class in (SpdClass.T1, SpdClass.T1_T2):
-                    vals.append(ValidationResult(rule_id="RULE-SPD-034", feeder_id="PANEL", standard_ref="IEC 61643-12",
-                        status=ValidationStatus.COMPLETED, description=tr("val_spd_034_desc"),
-                        supporting_evidence=tr("val_spd_034_ev"), consequence=tr("val_spd_034_cons"),
-                        recommended_action=tr("val_no_action")))
+                    if project.has_external_lps is None:
+                        vals.append(ValidationResult(
+                            rule_id="RULE-SPD-034",
+                            feeder_id="PANEL",
+                            standard_ref="IEC 61643-12",
+                            status=ValidationStatus.WARNING,
+                            description=tr("val_spd_034_provisional_desc"),
+                            supporting_evidence=tr("val_spd_034_provisional_ev"),
+                            consequence=tr("val_spd_034_provisional_cons"),
+                            recommended_action=tr("val_spd_034_provisional_action"),
+                        ))
+                    elif project.has_external_lps is False:
+                        vals.append(ValidationResult(
+                            rule_id="RULE-SPD-034",
+                            feeder_id="PANEL",
+                            standard_ref="IEC 61643-12",
+                            status=ValidationStatus.WARNING,
+                            description=tr("val_spd_034_mismatch_desc"),
+                            supporting_evidence=tr("val_spd_034_mismatch_ev"),
+                            consequence=tr("val_spd_034_mismatch_cons"),
+                            recommended_action=tr("val_spd_034_mismatch_action"),
+                        ))
+                    else:
+                        vals.append(ValidationResult(rule_id="RULE-SPD-034", feeder_id="PANEL", standard_ref="IEC 61643-12",
+                            status=ValidationStatus.COMPLETED, description=tr("val_spd_034_desc"),
+                            supporting_evidence=tr("val_spd_034_ev"), consequence=tr("val_spd_034_cons"),
+                            recommended_action=tr("val_no_action")))
                 spd_suggested = tr("sug_spd", a=cls_value, b=selected_spd.part_number, c=selected_spd.spd_up_kv)
 
         # Provisional warning when external LPS status is unknown
@@ -1107,7 +1143,9 @@ class EngineeringEngine:
         main_candidates.sort(key=lambda x: x.rated_current_in_a)
         main_breaker = main_candidates[0] if main_candidates else None
 
-        if main_breaker and selected_spd and selected_spd.spd_backup_fuse_a > 0:
+        if (main_breaker and selected_spd
+                and selected_spd.spd_backup_fuse_a is not None
+                and selected_spd.spd_backup_fuse_a > 0):
             fuse_a = selected_spd.spd_backup_fuse_a
             if main_breaker.rated_current_in_a <= fuse_a:
                 vals.append(ValidationResult(rule_id="RULE-SPD-035", feeder_id="PANEL", standard_ref="IEC 61643-11",
