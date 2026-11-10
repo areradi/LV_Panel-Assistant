@@ -1184,8 +1184,27 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             form.grid_columnconfigure(cidx, weight=1 if is_input else 0,
                                       uniform="project_inputs" if is_input else "project_labels")
 
+        spd_row = ctk.CTkFrame(form, fg_color="transparent")
+        spd_row.grid(row=len(fields), column=0, columnspan=2, pady=8, sticky="ew")
+        self.spd_values = [c.value for c in SpdClass]
+        self.spd_display = [tr("gui_spd_" + v.lower()) for v in self.spd_values]
+        self.spd_menu = DirectionalOptionMenu(spd_row, values=self.spd_display, width=130, font=font,
+                                          command=self._on_spd_change)
+        self.spd_menu.pack(side="right", padx=6)
+        self.spd_menu.set(self.spd_display[self.spd_values.index(SpdClass.T2.value)])
+        ToolTip(self.spd_menu, tr("tip_spd"))
+        self.lps_values = [None, True, False]
+        self.lps_display = [tr("gui_lps_unknown"), tr("gui_lps_yes"), tr("gui_lps_no")]
+        self.lps_menu = DirectionalOptionMenu(spd_row, values=self.lps_display, width=130, font=font,
+                                          command=self._on_lps_change)
+        self.lps_menu.pack(side="right", padx=6)
+        self.lps_menu.set(self.lps_display[0])
+        self.lps_label = ctk.CTkLabel(spd_row, text=tr("label_has_external_lps"), font=font)
+        self.lps_label.pack(side="right", padx=6)
+        ToolTip(self.lps_menu, tr("tip_lps"))
+
         row2 = ctk.CTkFrame(form, fg_color="transparent")
-        row2.grid(row=len(fields), column=0, columnspan=2, pady=8, sticky="ew")
+        row2.grid(row=len(fields) + 1, column=0, columnspan=2, pady=8, sticky="ew")
         self._advanced_widgets.append(row2)
         row2.grid_remove()
         self.mfg_values = ["ANY"] + sorted({d.manufacturer for d in self.catalog})
@@ -1195,13 +1214,6 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         self.mfg_menu.pack(side="right", padx=6)
         self.mfg_menu.set(self.mfg_display[0])
         ToolTip(self.mfg_menu, tr("tip_mfg"))
-        self.spd_values = [c.value for c in SpdClass]
-        self.spd_display = [tr("gui_spd_" + v.lower()) for v in self.spd_values]
-        self.spd_menu = DirectionalOptionMenu(row2, values=self.spd_display, width=130, font=font,
-                                          command=self._on_spd_change)
-        self.spd_menu.pack(side="right", padx=6)
-        self.spd_menu.set(self.spd_display[self.spd_values.index(SpdClass.T2.value)])
-        ToolTip(self.spd_menu, tr("tip_spd"))
 
         btn_bar = ctk.CTkFrame(parent, fg_color="transparent")
         btn_bar.pack(fill="x", padx=14, pady=10)
@@ -1310,6 +1322,13 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             self.mfg_menu.set(self.mfg_display[self.mfg_values.index(project.preferred_manufacturer)])
         if project.spd_class.value in self.spd_values:
             self.spd_menu.set(self.spd_display[self.spd_values.index(project.spd_class.value)])
+        lps_val = project.has_external_lps
+        try:
+            idx = self.lps_values.index(lps_val)
+        except ValueError:
+            idx = 0
+        self._current_project_lps = self.lps_values[idx]
+        self.lps_menu.set(self.lps_display[idx])
 
     def _project_from_form(self) -> ProjectSpec:
         def _f(key, optional=False):
@@ -1354,6 +1373,9 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 data[field] = self.wiz_entries[key].get().strip()
         data["preferred_manufacturer"] = self.mfg_values[self.mfg_display.index(self.mfg_menu.get())]
         data["spd_class"] = self.spd_values[self.spd_display.index(self.spd_menu.get())]
+        lps_choice = self.lps_menu.get()
+        lps_idx = self.lps_display.index(lps_choice)
+        data["has_external_lps"] = self.lps_values[lps_idx]
         return ProjectSpec.model_validate(data)
 
     def action_scenario_settings(self):
@@ -2390,6 +2412,13 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         if self.current_project is None: return
         idx = self.spd_display.index(display_value) if display_value in self.spd_display else 0
         self.current_project.spd_class = SpdClass(self.spd_values[idx])
+        self._mark_stale()
+
+    def _on_lps_change(self, choice: str):
+        idx = self.lps_display.index(choice) if choice in self.lps_display else 0
+        self._current_project_lps = self.lps_values[idx]
+        if self.current_project is not None:
+            self.current_project.has_external_lps = self._current_project_lps
         self._mark_stale()
 
     def action_export_ctrl_svg(self):

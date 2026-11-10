@@ -108,12 +108,13 @@ def _restore_user_data(db_path: Path, user_rows, price_rows) -> None:
         pass
 
 
-def _ensure_database(db_path: Path = DB_PATH) -> Path:
+def _ensure_database(db_path: Optional[Path] = None) -> Path:
     """ساخت خودکار دیتابیس SQLite و اجرای مهاجرت در اولین بارگذاری.
 
     حفاظت داده کاربر: اگر بازسازی از JSON لازم شود، ابتدا ردیف‌های کاربر
     (is_user_entry=1) و قیمت‌ها پشتیبان‌گیری و پس از بازسازی بازگردانی می‌شوند.
     """
+    db_path = DB_PATH if db_path is None else Path(db_path)
     if not db_path.exists():
         try:
             from migrate_to_sqlite import build_or_migrate_database
@@ -126,8 +127,12 @@ def _ensure_database(db_path: Path = DB_PATH) -> Path:
         user_rows, price_rows = _backup_user_data(db_path)
         build_or_migrate_database(db_path=db_path, data_dir=DATA_DIR)
         _ensure_user_tables(db_path)
+        from lv_assist.migrations import run_migrations
+        run_migrations(db_path)
         _restore_user_data(db_path, user_rows, price_rows)
     else:
+        from lv_assist.migrations import run_migrations
+        run_migrations(db_path)
         _ensure_user_tables(db_path)
     return db_path
 
@@ -135,7 +140,7 @@ def _ensure_database(db_path: Path = DB_PATH) -> Path:
 class CatalogRepository:
     """مخزن داده‌های مهندسی و کاتالوگ تجهیزات مبتنی بر SQLite."""
 
-    def __init__(self, db_path: Path = DB_PATH) -> None:
+    def __init__(self, db_path: Optional[Path] = None) -> None:
         self.db_path = _ensure_database(db_path)
         self._devices_cache: Optional[List[CatalogDevice]] = None
         self._rules_cache: Optional[List[SelectivityRuleRecord]] = None
@@ -359,11 +364,23 @@ class CatalogRepository:
         self._iz0_cache = None
         self._pe_cache = None
 
+    def _sync_singleton_if_same_db(self) -> None:
+        """Invalidate the module repository cache when another instance writes its database."""
+        import sys
+
+        module = sys.modules[__name__]
+        singleton = getattr(module, "catalog_repo", None)
+        if singleton is None or singleton is self:
+            return
+        if str(singleton.db_path) == str(self.db_path):
+            singleton.reload()
+
     @staticmethod
     def _device_row_values(device: CatalogDevice) -> tuple:
         return (
             device.part_number, device.device_type, device.manufacturer, device.series,
-            device.part_number, device.rated_current_in_a or None, device.icu_ka_400v or None,
+            device.part_number, device.rated_current_in_a or None,
+            device.icu_ka_400v if device.icu_ka_400v is not None else None,
             device.power_loss_w, device.derating_40c, device.derating_50c,
             device.ip_rating or None,
         )
@@ -384,12 +401,12 @@ class CatalogRepository:
                 (*self._device_row_values(device), device.data_quality.value,
                  f"SRC-USER-{price_source}", json.dumps(payload, ensure_ascii=False)),
             )
-            if device.icu_ka_400v and device.icu_ka_400v > 0:
-                for v_level in (400.0, 415.0):
-                    conn.execute(
-                        "INSERT OR REPLACE INTO device_breaking_capacities (device_id, voltage_v, icu_ka, ics_ka)"
-                        " VALUES (?,?,?,?)",
-                        (device.part_number, v_level, float(device.icu_ka_400v), float(device.icu_ka_400v)))
+            if device.icu_ka_400v is not None:
+                conn.execute(
+                    "INSERT OR REPLACE INTO device_breaking_capacities "
+                    "(device_id, voltage_v, icu_ka, ics_ka, source)"
+                    " VALUES (?,?,?,?, 'USER_INPUT')",
+                    (device.part_number, 400.0, float(device.icu_ka_400v), device.ics_ka_400v))
             for temp, factor in ((40.0, device.derating_40c), (50.0, device.derating_50c)):
                 conn.execute(
                     "INSERT OR REPLACE INTO device_thermal_derating (device_id, temp_c, derating_factor)"
@@ -401,6 +418,7 @@ class CatalogRepository:
                     (device.part_number, float(unit_price), currency, price_source))
             conn.commit()
         self.reload()
+        self._sync_singleton_if_same_db()
 
     def update_device(self, device_id: str, device: CatalogDevice,
                       unit_price: Optional[float] = None, currency: Optional[str] = None) -> None:
@@ -417,12 +435,16 @@ class CatalogRepository:
                 (*self._device_row_values(device), device.data_quality.value,
                  json.dumps(payload, ensure_ascii=False), device_id),
             )
-            if device.icu_ka_400v and device.icu_ka_400v > 0:
-                for v_level in (400.0, 415.0):
-                    conn.execute(
-                        "INSERT OR REPLACE INTO device_breaking_capacities (device_id, voltage_v, icu_ka, ics_ka)"
-                        " VALUES (?,?,?,?)",
-                        (device.part_number, v_level, float(device.icu_ka_400v), float(device.icu_ka_400v)))
+            if device.icu_ka_400v is not None:
+                conn.execute(
+                    "DELETE FROM device_breaking_capacities WHERE device_id IN (?, ?)",
+                    (device_id, device.part_number),
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO device_breaking_capacities "
+                    "(device_id, voltage_v, icu_ka, ics_ka, source)"
+                    " VALUES (?,?,?,?, 'USER_INPUT')",
+                    (device.part_number, 400.0, float(device.icu_ka_400v), device.ics_ka_400v))
             for temp, factor in ((40.0, device.derating_40c), (50.0, device.derating_50c)):
                 conn.execute(
                     "INSERT OR REPLACE INTO device_thermal_derating (device_id, temp_c, derating_factor)"
@@ -434,6 +456,7 @@ class CatalogRepository:
                     (device.part_number, float(unit_price), currency))
             conn.commit()
         self.reload()
+        self._sync_singleton_if_same_db()
 
     def delete_device(self, device_id: str) -> bool:
         """حذف تجهیز از کاتالوگ (قیمت‌ها با FK CASCADE حذف می‌شوند)."""
@@ -443,6 +466,7 @@ class CatalogRepository:
             conn.execute("DELETE FROM device_prices WHERE device_id = ?", (device_id,))
             conn.commit()
         self.reload()
+        self._sync_singleton_if_same_db()
         return cur.rowcount > 0
 
     def set_device_price(self, device_id: str, unit_price: Optional[float], currency: str = "EUR", source: str = "MANUAL") -> None:

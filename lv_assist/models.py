@@ -218,6 +218,7 @@ class ProjectSpec(EngineeringInput):
     preferred_manufacturer: str = Field(default="ANY", min_length=1)
     designer_name: Optional[str] = Field(default=None, min_length=1)
     spd_class: SpdClass = Field(default=SpdClass.T2)
+    has_external_lps: Optional[bool] = None
     spd_connection_length_m: float = Field(default=0.5, ge=0.0, le=10.0)
 
 class FeederInput(EngineeringInput):
@@ -259,7 +260,9 @@ class CatalogDevice(BaseModel):
     setting_min_a: float = 0.0
     setting_max_a: float = 0.0
     motor_kw_400v: float = 0.0
-    icu_ka_400v: float = 0.0
+    icu_ka_400v: Optional[float] = Field(default=None, ge=0.0)
+    ics_ka_400v: Optional[float] = Field(default=None, ge=0.0)
+    rated_voltage_v: Optional[float] = Field(default=None, ge=0.0)
     power_loss_w: float = 0.0
     coil_holding_24v_w: float = 0.0
     coil_pull_in_24v_w: float = 0.0

@@ -62,26 +62,36 @@ class TestCableSizing:
         assert abs(vd_pvc / vd_xlpe - 1.2 / 1.28) < 0.002
 
     def test_pe_section_table_logic(self):
-        assert CableSizingEngine.calculate_pe_section(2.5, fault_current_ka=0.0) == 2.5
-        assert CableSizingEngine.calculate_pe_section(16.0, fault_current_ka=0.0) == 16.0
-        assert CableSizingEngine.calculate_pe_section(25.0, fault_current_ka=0.0) == 16.0
-        assert CableSizingEngine.calculate_pe_section(35.0, fault_current_ka=0.0) == 16.0
-        assert CableSizingEngine.calculate_pe_section(50.0, fault_current_ka=0.0) == 25.0
-        assert CableSizingEngine.calculate_pe_section(95.0, fault_current_ka=0.0) == 50.0
-        assert CableSizingEngine.calculate_pe_section(240.0, fault_current_ka=0.0) == 120.0
+        assert CableSizingEngine.calculate_pe_section(2.5, fault_current_ka=0.0, clear_time_s=0.4) == 2.5
+        assert CableSizingEngine.calculate_pe_section(16.0, fault_current_ka=0.0, clear_time_s=0.4) == 16.0
+        assert CableSizingEngine.calculate_pe_section(25.0, fault_current_ka=0.0, clear_time_s=0.4) == 16.0
+        assert CableSizingEngine.calculate_pe_section(35.0, fault_current_ka=0.0, clear_time_s=0.4) == 16.0
+        assert CableSizingEngine.calculate_pe_section(50.0, fault_current_ka=0.0, clear_time_s=0.4) == 25.0
+        assert CableSizingEngine.calculate_pe_section(95.0, fault_current_ka=0.0, clear_time_s=0.4) == 50.0
+        assert CableSizingEngine.calculate_pe_section(240.0, fault_current_ka=0.0, clear_time_s=0.4) == 120.0
 
-    def test_pe_section_adiabatic_dominates_with_default_fault(self):
-        # 10kA / 20ms ⇒ S_min ≈ 5 mm² → کوچکترین مقطع استاندارد PE برابر 6 mm²
-        assert CableSizingEngine.calculate_pe_section(2.5) == 10.0
+    def test_pe_section_adiabatic_with_explicit_fault_data(self):
+        # 10 kA / 20 ms با k=176 نیازمند حدود 8.0 mm² است؛ مقطع استاندارد بعدی 10 mm² است.
+        assert CableSizingEngine.calculate_pe_section(
+            2.5, fault_current_ka=10.0, clear_time_s=0.02
+        ) == 10.0
 
     def test_auto_sizing_meets_iz_and_vdrop(self):
         s_ph, s_n, s_pe, iz, vd, _ = CableSizingEngine.select_feeder_cable(
             ib_a=45.0, protection_in_a=50.0, is_adjustable_prot=True, length_m=60.0,
             cos_phi=0.85, voltage_v=400.0, phases=3, ambient_temp_c=40.0, grouping_k2=0.8,
-            max_vdrop_pct=5.0, load_type=LoadType.SUB_FEEDER)
+            max_vdrop_pct=5.0, load_type=LoadType.SUB_FEEDER,
+            fault_current_ka=10.0, clear_time_s=0.02)
         assert iz >= 45.0
         assert vd <= 5.0
         assert s_pe <= s_ph
+
+    def test_auto_sizing_without_fault_data_returns_none_pe(self):
+        _, _, s_pe, _, _, _ = CableSizingEngine.select_feeder_cable(
+            ib_a=45.0, protection_in_a=50.0, is_adjustable_prot=True, length_m=60.0,
+            cos_phi=0.85, voltage_v=400.0, phases=3, ambient_temp_c=40.0, grouping_k2=0.8,
+            max_vdrop_pct=5.0, load_type=LoadType.SUB_FEEDER)
+        assert s_pe is None
 
     def test_user_specified_section_respected(self):
         s_ph, _, _, _, _, _ = CableSizingEngine.select_feeder_cable(
@@ -862,8 +872,8 @@ class TestAuditDataLayer:
     def test_f005_pe_no_artificial_cap(self):
         assert catalog_repo.get_standard_pe_section(380.0) == 400.0
         assert catalog_repo.get_standard_pe_section(500.0) is None
-        assert CableSizingEngine.calculate_pe_section(900.0, fault_current_ka=0.0) is None
-        assert CableSizingEngine.calculate_pe_section(240.0, fault_current_ka=0.0) == 120.0
+        assert CableSizingEngine.calculate_pe_section(900.0, fault_current_ka=0.0, clear_time_s=0.4) is None
+        assert CableSizingEngine.calculate_pe_section(240.0, fault_current_ka=0.0, clear_time_s=0.4) == 120.0
 
     def test_f006_icu_at_project_voltage(self):
         mccb = next(d for d in CATALOG if d.device_type == "MCCB")
@@ -1930,7 +1940,7 @@ class TestPhase13Spd:
         assert "RULE-SPD-034" not in statuses
 
     def test_t1_selection_and_coordination(self):
-        _, _, summary, validations = self._run(spd_class=SpdClass.T1)
+        _, _, summary, validations = self._run(spd_class=SpdClass.T1, has_external_lps=True)
         spd = summary.selected_spd
         assert spd.part_number == "FLT-SEC-P-T1-3S-350/25-FM"
         assert spd.spd_iimp_ka > 0
@@ -1939,7 +1949,7 @@ class TestPhase13Spd:
         assert statuses["RULE-SPD-034"] == ValidationStatus.COMPLETED
 
     def test_t1_t2_combined_selection(self):
-        _, _, summary, validations = self._run(spd_class=SpdClass.T1_T2)
+        _, _, summary, validations = self._run(spd_class=SpdClass.T1_T2, has_external_lps=True)
         assert summary.selected_spd.part_number == "OVR T1-T2 4L 25-440s P TS QS"
         assert summary.selected_spd.spd_uc_v == 440.0
         assert any(v.rule_id == "RULE-SPD-034" and v.status == ValidationStatus.COMPLETED

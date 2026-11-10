@@ -91,8 +91,9 @@ CREATE TABLE IF NOT EXISTS catalog_devices (
 CREATE TABLE IF NOT EXISTS device_breaking_capacities (
     device_id TEXT NOT NULL REFERENCES catalog_devices(device_id) ON DELETE CASCADE,
     voltage_v REAL NOT NULL CHECK (voltage_v > 0),
-    icu_ka REAL NOT NULL CHECK (icu_ka > 0),
-    ics_ka REAL,
+    icu_ka REAL NOT NULL CHECK (icu_ka >= 0),
+    ics_ka REAL CHECK (ics_ka IS NULL OR ics_ka >= 0),
+    source TEXT NOT NULL DEFAULT 'UNKNOWN_LEGACY',
     PRIMARY KEY (device_id, voltage_v)
 );
 
@@ -357,7 +358,9 @@ def migrate_catalog_devices(conn: sqlite3.Connection, data_dir: Path) -> None:
 
         in_a = dev_copy.get("rated_current_in_a") or dev_copy.get("in_a")
         poles = dev_copy.get("poles")
-        icu_400 = dev_copy.get("icu_ka_400v") or dev_copy.get("icu_ka")
+        icu_400 = (dev_copy.get("icu_ka_400v")
+                   if dev_copy.get("icu_ka_400v") is not None
+                   else dev_copy.get("icu_ka"))
         power_loss_w = float(dev_copy.get("power_loss_w") or dev_copy.get("loss_w") or 0.0)
         derating_40c = float(dev_copy.get("derating_40c") or 1.0)
         derating_50c = float(dev_copy.get("derating_50c") or 1.0)
@@ -389,26 +392,29 @@ def migrate_catalog_devices(conn: sqlite3.Connection, data_dir: Path) -> None:
         )
 
         # پر کردن جدول قدرت قطع بر حسب ولتاژ (رفع F-006)
-        if icu_400 is not None and float(icu_400) > 0:
-            ics_400 = dev_copy.get("ics_ka_400v") or float(icu_400)
-            for v_level in (400.0, 415.0):
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO device_breaking_capacities
-                    (device_id, voltage_v, icu_ka, ics_ka)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (dev_id, v_level, float(icu_400), float(ics_400)),
-                )
+        if icu_400 is not None and float(icu_400) >= 0:
+            ics_value = dev_copy.get("ics_ka_400v")
+            if ics_value is None or ics_value == "":
+                ics_400 = None
+            else:
+                ics_400 = float(ics_value)
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO device_breaking_capacities
+                (device_id, voltage_v, icu_ka, ics_ka, source)
+                VALUES (?, ?, ?, ?, 'SEED_JSON')
+                """,
+                (dev_id, 400.0, float(icu_400), ics_400),
+            )
         if isinstance(dev_copy.get("icu_by_voltage"), dict):
             for v_str, icu_val in dev_copy["icu_by_voltage"].items():
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO device_breaking_capacities
-                    (device_id, voltage_v, icu_ka, ics_ka)
-                    VALUES (?, ?, ?, ?)
+                    (device_id, voltage_v, icu_ka, ics_ka, source)
+                    VALUES (?, ?, ?, ?, 'SEED_JSON')
                     """,
-                    (dev_id, float(v_str), float(icu_val), float(icu_val)),
+                    (dev_id, float(v_str), float(icu_val), None),
                 )
 
         # پر کردن جدول کاهش ظرفیت دمایی تا ۵۰ درجه (و دماهای بالاتر فقط در صورت وجود در دیتاشیت - رفع F-017)

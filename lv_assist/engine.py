@@ -11,7 +11,7 @@ from lv_assist.models import (
 from lv_assist.pe_spd_engine import evaluate_spd_requirements, select_pe_k_factor
 from lv_assist.catalog import SiemensSelectivityRepository, TripCurveRepository, catalog_repo
 from lv_assist.busbar import BusbarEngine
-from lv_assist.i18n import tr
+from lv_assist.i18n import i18n, tr
 from lv_assist.scenario_rules import evaluate_scenario
 # --- [AUDIT SAFE IMPORTS] ---
 from lv_assist.core_verification import (
@@ -36,6 +36,16 @@ ENGINE_AUDIT_STRICT_CLEAR_TIME = True
 ENGINE_AUDIT_ICU_UNKNOWN_AS_PASS = False
 ENGINE_AUDIT_ENABLE_FEEDER_IK_PROFILE = True
 # --- end audit P0 policy flags ---
+
+_FAULT_BASIS_UNAVAILABLE = {
+    "fa": "مبنای آدیاباتیک قابل محاسبه نیست",
+    "en": "Adiabatic basis cannot be calculated",
+    "de": "Die adiabatische Grundlage kann nicht berechnet werden",
+}
+
+
+def _is_valid_clear_time(t):
+    return t is not None and isinstance(t, (int, float)) and math.isfinite(t) and t > 0
 
 
 
@@ -140,17 +150,20 @@ class CableSizingEngine:
     def calculate_pe_section(
         cls,
         phase_section_mm2: float,
-        fault_current_ka: float = 10.0,
-        clear_time_s: float = 0.02,
+        fault_current_ka: Optional[float] = None,
+        clear_time_s: Optional[float] = None,
         material: str = "Cu",
         insulation: str = "PVC",
         arrangement: str = "separate",
     ) -> Optional[float]:
         _k, _ = select_pe_k_factor(material, insulation, arrangement)
+        if (fault_current_ka is None or not math.isfinite(fault_current_ka)
+                or not _is_valid_clear_time(clear_time_s)):
+            return None
         if phase_section_mm2 <= 16.0: s_table = phase_section_mm2
         elif phase_section_mm2 <= 35.0: s_table = 16.0
         else: s_table = phase_section_mm2 / 2.0
-        if not math.isfinite(clear_time_s) or not 0 < clear_time_s <= 5:
+        if clear_time_s > 5:
             return None
         i_fault_a = fault_current_ka * 1000.0
         s_adiabatic = (i_fault_a * math.sqrt(clear_time_s)) / float(_k)
@@ -198,7 +211,7 @@ class CableSizingEngine:
                     if sec < min_allowed_section: continue
                     curr_iz = round(iz0 * total_k, 1)
                     curr_vd = cls.calc_voltage_drop_pct(ib_a, length_m, sec, cos_phi, voltage_v, phases, conductor, insulation)
-                    pe = cls.calculate_pe_section(sec, fault_current_ka or 0, clear_time_s or .02,
+                    pe = cls.calculate_pe_section(sec, fault_current_ka, clear_time_s,
                                                   material, insulation, 'in_cable')
                     extra_ok = additional_check is None or additional_check(sec, pe)
                     if curr_iz >= required_iz and curr_vd <= max_vdrop_pct and sec >= adiabatic_min and extra_ok:
@@ -207,8 +220,8 @@ class CableSizingEngine:
         # F-005: جریان خطا و زمان قطع واقعی پروژه (نه فرض ثابت ۱۰ kA / ۲۰ ms)
         s_pe = cls.calculate_pe_section(
             s_ph,
-            fault_current_ka if fault_current_ka is not None else 10.0,
-            clear_time_s if clear_time_s is not None else 0.02,
+            fault_current_ka,
+            clear_time_s,
             material=material, insulation=insulation, arrangement="in_cable",
         )
         s_neutral = 0.0
@@ -594,7 +607,10 @@ class EngineeringEngine:
             ctrl_holding_w = 3.5
         else:
             candidates = [d for d in self.catalog if d.device_type in ("MCB", "MCCB") and (d.rated_current_in_a * self._get_derating_factor(d, project.max_internal_temp_c)) >= ib_a and self._icu_ok(d, project, ik_total_ka)]
-            candidates.sort(key=lambda x: (x.rated_current_in_a, x.icu_ka_400v))
+            candidates.sort(key=lambda x: (
+                x.rated_current_in_a,
+                x.icu_ka_400v if x.icu_ka_400v is not None else 0.0,
+            ))
             if candidates: sel_prot = candidates[0]; reason_parts.append(f"{sel_prot.device_type} {sel_prot.part_number}")
             if f.has_socket_outlets:
                 rcds = [d for d in self.catalog if d.device_type == "RCD" and d.rated_current_in_a >= ib_a]
@@ -609,8 +625,8 @@ class EngineeringEngine:
 
         # F-005: جریان خطای واقعی پروژه و زمان قطع حفاظ (به‌جای فرض ثابت ۱۰ kA / ۲۰ ms)
         # فاز ۱۱: جریان کل باس شامل مشارکت موتورها (خطای داخل شاخه فیدر از همه منابع تغذیه می‌شود)
-        fault_ka = ik_total_ka if ik_total_ka is not None else 10.0
-        clear_t = self._estimate_clear_time_s(sel_prot, fault_ka) if sel_prot is not None else 0.02
+        fault_ka = ik_total_ka
+        clear_t = self._estimate_clear_time_s(sel_prot, fault_ka) if (sel_prot and fault_ka is not None) else None
         protection_icu_ka = self._device_icu_ka(sel_prot, project) if sel_prot is not None else None
         i2_factor = (sel_prot.overload_i2_factor or
                      {"MCB": 1.45, "MCCB": 1.3, "MPCB": 1.3, "FUSE_GG": 1.6}.get(sel_prot.device_type)
@@ -638,9 +654,15 @@ class EngineeringEngine:
         # F-005: نمایش فرمول آدیاباتیک مبنای انتخاب PE در گزارش
         i_pe_ka = fault_ka
         k_pe, _ = select_pe_k_factor("Cu" if f.conductor_material.value == "CU" else "Al", f.insulation.value, "in_cable")
-        s_adiabatic = (i_pe_ka * 1000.0 * math.sqrt(clear_t)) / k_pe
-        pe_basis_str = tr("pe_adia_basis", a=fault_ka, b=clear_t, c=round(i_pe_ka, 1),
-                          d=round(s_adiabatic, 1), e=(f"{s_pe:g}" if s_pe is not None else "?"), k=k_pe)
+        s_adiabatic = None
+        if (fault_ka is not None and math.isfinite(fault_ka)
+                and _is_valid_clear_time(clear_t) and clear_t <= 5):
+            s_adiabatic = (fault_ka * 1000.0 * math.sqrt(clear_t)) / k_pe
+        if s_adiabatic is None:
+            pe_basis_str = _FAULT_BASIS_UNAVAILABLE.get(i18n.get_language(), _FAULT_BASIS_UNAVAILABLE["en"])
+        else:
+            pe_basis_str = tr("pe_adia_basis", a=fault_ka, b=clear_t, c=round(i_pe_ka, 1),
+                              d=round(s_adiabatic, 1), e=(f"{s_pe:g}" if s_pe is not None else "?"), k=k_pe)
 
         profile = audit_calculate_network_ik_profile(
             project.transformer_kva, project.transformer_uk_pct, project.nominal_voltage_v,
@@ -668,6 +690,16 @@ class EngineeringEngine:
                 status=ValidationStatus.INSUFFICIENT_DATA, description=tr("val_pe_nostd_desc", a=f"{s_ph:g}"),
                 supporting_evidence=tr("val_pe_nostd_ev", a=f"{s_ph:g}"), consequence=tr("val_pe_nostd_cons"),
                 recommended_action=tr("val_pe_nostd_action")))
+
+        if fault_ka is None or not _is_valid_clear_time(clear_t):
+            vals.append(ValidationResult(
+                rule_id="RULE-FAULT-NOIK-FALLBACK-001", feeder_id=f.feeder_id,
+                standard_ref="IEC 60909-0 / IEC 60364-5-54",
+                status=ValidationStatus.INSUFFICIENT_DATA,
+                description=_FAULT_BASIS_UNAVAILABLE.get(i18n.get_language(), _FAULT_BASIS_UNAVAILABLE["en"]),
+                supporting_evidence=f"Ik_total={fault_ka if fault_ka is not None else '?'} kA; t_clear={clear_t if clear_t is not None else '?'} s",
+                consequence=tr("val_pe_nostd_cons"), recommended_action=tr("val_pe_nostd_action"),
+            ))
 
         vals.append(ValidationResult(rule_id="RULE-VDROP-003", feeder_id=f.feeder_id, standard_ref="IEC 60364-5-52", status=ValidationStatus.COMPLETED if v_drop_pct <= max_vd else ValidationStatus.ERROR, description=tr("val_vdrop_desc", max=max_vd), supporting_evidence=tr("val_vdrop_ev", pct=v_drop_pct), consequence=tr("val_vdrop_cons"), recommended_action=tr("val_no_action")))
 
@@ -749,7 +781,7 @@ class EngineeringEngine:
             cable_designation_str=cable_desig, cable_temp_factor_k1=k1_f, cable_grouping_factor_k2=k2_f,
             cable_total_derating_k=ktotal_f, cable_method_ref_str=method_ref_str, pe_basis_str=pe_basis_str,
             ik_end_min_ka=profile.ik_feeder_end_min_1p_ka, ik_end_max_ka=profile.ik_feeder_end_max_3p_ka,
-            clearing_time_s=clear_t if math.isfinite(clear_t) else None,
+            clearing_time_s=clear_t if _is_valid_clear_time(clear_t) else None,
             protection_icu_ka=protection_icu_ka, voltage_drop_percent=v_drop_pct, assumptions_used=assumptions,
             selected_protection=sel_prot, selected_contactor_main=sel_cont_main, selected_contactor_delta=sel_cont_delta,
             selected_contactor_star=sel_cont_star, selected_bimetal=sel_bimetal, selected_timer_yd=sel_timer_yd,
@@ -770,8 +802,9 @@ class EngineeringEngine:
         return final_limit if feeder.load_type != LoadType.SUB_FEEDER and rated_current_a <= 32 else 5.0
 
     def _candidate_fault_compatible(self, project, feeder, protection, phase, pe, source_ik, total_ik, clear_s):
-        if protection is None or source_ik is None:
-            return True
+        if (protection is None or source_ik is None or clear_s is None
+                or not math.isfinite(clear_s) or not 0 < clear_s <= 5):
+            return False
         if pe is None or not 0 < clear_s <= 5:
             return False
         profile = audit_calculate_network_ik_profile(
@@ -1049,22 +1082,73 @@ class EngineeringEngine:
                         status=ValidationStatus.ERROR, description=tr("val_spd_032_err_desc", a=f"{lead_m:g}"),
                         supporting_evidence=tr("val_spd_032_err_ev", a=f"{lead_m:g}"), consequence=tr("val_spd_032_err_cons"),
                         recommended_action=tr("val_spd_032_err_action")))
-                vals.append(ValidationResult(rule_id="RULE-SPD-033", feeder_id="PANEL", standard_ref="IEC 61643-11",
-                    status=ValidationStatus.COMPLETED, description=tr("val_spd_033_desc", a=selected_spd.spd_backup_fuse_a),
-                    supporting_evidence=tr("val_spd_033_ev", pn=selected_spd.part_number, a=selected_spd.spd_backup_fuse_a),
-                    consequence=tr("val_spd_033_cons"), recommended_action=tr("val_no_action")))
+                backup_fuse = selected_spd.spd_backup_fuse_a
+                if backup_fuse is None or backup_fuse <= 0:
+                    vals.append(ValidationResult(
+                        rule_id="RULE-SPD-033",
+                        feeder_id="PANEL",
+                        standard_ref="IEC 61643-11",
+                        status=ValidationStatus.INSUFFICIENT_DATA,
+                        description=tr("val_spd_033_insufficient_desc"),
+                        supporting_evidence=tr("val_spd_033_insufficient_ev", pn=selected_spd.part_number),
+                        consequence=tr("val_spd_033_insufficient_cons"),
+                        recommended_action=tr("val_spd_033_insufficient_action"),
+                    ))
+                else:
+                    vals.append(ValidationResult(rule_id="RULE-SPD-033", feeder_id="PANEL", standard_ref="IEC 61643-11",
+                        status=ValidationStatus.COMPLETED, description=tr("val_spd_033_desc", a=selected_spd.spd_backup_fuse_a),
+                        supporting_evidence=tr("val_spd_033_ev", pn=selected_spd.part_number, a=selected_spd.spd_backup_fuse_a),
+                        consequence=tr("val_spd_033_cons"), recommended_action=tr("val_no_action")))
                 if project.spd_class in (SpdClass.T1, SpdClass.T1_T2):
-                    vals.append(ValidationResult(rule_id="RULE-SPD-034", feeder_id="PANEL", standard_ref="IEC 61643-12",
-                        status=ValidationStatus.COMPLETED, description=tr("val_spd_034_desc"),
-                        supporting_evidence=tr("val_spd_034_ev"), consequence=tr("val_spd_034_cons"),
-                        recommended_action=tr("val_no_action")))
+                    if project.has_external_lps is None:
+                        vals.append(ValidationResult(
+                            rule_id="RULE-SPD-034",
+                            feeder_id="PANEL",
+                            standard_ref="IEC 61643-12",
+                            status=ValidationStatus.WARNING,
+                            description=tr("val_spd_034_provisional_desc"),
+                            supporting_evidence=tr("val_spd_034_provisional_ev"),
+                            consequence=tr("val_spd_034_provisional_cons"),
+                            recommended_action=tr("val_spd_034_provisional_action"),
+                        ))
+                    elif project.has_external_lps is False:
+                        vals.append(ValidationResult(
+                            rule_id="RULE-SPD-034",
+                            feeder_id="PANEL",
+                            standard_ref="IEC 61643-12",
+                            status=ValidationStatus.WARNING,
+                            description=tr("val_spd_034_mismatch_desc"),
+                            supporting_evidence=tr("val_spd_034_mismatch_ev"),
+                            consequence=tr("val_spd_034_mismatch_cons"),
+                            recommended_action=tr("val_spd_034_mismatch_action"),
+                        ))
+                    else:
+                        vals.append(ValidationResult(rule_id="RULE-SPD-034", feeder_id="PANEL", standard_ref="IEC 61643-12",
+                            status=ValidationStatus.COMPLETED, description=tr("val_spd_034_desc"),
+                            supporting_evidence=tr("val_spd_034_ev"), consequence=tr("val_spd_034_cons"),
+                            recommended_action=tr("val_no_action")))
                 spd_suggested = tr("sug_spd", a=cls_value, b=selected_spd.part_number, c=selected_spd.spd_up_kv)
+
+        # Provisional warning when external LPS status is unknown
+        if project.spd_class != SpdClass.NONE and project.has_external_lps is None:
+            vals.append(ValidationResult(
+                rule_id="RULE-SPD-PROVISIONAL",
+                feeder_id="PANEL",
+                standard_ref="IEC 61643-12",
+                status=ValidationStatus.WARNING,
+                description=tr("val_spd_provisional_desc"),
+                supporting_evidence=tr("val_spd_provisional_ev"),
+                consequence=tr("val_spd_provisional_cons"),
+                recommended_action=tr("val_spd_provisional_action"),
+            ))
 
         main_candidates = [d for d in self.catalog if d.device_type == "MCCB" and (d.rated_current_in_a * self._get_derating_factor(d, project.max_internal_temp_c)) >= i_main_req_a and self._icu_ok(d, project, ik_total_ka)]
         main_candidates.sort(key=lambda x: x.rated_current_in_a)
         main_breaker = main_candidates[0] if main_candidates else None
 
-        if main_breaker and selected_spd and selected_spd.spd_backup_fuse_a > 0:
+        if (main_breaker and selected_spd
+                and selected_spd.spd_backup_fuse_a is not None
+                and selected_spd.spd_backup_fuse_a > 0):
             fuse_a = selected_spd.spd_backup_fuse_a
             if main_breaker.rated_current_in_a <= fuse_a:
                 vals.append(ValidationResult(rule_id="RULE-SPD-035", feeder_id="PANEL", standard_ref="IEC 61643-11",

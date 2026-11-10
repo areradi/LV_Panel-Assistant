@@ -322,7 +322,8 @@ class TccGenerator:
             parts.append(TccGenerator._polyline(TccGenerator._curve_points(summary.main_breaker), "#1F4E78", 3.0))
             parts.append(TccGenerator._instantaneous_band(summary.main_breaker, "#1F4E78"))
             parts.append(_legend("#1F4E78", f'{tr("tcc_main")}: {summary.main_breaker.part_number} ({summary.main_breaker.rated_current_in_a:g}A){mb_mark}'))
-            if summary.main_breaker.icu_ka_400v > 0:
+            if (summary.main_breaker.icu_ka_400v is not None
+                    and summary.main_breaker.icu_ka_400v > 0):
                 x = TccGenerator._px(summary.main_breaker.icu_ka_400v * 1000.0)
                 parts.append(f'<line x1="{x:.1f}" y1="{TccGenerator.Y0}" x2="{x:.1f}" y2="{TccGenerator.Y1}" stroke="#7F8C8D" stroke-width="1.5" stroke-dasharray="2,4"/>')
 
@@ -336,7 +337,7 @@ class TccGenerator:
             parts.append(TccGenerator._polyline(TccGenerator._curve_points(dev), color))
             parts.append(TccGenerator._instantaneous_band(dev, color))
             parts.append(_legend(color, f"{f.feeder_id}: {dev.part_number} ({dev.rated_current_in_a:g}A){f_mark}"))
-            if dev.icu_ka_400v > 0:
+            if dev.icu_ka_400v is not None and dev.icu_ka_400v > 0:
                 x = TccGenerator._px(dev.icu_ka_400v * 1000.0)
                 parts.append(f'<line x1="{x:.1f}" y1="{TccGenerator.Y0}" x2="{x:.1f}" y2="{TccGenerator.Y1}" stroke="#BDC3C7" stroke-width="1" stroke-dasharray="2,4"/>')
             if f.selectivity_limit_is_ka:
@@ -506,7 +507,7 @@ class EplanPartsExporter:
         rows: List[list] = []
         for dev, qty in sorted(agg.values(), key=lambda x: x[0].part_number):
             td1 = f"In={dev.rated_current_in_a:g}A" if dev.rated_current_in_a else ""
-            if dev.icu_ka_400v > 0:
+            if dev.icu_ka_400v is not None and dev.icu_ka_400v > 0:
                 td1 += f" | Icu={dev.icu_ka_400v:g}kA"
             td2 = f"Loss={dev.power_loss_w:g}W"
             dims = " x ".join(f"{d:g}" for d in (dev.width_mm, dev.height_mm, dev.depth_mm) if d)
