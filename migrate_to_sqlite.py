@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS device_breaking_capacities (
     voltage_v REAL NOT NULL CHECK (voltage_v > 0),
     icu_ka REAL NOT NULL CHECK (icu_ka >= 0),
     ics_ka REAL CHECK (ics_ka IS NULL OR ics_ka >= 0),
+    source TEXT NOT NULL DEFAULT 'UNKNOWN_LEGACY',
     PRIMARY KEY (device_id, voltage_v)
 );
 
@@ -400,8 +401,8 @@ def migrate_catalog_devices(conn: sqlite3.Connection, data_dir: Path) -> None:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO device_breaking_capacities
-                (device_id, voltage_v, icu_ka, ics_ka)
-                VALUES (?, ?, ?, ?)
+                (device_id, voltage_v, icu_ka, ics_ka, source)
+                VALUES (?, ?, ?, ?, 'SEED_JSON')
                 """,
                 (dev_id, 400.0, float(icu_400), ics_400),
             )
@@ -410,8 +411,8 @@ def migrate_catalog_devices(conn: sqlite3.Connection, data_dir: Path) -> None:
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO device_breaking_capacities
-                    (device_id, voltage_v, icu_ka, ics_ka)
-                    VALUES (?, ?, ?, ?)
+                    (device_id, voltage_v, icu_ka, ics_ka, source)
+                    VALUES (?, ?, ?, ?, 'SEED_JSON')
                     """,
                     (dev_id, float(v_str), float(icu_val), None),
                 )

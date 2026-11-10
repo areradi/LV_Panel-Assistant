@@ -45,8 +45,26 @@ def _migration_1_baseline(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migration_2_source_column(conn: sqlite3.Connection) -> None:
+    """Add provenance tracking to breaking-capacity rows."""
+    columns = [
+        row[1]
+        for row in conn.execute("PRAGMA table_info(device_breaking_capacities)")
+    ]
+    if "source" not in columns:
+        conn.execute(
+            "ALTER TABLE device_breaking_capacities "
+            "ADD COLUMN source TEXT NOT NULL DEFAULT 'UNKNOWN_LEGACY'"
+        )
+    conn.execute(
+        "UPDATE device_breaking_capacities "
+        "SET source = 'UNKNOWN_LEGACY' WHERE source IS NULL"
+    )
+
+
 MIGRATIONS: list[tuple[int, str, MigrationFn]] = [
     (1, "baseline", _migration_1_baseline),
+    (2, "source_column", _migration_2_source_column),
 ]
 CURRENT_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0
 
@@ -93,6 +111,11 @@ def run_migrations(db_path: Path) -> None:
     conn = sqlite3.connect(str(db_path))
     try:
         current = get_user_version(conn)
+        if current > CURRENT_VERSION:
+            raise RuntimeError(
+                f"Database schema version {current} is newer than code version "
+                f"{CURRENT_VERSION}. Please upgrade the application."
+            )
         pending = [
             (version, name, migration)
             for version, name, migration in MIGRATIONS

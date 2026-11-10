@@ -403,8 +403,9 @@ class CatalogRepository:
             )
             if device.icu_ka_400v is not None:
                 conn.execute(
-                    "INSERT OR REPLACE INTO device_breaking_capacities (device_id, voltage_v, icu_ka, ics_ka)"
-                    " VALUES (?,?,?,?)",
+                    "INSERT OR REPLACE INTO device_breaking_capacities "
+                    "(device_id, voltage_v, icu_ka, ics_ka, source)"
+                    " VALUES (?,?,?,?, 'USER_INPUT')",
                     (device.part_number, 400.0, float(device.icu_ka_400v), device.ics_ka_400v))
             for temp, factor in ((40.0, device.derating_40c), (50.0, device.derating_50c)):
                 conn.execute(
@@ -440,8 +441,9 @@ class CatalogRepository:
                     (device_id, device.part_number),
                 )
                 conn.execute(
-                    "INSERT OR REPLACE INTO device_breaking_capacities (device_id, voltage_v, icu_ka, ics_ka)"
-                    " VALUES (?,?,?,?)",
+                    "INSERT OR REPLACE INTO device_breaking_capacities "
+                    "(device_id, voltage_v, icu_ka, ics_ka, source)"
+                    " VALUES (?,?,?,?, 'USER_INPUT')",
                     (device.part_number, 400.0, float(device.icu_ka_400v), device.ics_ka_400v))
             for temp, factor in ((40.0, device.derating_40c), (50.0, device.derating_50c)):
                 conn.execute(
