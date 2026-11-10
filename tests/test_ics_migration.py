@@ -35,7 +35,7 @@ def _device(**extra):
 
 def test_migration_without_ics_preserves_unknown_as_null(tmp_path):
     rows = _migrate(tmp_path, _device())
-    assert rows == [(400.0, None), (415.0, None)]
+    assert rows == [(400.0, None)]
 
 def test_migration_icu_by_voltage_without_ics_preserves_unknown_as_null(tmp_path):
     device = _device()
@@ -46,12 +46,12 @@ def test_migration_icu_by_voltage_without_ics_preserves_unknown_as_null(tmp_path
 
 def test_migration_preserves_explicit_zero_ics(tmp_path):
     rows = _migrate(tmp_path, _device(ics_ka_400v=0))
-    assert rows == [(400.0, 0.0), (415.0, 0.0)]
+    assert rows == [(400.0, 0.0)]
 
 def test_migration_preserves_explicit_ics_value(tmp_path):
     rows = _migrate(tmp_path, _device(ics_ka_400v=25.5))
-    assert rows == [(400.0, 25.5), (415.0, 25.5)]
+    assert rows == [(400.0, 25.5)]
 
 def test_migration_treats_empty_string_ics_as_unknown(tmp_path):
     rows = _migrate(tmp_path, _device(ics_ka_400v=""))
-    assert rows == [(400.0, None), (415.0, None)]
+    assert rows == [(400.0, None)]

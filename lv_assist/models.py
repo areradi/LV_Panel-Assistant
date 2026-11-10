@@ -260,7 +260,9 @@ class CatalogDevice(BaseModel):
     setting_min_a: float = 0.0
     setting_max_a: float = 0.0
     motor_kw_400v: float = 0.0
-    icu_ka_400v: float = 0.0
+    icu_ka_400v: Optional[float] = Field(default=None, ge=0.0)
+    ics_ka_400v: Optional[float] = Field(default=None, ge=0.0)
+    rated_voltage_v: Optional[float] = Field(default=None, ge=0.0)
     power_loss_w: float = 0.0
     coil_holding_24v_w: float = 0.0
     coil_pull_in_24v_w: float = 0.0

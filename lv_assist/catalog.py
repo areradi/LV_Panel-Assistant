@@ -363,7 +363,8 @@ class CatalogRepository:
     def _device_row_values(device: CatalogDevice) -> tuple:
         return (
             device.part_number, device.device_type, device.manufacturer, device.series,
-            device.part_number, device.rated_current_in_a or None, device.icu_ka_400v or None,
+            device.part_number, device.rated_current_in_a or None,
+            device.icu_ka_400v if device.icu_ka_400v is not None else None,
             device.power_loss_w, device.derating_40c, device.derating_50c,
             device.ip_rating or None,
         )
@@ -384,12 +385,11 @@ class CatalogRepository:
                 (*self._device_row_values(device), device.data_quality.value,
                  f"SRC-USER-{price_source}", json.dumps(payload, ensure_ascii=False)),
             )
-            if device.icu_ka_400v and device.icu_ka_400v > 0:
-                for v_level in (400.0, 415.0):
-                    conn.execute(
-                        "INSERT OR REPLACE INTO device_breaking_capacities (device_id, voltage_v, icu_ka, ics_ka)"
-                        " VALUES (?,?,?,?)",
-                        (device.part_number, v_level, float(device.icu_ka_400v), None))
+            if device.icu_ka_400v is not None:
+                conn.execute(
+                    "INSERT OR REPLACE INTO device_breaking_capacities (device_id, voltage_v, icu_ka, ics_ka)"
+                    " VALUES (?,?,?,?)",
+                    (device.part_number, 400.0, float(device.icu_ka_400v), device.ics_ka_400v))
             for temp, factor in ((40.0, device.derating_40c), (50.0, device.derating_50c)):
                 conn.execute(
                     "INSERT OR REPLACE INTO device_thermal_derating (device_id, temp_c, derating_factor)"
@@ -417,12 +417,15 @@ class CatalogRepository:
                 (*self._device_row_values(device), device.data_quality.value,
                  json.dumps(payload, ensure_ascii=False), device_id),
             )
-            if device.icu_ka_400v and device.icu_ka_400v > 0:
-                for v_level in (400.0, 415.0):
-                    conn.execute(
-                        "INSERT OR REPLACE INTO device_breaking_capacities (device_id, voltage_v, icu_ka, ics_ka)"
-                        " VALUES (?,?,?,?)",
-                        (device.part_number, v_level, float(device.icu_ka_400v), None))
+            if device.icu_ka_400v is not None:
+                conn.execute(
+                    "DELETE FROM device_breaking_capacities WHERE device_id IN (?, ?)",
+                    (device_id, device.part_number),
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO device_breaking_capacities (device_id, voltage_v, icu_ka, ics_ka)"
+                    " VALUES (?,?,?,?)",
+                    (device.part_number, 400.0, float(device.icu_ka_400v), device.ics_ka_400v))
             for temp, factor in ((40.0, device.derating_40c), (50.0, device.derating_50c)):
                 conn.execute(
                     "INSERT OR REPLACE INTO device_thermal_derating (device_id, temp_c, derating_factor)"

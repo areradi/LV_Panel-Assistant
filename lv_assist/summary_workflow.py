@@ -48,9 +48,9 @@ def _catalog_to_breaker(breaker: Any) -> Optional[MainBreakerSpec]:
         part_number=getattr(breaker, "part_number", None),
         in_a=in_a if in_a else None,
         poles=None,
-        rated_voltage_v=400.0 if icu else None,
-        icu_ka=icu if icu else None,
-        ics_ka=None,
+        rated_voltage_v=getattr(breaker, "rated_voltage_v", None),
+        icu_ka=icu if icu is not None else None,
+        ics_ka=getattr(breaker, "ics_ka_400v", None),
         icn_ka=None,
         icw_ka_1s=None,
         verification_status=(CatalogProvenance.VERIFIED_CATALOG if getattr(breaker, 'has_verified_datasheet', False)

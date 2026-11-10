@@ -607,7 +607,10 @@ class EngineeringEngine:
             ctrl_holding_w = 3.5
         else:
             candidates = [d for d in self.catalog if d.device_type in ("MCB", "MCCB") and (d.rated_current_in_a * self._get_derating_factor(d, project.max_internal_temp_c)) >= ib_a and self._icu_ok(d, project, ik_total_ka)]
-            candidates.sort(key=lambda x: (x.rated_current_in_a, x.icu_ka_400v))
+            candidates.sort(key=lambda x: (
+                x.rated_current_in_a,
+                x.icu_ka_400v if x.icu_ka_400v is not None else 0.0,
+            ))
             if candidates: sel_prot = candidates[0]; reason_parts.append(f"{sel_prot.device_type} {sel_prot.part_number}")
             if f.has_socket_outlets:
                 rcds = [d for d in self.catalog if d.device_type == "RCD" and d.rated_current_in_a >= ib_a]
