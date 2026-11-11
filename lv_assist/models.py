@@ -469,6 +469,8 @@ class PanelSummaryOutput(BaseModel):
     main_breaker: Optional[CatalogDevice] = None
     recommended_busbar_spec: str
     recommended_pe_busbar_spec: str
+    busbar_length_m: Optional[float] = None
+    pe_busbar_length_m: Optional[float] = None
     busbar_rating_a: float = 0.0
     busbar_icw_1s_ka: float = 0.0
     busbar_ipk_ka: float = 0.0
@@ -479,6 +481,7 @@ class PanelSummaryOutput(BaseModel):
     busbar_force_n_per_m: Optional[float] = None
     busbar_temperature_factor: float = 1
     recommended_incoming_cable_str: str
+    incoming_cable_length_m: Optional[float] = None
     ctrl_24v_plc_hmi_w: float = 0.0
     ctrl_24v_coils_holding_w: float = 0.0
     ctrl_24v_total_continuous_w: float = 0.0

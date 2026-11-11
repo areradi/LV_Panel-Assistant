@@ -158,6 +158,11 @@ class CommercialEngine:
         grouped: Dict[str, List[Any]] = {}
         unassigned_idx = 0
         for func, loc, bmk, cat, dev, sug_spec, qty in raw_entries:
+            # Rows with qty=None (busbar/cable with length TBD) are BOM items
+            # but not quotable yet — skip them from the commercial quote.
+            # They remain visible in the 04_BOM sheet with notes='length TBD'.
+            if qty is None:
+                continue
             full_tag = f"{func}{loc}{bmk}"
             if dev is not None:
                 key = dev.part_number

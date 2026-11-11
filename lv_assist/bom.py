@@ -38,6 +38,8 @@ CATEGORIES = {
     "TERMINALS": "ترمینال‌ها (Terminals)",
     "CABLES": "کابل‌ها و متعلقات (Cables & Accessories)",
     "MECHANICAL": "تجهیزات مکانیکی تابلو (Enclosure & Busbar)",
+    "BUSBAR": "Busbar",
+    "INCOMING_CABLE": "Cable",
     "OTHER": "سایر تجهیزات (Other)",
 }
 
@@ -51,7 +53,7 @@ class BomItem:
     manufacturer: str
     part_number: str
     tech_spec: str
-    qty: float
+    qty: Optional[float]
     unit: str
     panel: str
     func_loc: str
@@ -141,6 +143,41 @@ def build_bom(project: Any, feeders_out: List[Any], summary: Any, final: bool = 
     for func, loc, tag, category, device, suggestion, qty in iter_device_entries(project, feeders_out, summary):
         add(tag, category, f'{device.series} ({device.device_type})' if device else (suggestion or category),
             device, suggestion or '', qty, func_loc=f'{func}{loc}')
+    if summary.recommended_busbar_spec:
+        phase_spec = summary.recommended_busbar_spec
+        if summary.busbar_rating_a:
+            phase_spec = (
+                f"{phase_spec}; In={summary.busbar_rating_a:g}A; "
+                f"Icw={summary.busbar_icw_1s_ka:g}kA/1s; Ipk={summary.busbar_ipk_ka:g}kA"
+            )
+        phase_length = summary.busbar_length_m
+        items.append(BomItem(
+            item_no=len(items) + 1, tag='-BUS-PH', category=CATEGORIES['BUSBAR'],
+            description=tr('bom_busbar_phase'), manufacturer='', part_number='',
+            tech_spec=phase_spec, qty=phase_length, unit='m', panel=project.panel_tag,
+            func_loc='=BUS', notes='PRELIMINARY' if phase_length is not None else 'length TBD',
+            missing_part_number=True,
+        ))
+    if summary.recommended_pe_busbar_spec:
+        pe_length = summary.pe_busbar_length_m or summary.busbar_length_m
+        items.append(BomItem(
+            item_no=len(items) + 1, tag='-BUS-PE', category=CATEGORIES['BUSBAR'],
+            description=tr('bom_busbar_pe'), manufacturer='', part_number='',
+            tech_spec=summary.recommended_pe_busbar_spec, qty=pe_length, unit='m',
+            panel=project.panel_tag, func_loc='=BUS',
+            notes='PRELIMINARY' if pe_length is not None else 'length TBD',
+            missing_part_number=True,
+        ))
+    if summary.recommended_incoming_cable_str:
+        incoming_length = summary.incoming_cable_length_m
+        items.append(BomItem(
+            item_no=len(items) + 1, tag='-W-IN', category=CATEGORIES['INCOMING_CABLE'],
+            description=tr('bom_incoming_cable'), manufacturer='', part_number='',
+            tech_spec=summary.recommended_incoming_cable_str, qty=incoming_length,
+            unit='m', panel=project.panel_tag, func_loc='=INCOMING',
+            notes='PRELIMINARY' if incoming_length is not None else 'length TBD',
+            missing_part_number=True,
+        ))
     for index, feeder in enumerate(feeders_out, 1):
         add(f'-W{index}', CATEGORIES['CABLES'], f'Power cable ({feeder.feeder_id})',
             spec=feeder.cable_designation_str, qty=feeder.cable_length_m, unit='m',
