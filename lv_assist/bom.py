@@ -179,8 +179,17 @@ def build_bom(project: Any, feeders_out: List[Any], summary: Any, final: bool = 
             missing_part_number=True,
         ))
     for index, feeder in enumerate(feeders_out, 1):
+        cable_spec_parts = [feeder.cable_designation_str] if feeder.cable_designation_str else []
+        if feeder.selected_phase_mm2:
+            cable_spec_parts.append(f"Phase: {feeder.selected_phase_mm2:g} mm²")
+        if feeder.selected_pe_mm2:
+            cable_spec_parts.append(f"PE: {feeder.selected_pe_mm2:g} mm²")
+        if feeder.conductor_material:
+            cable_spec_parts.append(f"Conductor: {feeder.conductor_material}")
+        if feeder.insulation_type:
+            cable_spec_parts.append(f"Insulation: {feeder.insulation_type}")
         add(f'-W{index}', CATEGORIES['CABLES'], f'Power cable ({feeder.feeder_id})',
-            spec=feeder.cable_designation_str, qty=feeder.cable_length_m, unit='m',
+            spec='; '.join(cable_spec_parts), qty=feeder.cable_length_m, unit='m',
             func_loc=f'{feeder.func_tag}{feeder.loc_tag}')
 
     from lv_assist.gui_output_bridge import GuiOutputBridge

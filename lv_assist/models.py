@@ -416,6 +416,8 @@ class FeederCalcOutput(BaseModel):
     cable_derated_iz_a: Optional[float] = 0.0
     cable_Auto_sized: bool = True
     cable_designation_str: str = ""
+    conductor_material: Optional[str] = None
+    insulation_type: Optional[str] = None
     cable_temp_factor_k1: float = 1.0
     cable_grouping_factor_k2: float = 1.0
     cable_total_derating_k: float = 1.0
