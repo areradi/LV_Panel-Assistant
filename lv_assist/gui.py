@@ -75,6 +75,11 @@ from lv_assist.catalog import DB_PATH
 LANG_SEGMENT_TO_CODE = {"FA": "fa", "EN": "en", "DE": "de"}
 
 
+def _prelim_gui(value: str, is_preliminary: bool) -> str:
+    """Append a preliminary marker to an engineering value when needed."""
+    return f"{value} (prelim.)" if is_preliminary else value
+
+
 class LocalizedOptionMenu(DirectionalOptionMenu):
     """Display translated labels while keeping stable model values at the UI boundary."""
 
@@ -2073,11 +2078,11 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             (('شینه فاز / نول', 'Phase / neutral busbar', 'Phasen-/Neutralleiterschiene'), summary.recommended_busbar_spec),
             (('ظرفیت جریان شینه', 'Busbar current rating', 'Schienen-Strombelastbarkeit'), f'{summary.busbar_rating_a:g} A'),
             (('شینه PE', 'PE busbar', 'PE-Schiene'), summary.recommended_pe_busbar_spec),
-            (('تحمل Icw یک‌ثانیه', '1 s Icw withstand', 'Icw für 1 s'), f'{summary.busbar_icw_1s_ka:g} kA'),
-            (('تحمل پیک Ipk', 'Ipk withstand', 'Ipk-Festigkeit'), f'{summary.busbar_ipk_ka:g} kA'),
+            (('تحمل Icw یک‌ثانیه', '1 s Icw withstand', 'Icw für 1 s'), f'{_prelim_gui(f"{summary.busbar_icw_1s_ka:g}", True)} kA'),
+            (('تحمل پیک Ipk', 'Ipk withstand', 'Ipk-Festigkeit'), f'{_prelim_gui(f"{summary.busbar_ipk_ka:g}", True)} kA'),
             (('پیک موردنیاز', 'Required peak current', 'Erforderlicher Scheitelstrom'), '—' if summary.busbar_required_ipk_ka is None else f'{summary.busbar_required_ipk_ka:g} kA'),
             (('تنش خمشی مقدماتی', 'Preliminary bending stress', 'Vorläufige Biegespannung'), '—' if summary.busbar_bending_stress_mpa is None else f'{summary.busbar_bending_stress_mpa:.2f} MPa'),
-            (('ضریب دمای شینه (برآورد)', 'Busbar temperature factor (estimate)', 'Schienentemperaturfaktor (Schätzung)'), f'{summary.busbar_temperature_factor:.3f}'),
+            (('ضریب دمای شینه (برآورد)', 'Busbar temperature factor (estimate)', 'Schienentemperaturfaktor (Schätzung)'), _prelim_gui(f'{summary.busbar_temperature_factor:.3f}', True)),
             (('جریان طراحی هر فاز', 'Design current by phase', 'Bemessungsstrom je Phase'), ' | '.join(f'{phase}: {current:g} A' for phase, current in summary.phase_design_currents_a.items())),
             (('جریان نول در مؤلفه اصلی', 'Fundamental neutral current', 'Grundschwingungs-Neutralleiterstrom'), f'{summary.neutral_current_a:g} A' if summary.neutral_current_a is not None else '—'),
             (('فاصله حداکثر ساپورت', 'Maximum support spacing', 'Maximaler Stützabstand'), '—' if summary.busbar_max_support_spacing_mm is None else f'{summary.busbar_max_support_spacing_mm:g} mm'),
@@ -2100,14 +2105,14 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         _pn = summary.main_breaker.part_number if summary.main_breaker else "-"
         main_txt = f"In: {_mp['rated_current_in']} | Id: {_mp['design_current']}{_warn}\n{_pn}"
         self.kpi_labels["main_current"].configure(text=main_txt)
-        bus_txt = f"{summary.recommended_busbar_spec}\n{tr('kpi_bus_icw', a=summary.busbar_icw_1s_ka, b=summary.busbar_required_supports)}\nΔU={summary.busbar_du_v}V ({summary.busbar_du_pct}%)"
+        bus_txt = f"{summary.recommended_busbar_spec}\n{tr('kpi_bus_icw', a=_prelim_gui(f'{summary.busbar_icw_1s_ka:g}', True), b=summary.busbar_required_supports)} | Ipk={_prelim_gui(f'{summary.busbar_ipk_ka:g}', True)} kA\nΔU={summary.busbar_du_v}V ({summary.busbar_du_pct}%)"
         if summary.motor_contribution_ka is not None:
-            bus_txt += f" | I''kM={summary.motor_contribution_ka}kA"
+            bus_txt += f" | I''kM={_prelim_gui(f'{summary.motor_contribution_ka:g}', True)} kA"
         bus_txt += "\n" + (tr("kpi_spd", a=summary.selected_spd.spd_class, b=summary.selected_spd.part_number) if summary.selected_spd else tr("kpi_spd_none"))
         self.kpi_labels["busbar"].configure(text=bus_txt)
         self.kpi_labels["psu_24v"].configure(text=f"{summary.selected_psu_24v.series if summary.selected_psu_24v else 'N/A'}\n({summary.ctrl_24v_total_continuous_w}W)")
         tint = summary.estimated_internal_temp_c
-        tint_text = f"{summary.total_power_loss_w}W / {summary.enclosure_natural_dissipation_w}W\n{tint}°C"
+        tint_text = f"{summary.total_power_loss_w}W / {summary.enclosure_natural_dissipation_w}W\n{_prelim_gui(f'{tint}°C', True) if tint is not None else '—'}"
         if tint is not None and tint > 50.0:
             tint_text += f"\n{tr('kpi_tint_50_warn')}"
             self.kpi_labels["thermal"].configure(text=tint_text, text_color="#E74C3C")
