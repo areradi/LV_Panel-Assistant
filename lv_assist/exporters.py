@@ -297,6 +297,7 @@ class PrintableReportExporter:
         lang = i18n.get_language()
         direction = i18n.direction()
         feeder_rows = ""
+        thermal_preliminary = "PRELIMINARY" in (summary.thermal_method or "").upper()
         for f in feeders:
             eq = _h(f.selected_protection.part_number if f.selected_protection else "-")
             if f.load_type == LoadType.MOTOR_STAR_DELTA:
@@ -310,16 +311,26 @@ class PrintableReportExporter:
             if f.starting_dip_pct is not None:
                 eq += f"<br><small>ΔU<sub>start</sub>: {_h(f.starting_dip_pct)}%</small>"
             if f.protection_icu_ka is not None:
-                eq += f"<br><small>Icu: {_h(f.protection_icu_ka)} kA @ {_h(project.nominal_voltage_v)}V</small>"
+                icu_is_preliminary = (f.selected_protection is None
+                                      or f.selected_protection.data_quality != DataQuality.REAL_VERIFIED)
+                icu_display = _prelim(
+                    f"Icu: {f.protection_icu_ka} kA @ {project.nominal_voltage_v}V",
+                    icu_is_preliminary,
+                )
+                eq += f"<br><small>{_h(icu_display)}</small>"
             if f.suggested_spec_str:
                 eq += f"<br><small style='color:#B7950B;'>{_h(tr('bom_suggested'))}: {_h(f.suggested_spec_str)}</small>"
 
             sel_cls = PrintableReportExporter.SEL_BADGE.get(f.selectivity_state, "badge-insufficient")
+            k1 = _prelim(f"{f.cable_temp_factor_k1:g}", thermal_preliminary)
+            k2 = _prelim(f"{f.cable_grouping_factor_k2:g}", thermal_preliminary)
+            k_total = _prelim(f"{f.cable_total_derating_k:g}", thermal_preliminary)
+            pe_basis = _prelim(f.pe_basis_str, f.clearing_time_s is not None)
             feeder_rows += f"""<tr>
                 <td><b>{_h(f.feeder_id)}</b><br><small>{_h(f.func_tag)}{_h(f.loc_tag)}</small></td>
                 <td>{_h(f.description)}</td><td>{_h(f.load_type.value)}</td><td>{_h(f.power_kw)}</td>
                 <td><b>{_h(f.design_current_ib_a)} A</b></td><td dir="ltr">{eq}</td>
-                <td dir="ltr"><b>{_h(f.cable_designation_str)}</b><br><small>Iz={'?' if f.cable_derated_iz_a is None else _h(f.cable_derated_iz_a)}A | L={_h(f.cable_length_m)}m</small><br><small>k1={_h(f.cable_temp_factor_k1)} | k2={_h(f.cable_grouping_factor_k2)} | kΣ={_h(f.cable_total_derating_k)} | {_h(f.cable_method_ref_str)}</small><br><small>{_h(f.pe_basis_str)}</small></td>
+                <td dir="ltr"><b>{_h(f.cable_designation_str)}</b><br><small>Iz={'?' if f.cable_derated_iz_a is None else _h(f.cable_derated_iz_a)}A | L={_h(f.cable_length_m)}m</small><br><small>k1={_h(k1)} | k2={_h(k2)} | kΣ={_h(k_total)} | {_h(f.cable_method_ref_str)}</small><br><small>{_h(pe_basis)}</small></td>
                 <td>{_h(f.voltage_drop_percent)}%</td><td><span class="badge {sel_cls}">{_h(f.selectivity_state.value)}</span></td><td>{_h(f.total_feeder_loss_w)} W</td>
             </tr>"""
 
@@ -351,7 +362,9 @@ class PrintableReportExporter:
             if title == std_id and not scope: continue
             ref_rows += f"<tr><td dir='ltr'><b>{_h(std_id)}</b><br><small>{_h(title)}</small></td><td>{_h(scope)}</td></tr>"
 
-        ik_cell = f"{summary.ik_used_ka} kA" if summary.ik_used_ka is not None else "-"
+        ik_is_preliminary = summary.ik_used_ka is not None and project.prospective_ik_ka is None
+        ik_cell = (_prelim(f"{summary.ik_used_ka} kA", ik_is_preliminary)
+                   if summary.ik_used_ka is not None else "-")
         ik_note = summary.ik_source_str
         dip_cell = f"{summary.max_motor_starting_dip_pct}%" if summary.max_motor_starting_dip_pct is not None else "-"
         thdi_cell = f"{summary.panel_thdi_pct}%" if summary.panel_thdi_pct is not None else "-"
@@ -369,7 +382,8 @@ class PrintableReportExporter:
         else:
             spd_txt = summary.spd_suggested_str or tr("rpt_cap_none")
 
-        tint_cell = f"{summary.estimated_internal_temp_c}°C" if summary.estimated_internal_temp_c is not None else "-"
+        tint_cell = (_prelim(f"{summary.estimated_internal_temp_c}°C", True)
+                     if summary.estimated_internal_temp_c is not None else "-")
         tint_warn = ""
         if summary.estimated_internal_temp_c is not None and summary.estimated_internal_temp_c > 50.0:
             tint_warn = f" <b style='color:#C0392B;'>{_h(tr('kpi_tint_50_warn'))}</b>"
@@ -381,17 +395,21 @@ class PrintableReportExporter:
         if main_brk:
             main_sub = f"{_h(main_brk.part_number)} | In={_h(main_brk.rated_current_in_a)}A"
             if summary.ik_used_ka is not None:
-                main_sub += f" | Ik={_h(summary.ik_used_ka)} kA"
+                main_sub += f" | Ik={_h(_prelim(str(summary.ik_used_ka), ik_is_preliminary))} kA"
                 if summary.ik_bus_total_ka is not None and summary.ik_bus_total_ka != summary.ik_used_ka:
-                    main_sub += f" (Σ={_h(summary.ik_bus_total_ka)})"
+                    main_sub += f" (Σ={_h(_prelim(str(summary.ik_bus_total_ka), summary.motor_contribution_ka is not None))})"
         else:
             main_sub = _h(summary.suggested_main_breaker_str)
 
         bus_sub = f"Ik: {_h(ik_cell)}"
         if summary.busbar_icw_1s_ka is not None:
-            bus_sub += f" | Icw(1s)={_h(summary.busbar_icw_1s_ka)} kA"
+            bus_sub += f" | Icw(1s)={_h(_prelim(f'{summary.busbar_icw_1s_ka:g}', True))} kA"
+        if summary.busbar_ipk_ka is not None:
+            bus_sub += f" | Ipk={_h(_prelim(f'{summary.busbar_ipk_ka:g}', True))} kA"
         if summary.motor_contribution_ka is not None and summary.ik_bus_total_ka is not None:
-            bus_sub += f"<br>{_h(tr('rpt_motor_ik'))}: {_h(summary.motor_contribution_ka)} kA → Ik,Σ={_h(summary.ik_bus_total_ka)} kA"
+            bus_sub += (f"<br>{_h(tr('rpt_motor_ik'))}: "
+                        f"{_h(_prelim(f'{summary.motor_contribution_ka:g}', True))} kA → "
+                        f"Ik,Σ={_h(_prelim(str(summary.ik_bus_total_ka), True))} kA")
         bus_sub += f"<br>ΔU: {_h(summary.busbar_du_v)} V ({_h(summary.busbar_du_pct)}%)"
         bus_sub += f"<br>PE: {_h(summary.recommended_pe_busbar_spec)}"
 
@@ -419,13 +437,16 @@ class PrintableReportExporter:
 
         trace_rows = ""
         for f in feeders:
+            k1 = _prelim(f"{f.cable_temp_factor_k1:g}", thermal_preliminary)
+            k2 = _prelim(f"{f.cable_grouping_factor_k2:g}", thermal_preliminary)
+            k_total = _prelim(f"{f.cable_total_derating_k:g}", thermal_preliminary)
             iz = f.cable_derated_iz_a
             if iz is not None and f.cable_total_derating_k:
                 iz0 = round(iz / f.cable_total_derating_k, 1)
-                k1, k2 = f.cable_temp_factor_k1, f.cable_grouping_factor_k2
-                k_other = round(f.cable_total_derating_k / (k1 * k2), 3) if (k1 and k2) else 1.0
+                k1_raw, k2_raw = f.cable_temp_factor_k1, f.cable_grouping_factor_k2
+                k_other = round(f.cable_total_derating_k / (k1_raw * k2_raw), 3) if (k1_raw and k2_raw) else 1.0
                 iz0_str, iz_str, ktot_str = str(iz0), str(iz), str(f.cable_total_derating_k)
-                formula = f"Iz = {iz0_str} × {k1} × {k2} × {k_other:g} = {iz_str} A"
+                formula = f"Iz = {iz0_str} × {k1_raw:g} × {k2_raw:g} × {k_other:g} = {iz_str} A"
             else:
                 iz0_str = iz_str = ktot_str = formula = "?"
                 formula = "-"
@@ -433,11 +454,11 @@ class PrintableReportExporter:
                 <td><b>{_h(f.feeder_id)}</b></td>
                 <td dir="ltr">{_h(f.design_current_ib_a)}</td>
                 <td dir="ltr">{iz0_str}</td>
-                <td dir="ltr">{_h(f.cable_temp_factor_k1)}</td>
-                <td dir="ltr">{_h(f.cable_grouping_factor_k2)}</td>
-                <td dir="ltr">{ktot_str}</td>
+                <td dir="ltr">{_h(k1)}</td>
+                <td dir="ltr">{_h(k2)}</td>
+                <td dir="ltr">{_h(k_total)}</td>
                 <td dir="ltr"><b>{iz_str}</b></td>
-                <td dir="ltr"><small>{formula}</small></td>
+                <td dir="ltr"><small>{_h(formula)}</small></td>
                 <td dir="ltr">{_h(f.voltage_drop_percent)}%</td>
             </tr>"""
 
@@ -539,6 +560,9 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <thead><tr><th>{_h(tr("rpt_ref_std"))}</th><th>{_h(tr("rpt_ref_scope"))}</th></tr></thead>
 <tbody>{ref_rows}</tbody></table>
 {sign_block}
+<div class="disclaimer" style="margin-top: 24px; padding: 12px; background: #FFF8E1; border-left: 4px solid #FFA000; font-size: 10pt; font-style: italic; color: #5D4037;">
+  <strong>PRELIMINARY:</strong> All engineering results are preliminary and require review by a qualified engineer. Not an IEC 61439 compliance certificate.
+</div>
 <div class="page-footer">{_h(project.project_name)} | LV-PanelAssist | {_h(now_str)}</div>
 </div></body></html>"""
         with open(filepath, "w", encoding="utf-8") as f:
