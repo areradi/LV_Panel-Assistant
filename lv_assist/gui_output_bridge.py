@@ -8,7 +8,7 @@ Transforms live calculation outputs from gui.py / engine.py into:
   4. Automatic HTML Engineering Report Injection (Zero Hardcoding, Zero Calc Engine Modification)
 """
 
-from lv_assist.models import feeder_reference_tag
+from lv_assist.models import DataQuality, feeder_reference_tag
 from lv_assist.calculation_state import require_current_calculation
 import os
 import html
@@ -117,6 +117,15 @@ class GuiOutputBridge:
         ik_val = summary.ik_bus_total_ka or summary.ik_used_ka
         from lv_assist.catalog import catalog_repo
         main_icu = catalog_repo.get_device_icu_at_voltage(main_brk.part_number, project.nominal_voltage_v) if main_brk else None
+        ik_is_preliminary = summary.ik_used_ka is not None and project.prospective_ik_ka is None
+        main_icu_is_preliminary = (
+            main_brk is not None and main_brk.data_quality != DataQuality.REAL_VERIFIED
+        )
+        feeder_icu_preliminary = {
+            f_out.feeder_id: f_out.selected_protection.data_quality != DataQuality.REAL_VERIFIED
+            for f_out in feeders_out
+            if f_out.selected_protection is not None
+        }
 
         return SLDPanelDTO(
             project_name=str(getattr(project, "project_name", "LV Switchboard")),
@@ -137,7 +146,10 @@ class GuiOutputBridge:
             psu_tag="-G1",
             psu_part=str(getattr(psu, "part_number", "UNSELECTED")),
             psu_rating_str=psu_str,
-            feeders=sld_feeders
+            feeders=sld_feeders,
+            ik_is_preliminary=ik_is_preliminary,
+            main_icu_is_preliminary=main_icu_is_preliminary,
+            feeder_icu_preliminary=feeder_icu_preliminary,
         )
 
     @classmethod

@@ -22,6 +22,11 @@ def _esc(s: str) -> str:
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _prelim_out(value: str, is_prelim: bool) -> str:
+    """Append '(prelim.)' to an engineering value when it is preliminary."""
+    return f"{value} (prelim.)" if is_prelim else value
+
+
 class SldGenerator:
     """تولید دیاگرام تک‌خطی (Single-Line Diagram) به صورت SVG مستقل."""
 
@@ -152,11 +157,16 @@ class SldGenerator:
         w = max(1180.0, 120.0 + per_row * col_w + 40.0)
         h = 330.0 + rows * SldGenerator.ROW_H + SldGenerator.TITLE_BLOCK_H
         bus_y = 120.0
+        ik_is_prelim = summary.ik_used_ka is not None and project.prospective_ik_ka is None
+        ik_str = (
+            _prelim_out(f"{summary.ik_used_ka:g} kA", ik_is_prelim)
+            if summary.ik_used_ka is not None else "?"
+        )
         parts: List[str] = [
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" font-family="Tahoma, Segoe UI, sans-serif">',
             f'<rect width="{w}" height="{h}" fill="white"/>',
             f'<text x="20" y="28" font-size="17" font-weight="bold" fill="#1F4E78">{_esc(tr("sld_title"))} — {_esc(project.project_name)} ({_esc(project.panel_tag)})</text>',
-            f'<text x="20" y="46" font-size="10" fill="#566573">{datetime.now().strftime("%Y-%m-%d %H:%M")} | {_esc(project.standard_ref)} | Ik″={summary.ik_used_ka if summary.ik_used_ka is not None else "?"} kA</text>',
+            f'<text x="20" y="46" font-size="10" fill="#566573">{datetime.now().strftime("%Y-%m-%d %H:%M")} | {_esc(project.standard_ref)} | Ik″={_esc(ik_str)}</text>',
         ]
         sel_colors = {"VERIFIED_TOTAL": "#1E8449", "VERIFIED_PARTIAL": "#B7950B",
                       "PRELIMINARY": "#566573", "PRELIMINARY_RATIO": "#566573", "VIOLATION": "#C0392B"}
@@ -301,7 +311,9 @@ class TccGenerator:
         if summary.ik_used_ka is not None:
             x = TccGenerator._px(summary.ik_used_ka * 1000.0)
             parts.append(f'<line x1="{x:.1f}" y1="{TccGenerator.Y0}" x2="{x:.1f}" y2="{TccGenerator.Y1}" stroke="#C0392B" stroke-width="2" stroke-dasharray="6,4"/>')
-            parts.append(f'<text x="{x + 5:.1f}" y="{TccGenerator.Y0 + 14}" font-size="11" font-weight="bold" fill="#C0392B">{_esc(tr("tcc_ik"))} {summary.ik_used_ka} kA</text>')
+            ik_is_prelim = project.prospective_ik_ka is None
+            ik_label = _prelim_out(f"{summary.ik_used_ka} kA", ik_is_prelim)
+            parts.append(f'<text x="{x + 5:.1f}" y="{TccGenerator.Y0 + 14}" font-size="11" font-weight="bold" fill="#C0392B">{_esc(tr("tcc_ik"))} {ik_label}</text>')
 
         legend_y = TccGenerator.Y0 + 6
         def _legend(color: str, text: str):
