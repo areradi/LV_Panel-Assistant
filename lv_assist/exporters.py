@@ -46,6 +46,11 @@ def _csv_safe(val):
 def _append_safe(ws, row):
     ws.append([_xl_safe(v) for v in row])
 
+
+def _prelim(value: str, is_preliminary: bool) -> str:
+    return f"{value} (prelim.)" if is_preliminary else value
+
+
 class ExcelExporter:
     @staticmethod
     def export_to_excel(filename: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput, validations: List[ValidationResult]):
@@ -67,7 +72,11 @@ class ExcelExporter:
             (tr("rpt_s_name"), project.project_name, "-", project.standard_ref),
             (tr("rpt_s_tag"), project.panel_tag, "-", tr("rpt_ref_form", form=project.internal_separation_form)),
             (tr("rpt_s_voltage"), f"{project.nominal_voltage_v} V / {project.earthing_system.value}", "V / Hz", f"{project.frequency_hz} Hz"),
-            (tr("rpt_ik"), summary.ik_used_ka if summary.ik_used_ka is not None else "-", "kA", summary.ik_source_str),
+            (tr("rpt_ik"),
+             _prelim(f"{summary.ik_used_ka:g}", True)
+             if summary.ik_used_ka is not None and project.prospective_ik_ka is None
+             else summary.ik_used_ka if summary.ik_used_ka is not None else "-",
+             "kA", summary.ik_source_str),
             (tr("rpt_scenario"), f"{project.panel_type.value} / {project.special_scenario.value}", "-", "-"),
             (tr('wiz_mounting'), tr('mount_' + project.enclosure_mounting.value), '-', 'IEC 62208 / IEC 61439-1'),
             (tr("rpt_dip"), f"{summary.max_motor_starting_dip_pct}%" if summary.max_motor_starting_dip_pct is not None else "-", "%", summary.max_starting_dip_motor),
@@ -78,13 +87,20 @@ class ExcelExporter:
              tr("rpt_ref_in", a=summary.main_breaker.rated_current_in_a if summary.main_breaker else 0) if summary.main_breaker else summary.suggested_main_breaker_str),
             (tr("rpt_s_incoming"), summary.recommended_incoming_cable_str, "-", tr("rpt_ref_iec52")),
             (tr("rpt_s_busbar"), summary.recommended_busbar_spec, "-", tr("rpt_ref_din")),
-            (tr("rpt_bus_icw"), f"Icw(1s)={summary.busbar_icw_1s_ka} kA | Ipk={summary.busbar_ipk_ka} kA", "kA",
+            (tr("rpt_bus_icw"),
+             f"Icw(1s)={_prelim(f'{summary.busbar_icw_1s_ka:g}', True)} kA | "
+             f"Ipk={_prelim(f'{summary.busbar_ipk_ka:g}', True)} kA", "kA",
              tr("rpt_ref_iec61439") + (f" | {tr('rpt_bus_req')}={summary.busbar_required_ipk_ka} kA" if summary.busbar_required_ipk_ka is not None else "")),
+            ("Busbar temperature factor", _prelim(f"{summary.busbar_temperature_factor:g}", True), "-",
+             "PRELIMINARY; based on estimated internal temperature"),
             (tr("rpt_bus_support"), f"{summary.busbar_required_supports} × {summary.busbar_max_support_spacing_mm:.0f} mm" if summary.busbar_max_support_spacing_mm else str(summary.busbar_required_supports), "-", tr("rpt_ref_iec61439")),
             (tr("rpt_bus_du"), f"{summary.busbar_du_v} V ({summary.busbar_du_pct}%)", "V / %",
              tr("rpt_ref_iec61439") + f" | {tr('rpt_du_total')}={summary.max_total_du_pct}%"),
             (tr("rpt_motor_ik"),
-             f"I''kM={summary.motor_contribution_ka} kA → Ik,total={summary.ik_bus_total_ka} kA (ip={summary.ip_bus_total_ka} kA)" if summary.motor_contribution_ka is not None else "-",
+             f"I''kM={_prelim(f'{summary.motor_contribution_ka:g}', True)} kA → "
+             f"Ik,total={_prelim(str(summary.ik_bus_total_ka), True)} kA "
+             f"(ip={_prelim(str(summary.ip_bus_total_ka), True)} kA)"
+             if summary.motor_contribution_ka is not None else "-",
              "kA", tr("rpt_ref_iec60909")),
             (tr("rpt_s_pe"), summary.recommended_pe_busbar_spec, "-", tr("rpt_ref_iec54")),
             (tr("rpt_s_24v"), f"{summary.ctrl_24v_total_continuous_w} W ({summary.ctrl_24v_design_current_with_spare_a} A)", "W / A", tr("rpt_ref_peak", a=summary.ctrl_24v_peak_inrush_current_a)),
@@ -121,10 +137,27 @@ class ExcelExporter:
 
         ws2 = wb.create_sheet("02_Feeder_Cable_Schedule")
         _append_safe(ws2, [tr("rpt_c_id"), tr("rpt_c_func"), tr("rpt_c_loc"), tr("rpt_c_desc"), tr("rpt_c_type"), tr("rpt_c_kw"), tr("rpt_c_ib"), tr("rpt_c_idelta"), tr("rpt_c_cable"), tr("rpt_c_pe_basis"), tr("rpt_c_iz"), tr("rpt_c_k1"), tr("rpt_c_k2"), tr("rpt_c_ktot"), tr("rpt_c_method"), tr("rpt_c_len"), tr("rpt_c_vd"), tr("rpt_c_prot"), tr("rpt_c_icu"), tr("rpt_c_km"), tr("rpt_c_kd"), tr("rpt_c_ky"), tr("rpt_c_bim"), tr("rpt_c_vfd"), tr("bom_soft_starter"), tr("rpt_c_24v"), tr("rpt_c_sel"), tr("rpt_c_loss"), tr("bom_suggested")])
+        thermal_preliminary = "PRELIMINARY" in (summary.thermal_method or "").upper()
         for f in feeders:
             vfd_rcd = f.selected_vfd.part_number if f.selected_vfd else (f.selected_rcd.part_number if f.selected_rcd else "-")
-            icu_str = f"{f.protection_icu_ka} kA @ {project.nominal_voltage_v:g}V" if f.protection_icu_ka is not None else "-"
-            _append_safe(ws2, [f.feeder_id, f.func_tag, f.loc_tag, f.description, f.load_type.value, f.power_kw, f.design_current_ib_a, f.delta_loop_current_a or "-", f.cable_designation_str, f.pe_basis_str, f.cable_derated_iz_a, f.cable_temp_factor_k1, f.cable_grouping_factor_k2, f.cable_total_derating_k, f.cable_method_ref_str, f.cable_length_m, f.voltage_drop_percent, f.selected_protection.part_number if f.selected_protection else "NONE", icu_str, f.selected_contactor_main.part_number if f.selected_contactor_main else "-", f.selected_contactor_delta.part_number if f.selected_contactor_delta else "-", f.selected_contactor_star.part_number if f.selected_contactor_star else "-", f.selected_bimetal.part_number if f.selected_bimetal else "-", vfd_rcd, f.selected_soft_starter.part_number if f.selected_soft_starter else "-", f"{f.ctrl_24v_holding_w} / +{f.ctrl_24v_pull_in_surge_w}", f.selectivity_state.value, f.total_feeder_loss_w, f.suggested_spec_str or "-"])
+            if f.protection_icu_ka is not None:
+                icu_preliminary = (f.selected_protection is None
+                                   or f.selected_protection.data_quality != DataQuality.REAL_VERIFIED)
+                icu_str = _prelim(
+                    f"{f.protection_icu_ka:g} kA @ {project.nominal_voltage_v:g}V",
+                    icu_preliminary,
+                )
+            else:
+                icu_str = "-"
+            k1 = (_prelim(f"{f.cable_temp_factor_k1:g}", True)
+                  if thermal_preliminary else f.cable_temp_factor_k1)
+            k2 = (_prelim(f"{f.cable_grouping_factor_k2:g}", True)
+                  if thermal_preliminary else f.cable_grouping_factor_k2)
+            k_total = (_prelim(f"{f.cable_total_derating_k:g}", True)
+                       if thermal_preliminary else f.cable_total_derating_k)
+            pe_basis = (_prelim(f.pe_basis_str, True)
+                        if f.clearing_time_s is not None else f.pe_basis_str)
+            _append_safe(ws2, [f.feeder_id, f.func_tag, f.loc_tag, f.description, f.load_type.value, f.power_kw, f.design_current_ib_a, f.delta_loop_current_a or "-", f.cable_designation_str, pe_basis, f.cable_derated_iz_a, k1, k2, k_total, f.cable_method_ref_str, f.cable_length_m, f.voltage_drop_percent, f.selected_protection.part_number if f.selected_protection else "NONE", icu_str, f.selected_contactor_main.part_number if f.selected_contactor_main else "-", f.selected_contactor_delta.part_number if f.selected_contactor_delta else "-", f.selected_contactor_star.part_number if f.selected_contactor_star else "-", f.selected_bimetal.part_number if f.selected_bimetal else "-", vfd_rcd, f.selected_soft_starter.part_number if f.selected_soft_starter else "-", f"{f.ctrl_24v_holding_w} / +{f.ctrl_24v_pull_in_surge_w}", f.selectivity_state.value, f.total_feeder_loss_w, f.suggested_spec_str or "-"])
 
         ws3 = wb.create_sheet("03_Validation_Log")
         _append_safe(ws3, [tr("rpt_v_rule"), tr("rpt_v_target"), tr("rpt_v_std"), tr("rpt_v_status"), tr("rpt_v_desc"), tr("rpt_v_evidence"), tr("rpt_v_cons"), tr("rpt_v_action"), 'Rule category', 'Application scope'])
@@ -216,6 +249,30 @@ class ExcelExporter:
             for col in ws.columns:
                 max_len = max(len(str(c.value or "")) for c in col)
                 ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 4, 13), 48)
+        footer_text = (
+            "PRELIMINARY: All engineering results are preliminary and require review by a "
+            "qualified engineer. Not an IEC 61439 compliance certificate."
+        )
+        # Schedule sheets feed downstream filters and ETL, so keep their row counts stable.
+        footer_exclude_sheets = {
+            "Routine_Verification",
+            "Terminal_Schedule",
+            "Wire_Schedule",
+            "Assumed_Defaults",
+        }
+        for ws in wb.worksheets:
+            if ws.title in footer_exclude_sheets:
+                continue
+            footer_row = ws.max_row + 1
+            ws.cell(row=footer_row, column=1, value=footer_text)
+            if ws.max_column > 1:
+                ws.merge_cells(start_row=footer_row, start_column=1,
+                               end_row=footer_row, end_column=ws.max_column)
+            footer_cell = ws.cell(row=footer_row, column=1)
+            footer_cell.font = Font(name="Calibri", size=9, italic=True, color="7F6000")
+            footer_cell.fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+            footer_cell.alignment = Alignment(wrap_text=True, vertical="center")
+            ws.row_dimensions[footer_row].height = 30
         wb.save(filename)
 
 class PrintableReportExporter:
