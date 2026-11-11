@@ -8,7 +8,7 @@ from lv_assist.calculation_state import require_current_calculation
 from lv_assist.models import ProjectSpec, FeederCalcOutput, PanelSummaryOutput, CatalogDevice, LoadType
 from lv_assist.i18n import tr
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Literal, Optional
 import csv
 import copy
 import openpyxl
@@ -61,6 +61,37 @@ class BomItem:
     missing_part_number: bool = False
     quote_exclude: bool = False
     device: Optional[CatalogDevice] = None
+    item_type: Literal["catalog", "material", "estimate"] = "catalog"
+
+
+_VALID_UNITS = {"m", "pcs", "kg", "set"}
+
+
+def _validate_final_bom(items: List[BomItem]) -> None:
+    """Raise with item tags when final-BOM requirements are not met."""
+    bad_catalog = []
+    bad_material = []
+    bad_estimate = []
+
+    for item in items:
+        if item.item_type == "catalog":
+            if item.device is None or not _clean_pn(item.part_number) or item.notes != "VERIFIED_OEM_CATALOG":
+                bad_catalog.append(item.tag)
+        elif item.item_type == "material":
+            if item.qty is None or item.qty <= 0 or item.unit not in _VALID_UNITS:
+                bad_material.append(item.tag)
+        elif item.item_type == "estimate":
+            bad_estimate.append(item.tag)
+
+    errors = []
+    if bad_catalog:
+        errors.append(f"catalog items missing verified OEM evidence: {sorted(set(bad_catalog))}")
+    if bad_material:
+        errors.append(f"material items missing valid qty/unit: {sorted(set(bad_material))}")
+    if bad_estimate:
+        errors.append(f"estimate items must be resolved or removed before final: {sorted(set(bad_estimate))}")
+    if errors:
+        raise ValueError("Final BOM rejected: " + "; ".join(errors))
 
 
 def _clean_pn(pn: Optional[str]) -> str:
@@ -139,7 +170,8 @@ def build_bom(project: Any, feeders_out: List[Any], summary: Any, final: bool = 
             part_number=device.part_number if device else '', tech_spec=spec,
             qty=qty, unit=unit, panel=project.panel_tag, func_loc=func_loc,
             notes='VERIFIED_OEM_CATALOG' if verified else 'GENERIC_ESTIMATE; engineering review required',
-            missing_part_number=device is None, device=device))
+            missing_part_number=device is None, device=device,
+            item_type="catalog" if device is not None else "estimate"))
 
     for func, loc, tag, category, device, suggestion, qty in iter_device_entries(project, feeders_out, summary):
         add(tag, category, f'{device.series} ({device.device_type})' if device else (suggestion or category),
@@ -157,7 +189,7 @@ def build_bom(project: Any, feeders_out: List[Any], summary: Any, final: bool = 
             description=tr('bom_busbar_phase'), manufacturer='', part_number='',
             tech_spec=phase_spec, qty=phase_length, unit='m', panel=project.panel_tag,
             func_loc='=BUS', notes='PRELIMINARY' if phase_length is not None else 'length TBD',
-            missing_part_number=True,
+            missing_part_number=True, item_type="material",
         ))
     if summary.recommended_pe_busbar_spec:
         pe_length = summary.pe_busbar_length_m or summary.busbar_length_m
@@ -167,7 +199,7 @@ def build_bom(project: Any, feeders_out: List[Any], summary: Any, final: bool = 
             tech_spec=summary.recommended_pe_busbar_spec, qty=pe_length, unit='m',
             panel=project.panel_tag, func_loc='=BUS',
             notes='PRELIMINARY' if pe_length is not None else 'length TBD',
-            missing_part_number=True,
+            missing_part_number=True, item_type="material",
         ))
     if summary.recommended_incoming_cable_str:
         incoming_length = summary.incoming_cable_length_m
@@ -177,7 +209,7 @@ def build_bom(project: Any, feeders_out: List[Any], summary: Any, final: bool = 
             tech_spec=summary.recommended_incoming_cable_str, qty=incoming_length,
             unit='m', panel=project.panel_tag, func_loc='=INCOMING',
             notes='PRELIMINARY' if incoming_length is not None else 'length TBD',
-            missing_part_number=True,
+            missing_part_number=True, item_type="material",
         ))
     for index, feeder in enumerate(feeders_out, 1):
         cable_spec_parts = [feeder.cable_designation_str] if feeder.cable_designation_str else []
@@ -192,6 +224,7 @@ def build_bom(project: Any, feeders_out: List[Any], summary: Any, final: bool = 
         add(f'-W{index}', CATEGORIES['CABLES'], f'Power cable ({feeder.feeder_id})',
             spec='; '.join(cable_spec_parts), qty=feeder.cable_length_m, unit='m',
             func_loc=f'{feeder.func_tag}{feeder.loc_tag}')
+        items[-1].item_type = "material"
 
     from lv_assist.gui_output_bridge import GuiOutputBridge
     wires, terminals = GuiOutputBridge.generate_all_wire_and_terminal_schedules(project, feeders_out, summary)
@@ -203,6 +236,7 @@ def build_bom(project: Any, feeders_out: List[Any], summary: Any, final: bool = 
             qty=len(pins), unit='pcs', spec=tr('bom_terminal_pending_spec'))
         items[-1].notes = 'informational; aggregated in Wiring & Terminals quote line'
         items[-1].quote_exclude = True
+        items[-1].item_type = "material"
     known = {item.tag for item in items}
     for wire in wires:
         for pin in (wire['from_pin'], wire['to_pin']):
@@ -210,8 +244,8 @@ def build_bom(project: Any, feeders_out: List[Any], summary: Any, final: bool = 
             if tag.startswith(('-S', '-H', '-K')) and tag not in known:
                 add(tag, CATEGORIES['CONTROL'], 'Control device / auxiliary contact; select from diagram requirements')
                 known.add(tag)
-    if final and any(item.missing_part_number or item.notes != 'VERIFIED_OEM_CATALOG' for item in items):
-        raise ValueError('Final BOM requires verified OEM evidence and assigned parts for every item')
+    if final:
+        _validate_final_bom(items)
     return items
 
 
