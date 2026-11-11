@@ -237,14 +237,19 @@ def to_rows(items: List[BomItem]) -> List[List[Any]]:
 
 
 def export_bom_csv(filepath: str, items: List[BomItem]) -> str:
+    from lv_assist.exporters import _csv_safe
+
     with open(filepath, "w", encoding="utf-8-sig", newline="") as fp:
         writer = csv.writer(fp)
         writer.writerow(BOM_HEADERS)
-        writer.writerows(to_rows(items))
+        data_writer = csv.writer(fp, quoting=csv.QUOTE_ALL)
+        data_writer.writerows([_csv_safe(cell) for cell in row] for row in to_rows(items))
     return filepath
 
 
 def export_bom_excel(filepath: str, items: List[BomItem]) -> str:
+    from lv_assist.exporters import _xl_safe
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "04_BOM"
@@ -266,7 +271,7 @@ def export_bom_excel(filepath: str, items: List[BomItem]) -> str:
             it.manufacturer, it.part_number, it.tech_spec,
             it.qty, it.unit, it.panel, it.func_loc, it.notes,
         ]
-        ws.append(row_vals)
+        ws.append([_xl_safe(cell) for cell in row_vals])
         if it.missing_part_number:
             for c_idx in range(1, len(BOM_HEADERS) + 1):
                 ws.cell(row=r_idx, column=c_idx).fill = warn_fill

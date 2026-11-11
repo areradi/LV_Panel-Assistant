@@ -256,6 +256,8 @@ class ControlCircuitGenerator:
     @classmethod
     def export_connections_csv(cls, filepath: str, project: ProjectSpec,
                                feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        from lv_assist.exporters import _csv_safe
+
         require_current_calculation(project, summary, feeders)
         rows = []
         for w in cls.build_all_wires(project, feeders, summary):
@@ -264,4 +266,5 @@ class ControlCircuitGenerator:
         with open(filepath, "w", encoding="utf-8-sig", newline="") as fh:
             writer = csv.writer(fh)
             writer.writerow(cls.CONN_HEADERS)
-            writer.writerows(rows)
+            data_writer = csv.writer(fh, quoting=csv.QUOTE_ALL)
+            data_writer.writerows([_csv_safe(cell) for cell in row] for row in rows)

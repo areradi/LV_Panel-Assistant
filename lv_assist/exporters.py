@@ -24,9 +24,22 @@ def _h(val) -> str:
 
 
 def _xl_safe(val):
-    """F-011: جلوگیری از Formula Injection در سلول‌های Excel."""
-    if isinstance(val, str) and val and val[0] in "=+-@":
+    """Prevent formula injection in XLSX text cells."""
+    if not isinstance(val, str) or not val:
+        return val
+    stripped = val.lstrip("\t\r\n ")
+    if stripped and stripped[0] in "=+-@":
         return "'" + val
+    return val
+
+
+def _csv_safe(val):
+    """Prefix formula-like values; CSV exporters must quote the resulting field."""
+    if not isinstance(val, str) or not val:
+        return val
+    stripped = val.lstrip("\t\r\n ")
+    if stripped and stripped[0] in "=+-@":
+        return "\t" + val
     return val
 
 
