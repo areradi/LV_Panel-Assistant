@@ -160,6 +160,8 @@
   "bom_cable": "Cable",
   "bom_fan": "Fan",
   "bom_enclosure": "Enclosure",
+  "bom_terminal_strip": "تعداد پین ترمینال",
+  "bom_terminal_pending_spec": "فقط تعداد پین؛ rating و متعلقات انتخاب نشده (PENDING_DATA)",
   "bom_busbar_phase": "شینه فاز و نول",
   "bom_busbar_pe": "شینه حفاظتی PE",
   "bom_incoming_cable": "کابل ورودی تابلو",

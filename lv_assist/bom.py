@@ -59,6 +59,7 @@ class BomItem:
     func_loc: str
     notes: str = ""
     missing_part_number: bool = False
+    quote_exclude: bool = False
     device: Optional[CatalogDevice] = None
 
 
@@ -198,7 +199,10 @@ def build_bom(project: Any, feeders_out: List[Any], summary: Any, final: bool = 
     for terminal in terminals:
         strips.setdefault(terminal['terminal_strip'], set()).add(terminal['terminal_pin'])
     for strip, pins in sorted(strips.items()):
-        add(strip, CATEGORIES['TERMINALS'], 'Control terminal points', qty=len(pins), spec='Select terminal ratings and accessories')
+        add(strip, CATEGORIES['TERMINALS'], tr('bom_terminal_strip'),
+            qty=len(pins), unit='pcs', spec=tr('bom_terminal_pending_spec'))
+        items[-1].notes = 'informational; aggregated in Wiring & Terminals quote line'
+        items[-1].quote_exclude = True
     known = {item.tag for item in items}
     for wire in wires:
         for pin in (wire['from_pin'], wire['to_pin']):

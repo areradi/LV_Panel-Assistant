@@ -160,6 +160,8 @@
   "bom_cable": "Cable",
   "bom_fan": "Fan",
   "bom_enclosure": "Enclosure",
+  "bom_terminal_strip": "Terminal strip pin count",
+  "bom_terminal_pending_spec": "Pin count only; select rating and accessories (PENDING_DATA)",
   "bom_busbar_phase": "Phase and neutral busbar",
   "bom_busbar_pe": "Protective PE busbar",
   "bom_incoming_cable": "Panel incoming cable",

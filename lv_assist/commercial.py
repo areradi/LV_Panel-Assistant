@@ -154,6 +154,7 @@ class CommercialEngine:
         raw_entries = [(item.func_loc, '', item.tag, item.category, item.device,
                         item.description + ' ' + item.tech_spec, item.qty) for item in bom]
         units = {f'{item.func_loc}{item.tag}': item.unit for item in bom}
+        quote_excluded_tags = {item.tag for item in bom if item.quote_exclude}
 
         grouped: Dict[str, List[Any]] = {}
         unassigned_idx = 0
@@ -162,6 +163,8 @@ class CommercialEngine:
             # but not quotable yet — skip them from the commercial quote.
             # They remain visible in the 04_BOM sheet with notes='length TBD'.
             if qty is None:
+                continue
+            if bmk in quote_excluded_tags:
                 continue
             full_tag = f"{func}{loc}{bmk}"
             if dev is not None:

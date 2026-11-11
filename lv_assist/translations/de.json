@@ -160,6 +160,8 @@
   "bom_cable": "Kabel",
   "bom_fan": "Lüfter",
   "bom_enclosure": "Gehäuse",
+  "bom_terminal_strip": "Anzahl der Klemmenpunkte",
+  "bom_terminal_pending_spec": "Nur Stiftanzahl; Rating und Zubehör nicht ausgewählt (PENDING_DATA)",
   "bom_busbar_phase": "Phasen- und Neutralleiterschiene",
   "bom_busbar_pe": "PE-Schutzleiterschiene",
   "bom_incoming_cable": "Einspeisekabel des Schaltschranks",
