@@ -82,8 +82,8 @@ def iter_device_entries(project: ProjectSpec, feeders: List[FeederCalcOutput], s
     elif summary.suggested_main_breaker_str:
         add_suggested("=INCOMING", project.panel_tag, "-Q0", tr("bom_main"), summary.suggested_main_breaker_str)
     if summary.selected_spd:
-        add("=INCOMING", project.panel_tag, "-F9", tr("bom_spd"), summary.selected_spd)
-        add_suggested("=INCOMING", project.panel_tag, "-F9F", tr("bom_spd_fuse"),
+        add("=INCOMING", project.panel_tag, "-F-SPD", tr("bom_spd"), summary.selected_spd)
+        add_suggested("=INCOMING", project.panel_tag, "-F-SPDF", tr("bom_spd_fuse"),
                       tr("bom_spd_fuse_spec", a=summary.selected_spd.spd_backup_fuse_a, b=summary.selected_spd.spd_class))
     if summary.selected_psu_primary_mcb:
         add("=CTRL", project.panel_tag, "-Q01", tr("bom_psu_mcb"), summary.selected_psu_primary_mcb)

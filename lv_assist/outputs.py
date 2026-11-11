@@ -102,7 +102,7 @@ class SldGenerator:
             f'<line x1="{inc_x}" y1="{bus_y + 12}" x2="{x}" y2="{bus_y + 12}" stroke="#1E8449" stroke-width="1.8"/>',
             f'<line x1="{x}" y1="{bus_y + 12}" x2="{x}" y2="{base}" stroke="#1E8449" stroke-width="1.8"/>',
             f'<rect x="{x - 20}" y="{base}" width="40" height="30" rx="4" fill="#1E8449" stroke="#1F4E78" stroke-width="1.5"/>',
-            f'<text x="{x}" y="{base + 19}" text-anchor="middle" font-size="10" fill="white" font-weight="bold">-F9</text>',
+            f'<text x="{x}" y="{base + 19}" text-anchor="middle" font-size="10" fill="white" font-weight="bold">-F-SPD</text>',
             f'<text x="{x}" y="{base + 42}" text-anchor="middle" font-size="8" font-weight="bold" fill="#1E8449" dir="ltr">{pn[:26]}</text>',
             f'<text x="{x}" y="{base + 54}" text-anchor="middle" font-size="8" fill="#566573">{_esc(tr("sld_spd"))} {_esc(cls)}</text>',
         ]

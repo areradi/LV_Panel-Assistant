@@ -1995,8 +1995,8 @@ class TestPhase13Spd:
         assert tr("rpt_spd") in labels
         ws4 = wb["04_BOM"]
         bom_rows = [[str(c.value) for c in r] for r in ws4.iter_rows(min_row=2)]
-        assert any("-F9" in r[0] and summary.selected_spd.part_number in r[6] for r in bom_rows)
-        assert any("-F9F" in r[0] and r[6] == "None" and "gG" in r[7] for r in bom_rows)
+        assert any("-F-SPD" in r[0] and summary.selected_spd.part_number in r[6] for r in bom_rows)
+        assert any("-F-SPDF" in r[0] and r[6] == "None" and "gG" in r[7] for r in bom_rows)
 
     def test_html_contains_spd(self, tmp_path):
         project, outs, summary, validations = self._run()
@@ -2009,15 +2009,15 @@ class TestPhase13Spd:
     def test_sld_contains_spd_branch(self):
         project, outs, summary, _ = self._run()
         svg = SldGenerator.generate_svg(project, outs, summary)
-        assert "-F9" in svg
+        assert "-F-SPD" in svg
         assert "SPD" in svg
 
     def test_layout_contains_spd_device(self):
         project, outs, summary, _ = self._run()
         result = PanelLayoutGenerator.generate(project, outs, summary)
         tags = [d.tag for row in result.rows for d in row.devices]
-        assert "-F9" in tags
-        spd_dev = [d for row in result.rows for d in row.devices if d.tag == "-F9"][0]
+        assert "-F-SPD" in tags
+        spd_dev = [d for row in result.rows for d in row.devices if d.tag == "-F-SPD"][0]
         assert spd_dev.zone == "POWER"
         assert spd_dev.part_number == summary.selected_spd.part_number
 
