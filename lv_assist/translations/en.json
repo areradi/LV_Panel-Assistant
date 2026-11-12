@@ -44,6 +44,8 @@
   "col_action": "Action",
   "msg_success": "Success",
   "msg_error": "Error",
+  "msg_stale_title": "Calculation is out of date",
+  "msg_stale_export": "Inputs have changed since the last calculation. Please recalculate before exporting.",
   "msg_template_created": "Template created.",
   "msg_load_done": "Loaded and calculations completed.",
   "msg_export_saved": "Excel report saved.",

@@ -36,6 +36,7 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox, ttk, simpledialog
 
 from lv_assist.paths import get_app_working_dir, config_file_path, get_output_dir
+from lv_assist.calculation_state import StaleCalculationStateError
 from lv_assist.models import (
     ProjectSpec, FeederInput, EarthingSystem, LoadType, ValidationStatus,
     PanelType, SpecialScenario, ConductorMaterial, InsulationType, InstallationMethod, SpdClass,
@@ -2353,6 +2354,9 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 SldGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
                 _open_local_file(path)
                 messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except StaleCalculationStateError:
+                messagebox.showerror(tr("msg_stale_title"), tr("msg_stale_export"), parent=self)
+                self._mark_stale()
             except Exception as ex:
                 messagebox.showerror(
                     tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
@@ -2367,6 +2371,9 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 TccGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
                 _open_local_file(path)
                 messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except StaleCalculationStateError:
+                messagebox.showerror(tr("msg_stale_title"), tr("msg_stale_export"), parent=self)
+                self._mark_stale()
             except Exception as ex:
                 messagebox.showerror(
                     tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
@@ -2379,12 +2386,20 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         if not path: return
         # UI-12: دیالوگ واترمارک اجباری پیش از صدور PDF
         def _do_pdf():
-            tmp_html = os.path.join(os.environ.get("TEMP", get_app_working_dir()), "lvassist_report_temp.html")
-            PrintableReportExporter.generate_html_report(tmp_html, self.current_project, res[0], res[1], res[2])
-            if PdfExporter.export_html_to_pdf(tmp_html, path):
-                messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
-            else:
-                messagebox.showwarning(tr("msg_warning"), tr("msg_pdf_fail"))
+            try:
+                tmp_html = os.path.join(os.environ.get("TEMP", get_app_working_dir()), "lvassist_report_temp.html")
+                PrintableReportExporter.generate_html_report(tmp_html, self.current_project, res[0], res[1], res[2])
+                if PdfExporter.export_html_to_pdf(tmp_html, path):
+                    messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+                else:
+                    messagebox.showwarning(tr("msg_warning"), tr("msg_pdf_fail"))
+            except StaleCalculationStateError:
+                messagebox.showerror(tr("msg_stale_title"), tr("msg_stale_export"), parent=self)
+                self._mark_stale()
+            except Exception as ex:
+                messagebox.showerror(
+                    tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+                )
         self._prompt_export_guardrail_dialog(_do_pdf)
 
     def action_export_eplan(self):
@@ -2459,6 +2474,9 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 ControlCircuitGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
                 _open_local_file(path)
                 messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except StaleCalculationStateError:
+                messagebox.showerror(tr("msg_stale_title"), tr("msg_stale_export"), parent=self)
+                self._mark_stale()
             except Exception as ex:
                 messagebox.showerror(
                     tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
@@ -2481,6 +2499,9 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 PanelLayoutGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
                 _open_local_file(path)
                 messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except StaleCalculationStateError:
+                messagebox.showerror(tr("msg_stale_title"), tr("msg_stale_export"), parent=self)
+                self._mark_stale()
             except Exception as ex:
                 messagebox.showerror(
                     tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self

@@ -44,6 +44,8 @@
   "col_action": "Maßnahme",
   "msg_success": "Erfolg",
   "msg_error": "Fehler",
+  "msg_stale_title": "Berechnung ist veraltet",
+  "msg_stale_export": "Die Eingaben haben sich seit der letzten Berechnung geändert. Bitte vor dem Export neu berechnen.",
   "msg_template_created": "Vorlage erstellt.",
   "msg_load_done": "Geladen und Berechnungen abgeschlossen.",
   "msg_export_saved": "Excel-Bericht gespeichert.",
