@@ -256,7 +256,7 @@ class ControlCircuitGenerator:
     @classmethod
     def export_connections_csv(cls, filepath: str, project: ProjectSpec,
                                feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
-        from lv_assist.exporters import _csv_safe
+        from lv_assist.exporters import _csv_safe, _provenance_lines
 
         require_current_calculation(project, summary, feeders)
         rows = []
@@ -268,3 +268,25 @@ class ControlCircuitGenerator:
             writer.writerow(cls.CONN_HEADERS)
             data_writer = csv.writer(fh, quoting=csv.QUOTE_ALL)
             data_writer.writerows([_csv_safe(cell) for cell in row] for row in rows)
+
+        if summary is None:
+            from datetime import datetime, timezone
+
+            provenance = {
+                "Input Hash": "not recorded",
+                "Engine Version": "not recorded",
+                "Catalog Revision": "not recorded",
+                "Rules Revision": "not recorded",
+                "Calculated At": "not recorded",
+                "Report Generated At": datetime.now(timezone.utc).isoformat(),
+            }
+        else:
+            provenance = dict(_provenance_lines(summary))
+        from pathlib import Path
+        import json
+
+        sidecar_path = Path(str(filepath) + ".provenance.json")
+        sidecar_path.write_text(
+            json.dumps(provenance, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )

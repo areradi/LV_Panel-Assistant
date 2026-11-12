@@ -320,7 +320,7 @@ def to_rows(items: List[BomItem]) -> List[List[Any]]:
     ]
 
 
-def export_bom_csv(filepath: str, items: List[BomItem]) -> str:
+def export_bom_csv(filepath: str, items: List[BomItem], provenance: Optional[dict] = None) -> str:
     from lv_assist.exporters import _csv_safe
 
     with open(filepath, "w", encoding="utf-8-sig", newline="") as fp:
@@ -328,10 +328,19 @@ def export_bom_csv(filepath: str, items: List[BomItem]) -> str:
         writer.writerow(BOM_HEADERS)
         data_writer = csv.writer(fp, quoting=csv.QUOTE_ALL)
         data_writer.writerows([_csv_safe(cell) for cell in row] for row in to_rows(items))
+    if provenance:
+        from pathlib import Path
+        import json
+
+        sidecar_path = Path(str(filepath) + ".provenance.json")
+        sidecar_path.write_text(
+            json.dumps(provenance, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
     return filepath
 
 
-def export_bom_excel(filepath: str, items: List[BomItem]) -> str:
+def export_bom_excel(filepath: str, items: List[BomItem], provenance: Optional[dict] = None) -> str:
     from lv_assist.exporters import _xl_safe
 
     wb = openpyxl.Workbook()
@@ -359,6 +368,12 @@ def export_bom_excel(filepath: str, items: List[BomItem]) -> str:
         if it.missing_part_number:
             for c_idx in range(1, len(BOM_HEADERS) + 1):
                 ws.cell(row=r_idx, column=c_idx).fill = warn_fill
+
+    if provenance:
+        ws_prov = wb.create_sheet("Provenance")
+        ws_prov.append(["Field", "Value"])
+        for key, value in provenance.items():
+            ws_prov.append([str(key), str(value)])
 
     wb.save(filepath)
     return filepath
