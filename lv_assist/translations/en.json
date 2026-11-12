@@ -1114,5 +1114,13 @@
   "audit_phase_action": "Assign single-phase loads and review the busiest phase and neutral conductor.",
   "audit_no_assembly_proof": "PRELIMINARY: no assembly test or design-verification evidence is recorded; these calculations do not certify conformity.",
   "wiz_cmax": "Maximum voltage factor cmax",
-  "wiz_cmin": "Minimum voltage factor cmin"
+  "wiz_cmin": "Minimum voltage factor cmin",
+  "lbl_transformer_uk": "Transformer Uk (%)",
+  "lbl_cable_k2": "Cable grouping factor",
+  "lbl_spd_length": "SPD lead length (m)",
+  "lbl_altitude": "Altitude (m)",
+  "lbl_internal_sep": "Internal separation form",
+  "lbl_designer": "Designer",
+  "xl_g_k2_new": "Cable grouping factor k2",
+  "xl_g_designer_gui": "Designer name (optional)"
 }

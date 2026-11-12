@@ -1114,5 +1114,13 @@
   "audit_phase_action": "Einphasige Lasten zuordnen und höchste Phasenbelastung sowie Neutralleiter prüfen.",
   "audit_no_assembly_proof": "VORLÄUFIG: Kein Prüf- oder Bauartnachweis der Schaltgerätekombination erfasst; diese Berechnungen bestätigen keine Konformität.",
   "wiz_cmax": "Maximaler Spannungsfaktor cmax",
-  "wiz_cmin": "Minimaler Spannungsfaktor cmin"
+  "wiz_cmin": "Minimaler Spannungsfaktor cmin",
+  "lbl_transformer_uk": "Trafo-Uk (%)",
+  "lbl_cable_k2": "Kabel-Gruppierungsfaktor",
+  "lbl_spd_length": "SPD-Anschlusslänge (m)",
+  "lbl_altitude": "Höhe über NN (m)",
+  "lbl_internal_sep": "Trennungsform innen",
+  "lbl_designer": "Planer",
+  "xl_g_k2_new": "Kabel-Gruppierungsfaktor k2",
+  "xl_g_designer_gui": "Name des Planers (optional)"
 }

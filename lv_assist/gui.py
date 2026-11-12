@@ -151,6 +151,9 @@ GUIDE_PROJECT_ROWS = [
      "Nennleistung des speisenden Transformators (kVA)", "kVA", "1600"),
     ("transformer_uk_pct", "ولتاژ اتصال کوتاه ترانس (%)", "Transformer short-circuit voltage (%)",
      "Kurzschlussspannung des Transformators (%)", "% (1-20)", "6"),
+    ("cable_grouping_factor_k2", "ضریب گروه‌بندی کابل", "Cable grouping factor",
+     "Kabel-Gruppierungsfaktor", "0.3 - 1.0", "0.8"),
+    ("designer_name", "نام طراح", "Designer name", "Name des Planers", "Text", ""),
     ("ambient_temp_c", "دمای محیط (°C)", "Ambient temperature (°C)", "Umgebungstemperatur (°C)", "°C", "40"),
     ("max_internal_temp_c", "حداکثر دمای مجاز داخل تابلو (°C)", "Max. allowed temperature inside the panel (°C)",
      "Max. zulässige Innentemperatur (°C)", "°C (35-70)", "50"),
@@ -239,6 +242,8 @@ class ExcelInputManager:
             ("prospective_ik_ka", 22.0, tr("xl_g_ik")),
             ("transformer_kva", 1600.0, tr("xl_g_trafo")),
             ("transformer_uk_pct", 6.0, tr("xl_g_uk_pct")),
+            ("cable_grouping_factor_k2", 0.8, tr("xl_g_k2_new")),
+            ("designer_name", None, tr("xl_g_designer_gui")),
             ("ambient_temp_c", 40.0, tr("xl_g_ambient")),
             ("max_internal_temp_c", 50.0, tr("xl_g_internal")),
             ("altitude_m", 1000.0, tr("xl_g_altitude")),
@@ -395,6 +400,8 @@ class ExcelInputManager:
                 special_scenario=_enum(SpecialScenario, "special_scenario", SpecialScenario.NONE),
                 prospective_ik_ka=_f_opt("prospective_ik_ka"),
                 source_r_x=_f_opt('source_r_x'),
+                cable_grouping_factor_k2=_f("cable_grouping_factor_k2", 0.80),
+                designer_name=(str(proj_dict.get("designer_name", "")).strip() or None),
                 voltage_factor_c_max=_f('voltage_factor_c_max', 1.1),
                 voltage_factor_c_min=_f('voltage_factor_c_min', .95),
                 busbar_phase_spacing_mm=_f('busbar_phase_spacing_mm', 60),
@@ -1148,6 +1155,9 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             ("wiz_trafo", "entry", "1600"),
             ("wiz_ik", "entry", "22"),
             ("wiz_ambient", "entry", "40"),
+            ("transformer_uk_pct", "entry", "6"),
+            ("cable_grouping_factor_k2", "entry", "0.8"),
+            ("spd_connection_length_m", "entry", "0.5"),
             ("wiz_internal", "entry", "50"),
             ("wiz_earthing", "combo", ["TN-S", "TN-C-S", "TT", "IT"]),
             ("wiz_panel_type", "combo", [t.value for t in PanelType]),
@@ -1166,8 +1176,23 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             ("wiz_bus_spacing", "entry", "60"),
             ("wiz_bus_span", "entry", ""),
             ("wiz_bus_stress", "entry", "120"),
+            ("altitude_m", "entry", "1000"),
+            ("internal_separation_form", "combo", ["Form 1", "Form 2b", "Form 3b", "Form 4b"]),
+            ("designer_name", "entry", ""),
         ]
-        primary = {"wiz_project_name", "wiz_voltage", "wiz_ks", "wiz_ambient", "wiz_internal", "wiz_mounting", "wiz_scenario"}
+        primary = {
+            "wiz_project_name", "wiz_voltage", "wiz_ks", "wiz_ambient", "wiz_internal",
+            "wiz_mounting", "wiz_scenario", "transformer_uk_pct",
+            "cable_grouping_factor_k2", "spd_connection_length_m",
+        }
+        label_keys = {
+            "transformer_uk_pct": "lbl_transformer_uk",
+            "cable_grouping_factor_k2": "lbl_cable_k2",
+            "spd_connection_length_m": "lbl_spd_length",
+            "altitude_m": "lbl_altitude",
+            "internal_separation_form": "lbl_internal_sep",
+            "designer_name": "lbl_designer",
+        }
         fields.sort(key=lambda field: field[0] not in primary)
         self._advanced_widgets = []
         self._advanced_fields_visible = False
@@ -1175,7 +1200,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             r, c = i, 0
             label_column = c * 2 + (1 if rtl else 0)
             input_column = c * 2 + (0 if rtl else 1)
-            lbl = ctk.CTkLabel(form, text=tr(key), font=font, anchor="e" if rtl else "w")
+            lbl = ctk.CTkLabel(form, text=tr(label_keys.get(key, key)), font=font, anchor="e" if rtl else "w")
             lbl.grid(row=r, column=label_column, padx=(12, 8), pady=6, sticky="ew")
             if kind == "entry":
                 variable = ctk.StringVar(value=default)
@@ -1309,7 +1334,13 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             "wiz_trafo": "" if project.transformer_kva is None else str(project.transformer_kva),
             "wiz_ik": "" if project.prospective_ik_ka is None else str(project.prospective_ik_ka),
             "wiz_ambient": f"{project.ambient_temp_c:g}",
+            "transformer_uk_pct": f"{project.transformer_uk_pct:g}",
+            "cable_grouping_factor_k2": f"{project.cable_grouping_factor_k2:g}",
+            "spd_connection_length_m": f"{project.spd_connection_length_m:g}",
+            "altitude_m": f"{project.altitude_m:g}",
             "wiz_internal": f"{project.max_internal_temp_c:g}",
+            "internal_separation_form": project.internal_separation_form,
+            "designer_name": project.designer_name or "",
             "wiz_ip": project.target_ip,
             "wiz_spare": f"{project.spare_factor:g}",
             "wiz_ks": f"{project.simultaneity_factor_ks:g}",
@@ -1374,6 +1405,10 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             "wiz_source_rx": "source_r_x", "wiz_bus_spacing": "busbar_phase_spacing_mm",
             "wiz_cmax": "voltage_factor_c_max", "wiz_cmin": "voltage_factor_c_min",
             "wiz_bus_span": "busbar_support_span_mm", "wiz_bus_stress": "busbar_allowable_stress_mpa",
+            "transformer_uk_pct": "transformer_uk_pct",
+            "cable_grouping_factor_k2": "cable_grouping_factor_k2",
+            "spd_connection_length_m": "spd_connection_length_m",
+            "altitude_m": "altitude_m",
         }
         text_fields = {
             "wiz_project_name": "project_name", "wiz_std_regime": "standard_ref",
@@ -1381,6 +1416,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             "wiz_panel_type": "panel_type", "wiz_scenario": "special_scenario",
             "wiz_mounting": "enclosure_mounting",
             "wiz_ip": "target_ip",
+            "internal_separation_form": "internal_separation_form",
         }
         for key, field in numeric_fields.items():
             value = _f(key, optional=key in ("wiz_ik", "wiz_trafo", "wiz_enc_width", "wiz_enc_height", "wiz_enc_depth", "wiz_source_rx", "wiz_bus_span"))
@@ -1391,6 +1427,10 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             if (not self.current_project
                     or self.wiz_entries[key].get() != self._project_form_values.get(key)):
                 data[field] = self.wiz_entries[key].get().strip()
+        designer_name = self.wiz_entries["designer_name"].get().strip()
+        if (not self.current_project
+                or designer_name != self._project_form_values.get("designer_name")):
+            data["designer_name"] = designer_name or None
         data["preferred_manufacturer"] = self.mfg_values[self.mfg_display.index(self.mfg_menu.get())]
         data["spd_class"] = self.spd_values[self.spd_display.index(self.spd_menu.get())]
         lps_choice = self.lps_menu.get()
