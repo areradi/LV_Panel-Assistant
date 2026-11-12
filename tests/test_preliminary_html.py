@@ -95,3 +95,42 @@ def test_html_has_preliminary_disclaimer(tmp_path):
     assert "PRELIMINARY:" in content
     assert "IEC 61439" in content
     assert "qualified engineer" in content
+
+
+def test_print_wraps_table_text_and_has_no_footer_rule(tmp_path):
+    content, _, _ = _render(tmp_path, _make_project())
+    print_css = content.split("@media print {", 1)[1].split("</style>", 1)[0]
+    assert re.search(r"th, td\s*\{[^}]*overflow-wrap:\s*break-word", print_css)
+    assert re.search(r"\.cell-wrap\s*\{[^}]*overflow-wrap:\s*anywhere", print_css)
+    assert "max-width: 100%" in print_css
+    footer = re.search(r"\.page-footer\s*\{([^}]+)\}", print_css).group(1)
+    assert "position: fixed" in footer
+    assert "bottom: 0" in footer
+    assert "border-top" not in footer
+
+
+def test_report_isolates_technical_text_in_mixed_direction_cells(tmp_path):
+    content, _, _ = _render(
+        tmp_path, _make_project(), [_make_feeder(description="شرح Feeder F01")]
+    )
+    assert '<td class="cell-wrap" dir="auto">شرح Feeder F01</td>' in content
+    assert '<td dir="auto"><b><bdi dir="ltr">F01</bdi>' in content
+    assert '<td dir="auto"><small><bdi dir="ltr">Iz = ' in content
+    validation_table = content.split('<table class="validation-table">', 1)[1].split("</table>", 1)[0]
+    assert '<td dir="auto"><bdi dir="ltr"><b>RULE-' in validation_table
+    assert '<td dir="ltr">' not in validation_table
+
+
+def test_print_tcc_has_scalable_viewport(tmp_path):
+    content, _, _ = _render(tmp_path, _make_project())
+    assert '<div class="tcc-chart" dir="ltr"><svg ' in content
+    assert 'viewBox="0 0 1180 720"' in content
+    assert 'preserveAspectRatio="xMidYMid meet"' in content
+
+
+def test_report_escapes_plain_ampersand_once(tmp_path):
+    content, _, _ = _render(tmp_path, _make_project(), [
+        _make_feeder(description="Cables & Accessories"),
+    ])
+    assert "Cables &amp; Accessories" in content
+    assert "Cables &amp;amp; Accessories" not in content

@@ -312,7 +312,7 @@ class PrintableReportExporter:
             f'<tr><td dir="ltr">{_h(target)}</td><td dir="ltr">{_h(name)}</td>'
             f'<td dir="ltr">{_h(json.dumps(value, ensure_ascii=False))}</td><td>ASSUMED_DEFAULT</td></tr>'
             for target, fields in summary.assumptions.items() for name, value in fields.items() if value != [])
-        assumptions_html = (f'<h2>{_h(tr("audit_assumptions"))}</h2><table><tbody>{assumption_rows}</tbody></table>'
+        assumptions_html = (f'<h2>{_h(tr("audit_assumptions"))}</h2><table class="assumptions-table"><tbody>{assumption_rows}</tbody></table>'
                             f'<p>{_h(summary.thermal_method)}</p>')
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         lang = i18n.get_language()
@@ -340,7 +340,9 @@ class PrintableReportExporter:
                 )
                 eq += f"<br><small>{_h(icu_display)}</small>"
             if f.suggested_spec_str:
-                eq += f"<br><small style='color:#B7950B;'>{_h(tr('bom_suggested'))}: {_h(f.suggested_spec_str)}</small>"
+                suggestion = f"<br><small dir='auto' style='color:#B7950B;'>{_h(tr('bom_suggested'))}: {_h(f.suggested_spec_str)}</small>"
+            else:
+                suggestion = ""
 
             sel_cls = PrintableReportExporter.SEL_BADGE.get(f.selectivity_state, "badge-insufficient")
             k1 = _prelim(f"{f.cable_temp_factor_k1:g}", thermal_preliminary)
@@ -348,10 +350,10 @@ class PrintableReportExporter:
             k_total = _prelim(f"{f.cable_total_derating_k:g}", thermal_preliminary)
             pe_basis = _prelim(f.pe_basis_str, f.clearing_time_s is not None)
             feeder_rows += f"""<tr>
-                <td><b>{_h(f.feeder_id)}</b><br><small>{_h(f.func_tag)}{_h(f.loc_tag)}</small></td>
-                <td>{_h(f.description)}</td><td>{_h(f.load_type.value)}</td><td>{_h(f.power_kw)}</td>
-                <td><b>{_h(f.design_current_ib_a)} A</b></td><td dir="ltr">{eq}</td>
-                <td dir="ltr"><b>{_h(f.cable_designation_str)}</b><br><small>Iz={'?' if f.cable_derated_iz_a is None else _h(f.cable_derated_iz_a)}A | L={_h(f.cable_length_m)}m</small><br><small>k1={_h(k1)} | k2={_h(k2)} | kΣ={_h(k_total)} | {_h(f.cable_method_ref_str)}</small><br><small>{_h(pe_basis)}</small></td>
+                <td dir="auto"><b><bdi dir="ltr">{_h(f.feeder_id)}</bdi></b><br><small><bdi dir="ltr">{_h(f.func_tag)}{_h(f.loc_tag)}</bdi></small></td>
+                <td class="cell-wrap" dir="auto">{_h(f.description)}</td><td>{_h(f.load_type.value)}</td><td>{_h(f.power_kw)}</td>
+                <td><b>{_h(f.design_current_ib_a)} A</b></td><td dir="auto"><bdi dir="ltr">{eq}</bdi>{suggestion}</td>
+                <td dir="auto"><b><bdi dir="ltr">{_h(f.cable_designation_str)}</bdi></b><br><small><bdi dir="ltr">Iz={'?' if f.cable_derated_iz_a is None else _h(f.cable_derated_iz_a)}A | L={_h(f.cable_length_m)}m</bdi></small><br><small><bdi dir="ltr">k1={_h(k1)} | k2={_h(k2)} | kΣ={_h(k_total)}</bdi> | <bdi dir="auto">{_h(f.cable_method_ref_str)}</bdi></small><br><small dir="auto">{_h(pe_basis)}</small></td>
                 <td>{_h(f.voltage_drop_percent)}%</td><td><span class="badge {sel_cls}">{_h(f.selectivity_state.value)}</span></td><td>{_h(f.total_feeder_loss_w)} W</td>
             </tr>"""
 
@@ -370,9 +372,9 @@ class PrintableReportExporter:
             cls, label = val_badge[v.status]
             val_rows += f"""<tr>
                 <td style="text-align:center;"><span class="badge {cls}">{_h(label)}</span></td>
-                <td dir="ltr"><b>{_h(v.rule_id)}</b><br><small>{_h(v.feeder_id)}</small></td>
-                <td dir="ltr">{_h(v.standard_ref)}<br><small>{_h(v.rule_category)} / {_h(v.application_scope)}</small></td><td>{_h(v.description)}</td>
-                <td dir="ltr"><small>{_h(v.supporting_evidence)}</small></td><td>{_h(v.recommended_action)}</td>
+                <td dir="auto"><bdi dir="ltr"><b>{_h(v.rule_id)}</b></bdi><br><small><bdi dir="ltr">{_h(v.feeder_id)}</bdi></small></td>
+                <td dir="auto"><bdi dir="ltr">{_h(v.standard_ref)}</bdi><br><small dir="auto">{_h(v.rule_category)} / {_h(v.application_scope)}</small></td><td class="cell-wrap" dir="auto">{_h(v.description)}</td>
+                <td class="cell-wrap" dir="auto"><small>{_h(v.supporting_evidence)}</small></td><td class="cell-wrap" dir="auto">{_h(v.recommended_action)}</td>
             </tr>"""
 
         ref_ids = sorted({v.standard_ref for v in validations if v.standard_ref})
@@ -479,7 +481,7 @@ class PrintableReportExporter:
                 <td dir="ltr">{_h(k2)}</td>
                 <td dir="ltr">{_h(k_total)}</td>
                 <td dir="ltr"><b>{iz_str}</b></td>
-                <td dir="ltr"><small>{_h(formula)}</small></td>
+                <td dir="auto"><small><bdi dir="ltr">{_h(formula)}</bdi></small></td>
                 <td dir="ltr">{_h(f.voltage_drop_percent)}%</td>
             </tr>"""
 
@@ -493,7 +495,11 @@ class PrintableReportExporter:
                 f'{_h(tr("msg_error"))}: TCC chart could not be generated; '
                 'see the application log.</div>'
             )
-        tcc_svg_inline = tcc_svg_inline.replace("<svg ", '<svg style="max-width:100%;height:auto;" ', 1)
+        tcc_svg_inline = tcc_svg_inline.replace(
+            'width="1180" height="720"',
+            'width="1180" height="720" viewBox="0 0 1180 720" preserveAspectRatio="xMidYMid meet"',
+            1,
+        )
 
         sign_block = f"""
 <h2>{_h(tr("html_sign_title"))}</h2>
@@ -530,7 +536,8 @@ h2 {{ font-size: 14px; background: #1F4E78; color: white; padding: 6px 12px; bor
 table {{ width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 11px; }}
 th, td {{ border: 1px solid #BDC3C7; padding: 6px 8px; vertical-align: middle; }}
 th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
-.grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }}
+.grid-2 {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }}
+.tcc-chart > svg {{ display: block; width: 100%; height: auto; }}
 .kpi-strip {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }}
 .kpi-card {{ border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px; background: #F8FAFC; break-inside: avoid; }}
 .kpi-title {{ font-size: 10px; color: #1F4E78; font-weight: bold; margin-bottom: 4px; }}
@@ -547,14 +554,23 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 .page-footer {{ display: none; }}
 @media print {{
   body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9pt; background: #FFF; margin: 0; }}
-  table {{ page-break-inside: auto; width: 100%; border-collapse: collapse; }}
+  table {{ page-break-inside: auto; width: 100%; max-width: 100%; border-collapse: collapse; }}
+  th, td {{ word-break: normal; overflow-wrap: break-word; }}
+  .cell-wrap {{ overflow-wrap: anywhere; }}
+  .assumptions-table td:first-child {{ min-width: 6ch; }}
+  .assumptions-table td:nth-child(2) {{ min-width: 24ch; }}
+  .assumptions-table td:last-child {{ min-width: 18ch; }}
+  .grid-2 td:first-child {{ width: 32%; }}
+  .tcc-chart {{ break-inside: avoid; page-break-inside: avoid; width: 100%; overflow: hidden; }}
+  h2 {{ break-inside: avoid; break-after: avoid; page-break-after: avoid; }}
+  td .badge {{ white-space: normal; }}
   tr {{ page-break-inside: avoid; page-break-after: auto; }}
   thead {{ display: table-header-group; }}
   .section-card {{ break-inside: avoid; box-shadow: none !important; border: 1px solid #CBD5E1; }}
   .no-print {{ display: none !important; }}
   .container {{ border: none; padding: 0; }}
   .kpi-card, .sign-block {{ break-inside: avoid; }}
-  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; border-top: 1px solid #BDC3C7; padding: 4px 0; text-align: center; background: #FFF; }}
+  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; padding: 4px 0; text-align: center; background: #FFF; }}
 }}
 </style></head>
 <body><div class="container">
@@ -590,11 +606,11 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <h2>{_h(tr("html_s4"))}</h2><table>
 <thead><tr><th>{_h(tr("html_f_id"))}</th><th>{_h(tr("html_trace_ib"))}</th><th>{_h(tr("html_trace_iz0"))}</th><th>{_h(tr("html_trace_k1"))}</th><th>{_h(tr("html_trace_k2"))}</th><th>{_h(tr("html_trace_ktot"))}</th><th>{_h(tr("html_trace_iz"))}</th><th>{_h(tr("html_trace_formula"))}</th><th>{_h(tr("html_trace_vd"))}</th></tr></thead>
 <tbody>{trace_rows}</tbody></table>
-<h2>{_h(tr("html_s5"))}</h2><table>
+<h2>{_h(tr("html_s5"))}</h2><table class="validation-table">
 <thead><tr><th>{_h(tr("html_v_status"))}</th><th>{_h(tr("html_v_code"))}</th><th>{_h(tr("html_v_std"))}</th><th>{_h(tr("html_v_desc"))}</th><th>{_h(tr("html_v_evidence"))}</th><th>{_h(tr("html_v_action"))}</th></tr></thead>
 <tbody>{val_rows}</tbody></table>
 <h2>{_h(tr("html_tcc_section"))}</h2>
-<div dir="ltr" style="break-inside:avoid;">{tcc_svg_inline}</div>
+<div class="tcc-chart" dir="ltr">{tcc_svg_inline}</div>
 <p style="font-size:11px;color:#566573;">{_h(tr("html_tcc_note"))}</p>
 <h2>{_h(tr("rpt_refs"))}</h2><table>
 <thead><tr><th>{_h(tr("rpt_ref_std"))}</th><th>{_h(tr("rpt_ref_scope"))}</th></tr></thead>
@@ -677,7 +693,8 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
   .no-print {{ display: none !important; }}
   .container {{ border: none; padding: 0; }}
   .sign-block, .conclusion-box {{ break-inside: avoid; }}
-  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; border-top: 1px solid #BDC3C7; padding: 4px 0; text-align: center; background: #FFF; }}
+  h2 {{ break-inside: avoid; break-after: avoid; page-break-after: avoid; }}
+  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; padding: 4px 0; text-align: center; background: #FFF; }}
 }}
 </style></head>
 <body><div class="container">
@@ -792,7 +809,8 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
   .no-print {{ display: none !important; }}
   .container {{ border: none; padding: 0; }}
   .sign-block, .conclusion-box {{ break-inside: avoid; }}
-  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; border-top: 1px solid #BDC3C7; padding: 4px 0; text-align: center; background: #FFF; }}
+  h2 {{ break-inside: avoid; break-after: avoid; page-break-after: avoid; }}
+  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; padding: 4px 0; text-align: center; background: #FFF; }}
 }}
 </style></head>
 <body><div class="container">

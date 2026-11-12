@@ -439,7 +439,7 @@
   "bom_cap_prot": "حفاظت بانک خازنی",
   "bom_cap_contactor": "کنتاکتور خازنی AC-6b",
   "bom_cap_reactor": "راکتور detuned",
-  "bom_cap_module": "ماژول خازن",
+  "bom_cap_module": "ماژول خازنی",
   "bom_cap_bank": "بانک خازنی",
   "kpi_cap_bank": "بانک خازنی",
   "sel_ref_curve_prelim": "تخمین مقدماتی از منحنی تریپ تقریبی: حد سلکتیویته ≈ {a}kA (مدرک الزام‌آور سازنده نیست).",
