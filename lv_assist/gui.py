@@ -581,6 +581,20 @@ class FeederEditDialog(ctk.CTkToplevel):
         row("edt_eff", "efficiency", _opt_float)
         row("edt_kd", "demand_factor_kd", float)
         row("edt_length", "cable_length_m", _opt_float)
+        cable_row = ctk.CTkFrame(form)
+        cable_row.pack(fill="x", padx=14, pady=5)
+        ctk.CTkLabel(cable_row, text=tr("xl_h_sec"), width=85, anchor="w", font=font).pack(side="left", padx=4)
+        cable_section_entry = ctk.CTkEntry(cable_row, width=70, font=font)
+        cable_section_entry.insert(0, str(feeder.cable_section_mm2 if feeder.cable_section_mm2 is not None else ""))
+        cable_section_entry.pack(side="left", padx=3)
+        self._entries["cable_section_mm2"] = (cable_section_entry, _opt_float)
+        ctk.CTkLabel(cable_row, text=tr("xl_h_conductor"), width=78, anchor="w", font=font).pack(side="left", padx=3)
+        self._conductor_menu = DirectionalOptionMenu(
+            cable_row, values=[material.value for material in ConductorMaterial], width=100, font=font,
+        )
+        self._conductor_menu.set(feeder.conductor_material.value)
+        self._conductor_menu.pack(side="left", padx=3)
+        row("xl_h_thdi", "thdi_pct", _opt_float)
         row("edt_lrc", "locked_rotor_current_a", _opt_float)
         row('audit_load_phases', 'phases', int)
         row('audit_load_phase', 'supply_phase', lambda v: v.strip().upper() or None)
@@ -634,10 +648,13 @@ class FeederEditDialog(ctk.CTkToplevel):
                 efficiency=self._entries["efficiency"][1](self._entries["efficiency"][0].get()),
                 demand_factor_kd=self._entries["demand_factor_kd"][1](self._entries["demand_factor_kd"][0].get()),
                 cable_length_m=self._entries["cable_length_m"][1](self._entries["cable_length_m"][0].get()),
-                cable_section_mm2=f.cable_section_mm2, has_socket_outlets=f.has_socket_outlets,
-                conductor_material=f.conductor_material, insulation=InsulationType(self._ins_menu.get()),
+                cable_section_mm2=self._entries["cable_section_mm2"][1](self._entries["cable_section_mm2"][0].get()),
+                has_socket_outlets=f.has_socket_outlets,
+                conductor_material=ConductorMaterial(self._conductor_menu.get()),
+                insulation=InsulationType(self._ins_menu.get()),
                 installation_method=InstallationMethod(self._method_menu.get()), fire_resistant=f.fire_resistant,
-                thdi_pct=f.thdi_pct, fire_pump_service=self._fire_pump.get(),
+                thdi_pct=self._entries["thdi_pct"][1](self._entries["thdi_pct"][0].get()),
+                fire_pump_service=self._fire_pump.get(),
                 locked_rotor_current_a=self._entries['locked_rotor_current_a'][1](self._entries['locked_rotor_current_a'][0].get()),
                 rcd_type=self._entries['rcd_type'][1](self._entries['rcd_type'][0].get()),
                 rcd_sensitivity_ma=self._entries['rcd_sensitivity_ma'][1](self._entries['rcd_sensitivity_ma'][0].get()),
