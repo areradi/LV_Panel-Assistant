@@ -5,7 +5,7 @@ LV-PanelAssist Dynamic IEC 60617 Single-Line Diagram (SLD) SVG Generator
 No hardcoded project or feeder values.
 """
 
-from lv_assist.drawing_status import preliminary_drawing
+from lv_assist.drawing_status import build_provenance_metadata, preliminary_drawing
 import html
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
@@ -58,6 +58,11 @@ class SLDPanelDTO(BaseModel):
     ik_is_preliminary: bool = False
     main_icu_is_preliminary: bool = False
     feeder_icu_preliminary: Dict[str, bool] = Field(default_factory=dict)
+    verified_input_hash: Optional[str] = None
+    engine_version: Optional[str] = None
+    catalog_revision: Optional[str] = None
+    rules_revision: Optional[str] = None
+    calculated_at: Optional[str] = None
 
 
 class IECSldSvgGenerator:
@@ -97,6 +102,7 @@ class IECSldSvgGenerator:
         return f"""
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {svg_w} {svg_h}" width="100%" height="680"
              style="background:#FFFFFF; border:2px solid #1E3A5F; font-family:Calibri,Consolas,sans-serif;">
+            {build_provenance_metadata(data)}
             <!-- Top Title Header Bar -->
             <rect x="0" y="0" width="{svg_w}" height="32" fill="#1E3A5F"/>
             <text x="20" y="21" fill="#FFFFFF" font-size="13" font-weight="bold">

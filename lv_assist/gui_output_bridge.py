@@ -150,6 +150,11 @@ class GuiOutputBridge:
             ik_is_preliminary=ik_is_preliminary,
             main_icu_is_preliminary=main_icu_is_preliminary,
             feeder_icu_preliminary=feeder_icu_preliminary,
+            verified_input_hash=summary.verified_input_hash,
+            engine_version=summary.engine_version,
+            catalog_revision=summary.catalog_revision,
+            rules_revision=summary.rules_revision,
+            calculated_at=summary.calculated_at,
         )
 
     @classmethod

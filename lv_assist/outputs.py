@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from lv_assist.drawing_status import preliminary_drawing
+from lv_assist.drawing_status import build_provenance_metadata, preliminary_drawing
 from lv_assist.calculation_state import require_current_calculation
 import csv
 import math
@@ -164,6 +164,7 @@ class SldGenerator:
         )
         parts: List[str] = [
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" font-family="Tahoma, Segoe UI, sans-serif">',
+            build_provenance_metadata(summary),
             f'<rect width="{w}" height="{h}" fill="white"/>',
             f'<text x="20" y="28" font-size="17" font-weight="bold" fill="#1F4E78">{_esc(tr("sld_title"))} — {_esc(project.project_name)} ({_esc(project.panel_tag)})</text>',
             f'<text x="20" y="46" font-size="10" fill="#566573">{datetime.now().strftime("%Y-%m-%d %H:%M")} | {_esc(project.standard_ref)} | Ik″={_esc(ik_str)}</text>',
@@ -292,6 +293,7 @@ class TccGenerator:
         require_current_calculation(project, summary, feeders)
         parts: List[str] = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="720" font-family="Tahoma, Segoe UI, sans-serif">',
+            build_provenance_metadata(summary),
             '<rect width="1180" height="720" fill="white"/>',
             f'<text x="20" y="30" font-size="17" font-weight="bold" fill="#1F4E78">{_esc(tr("tcc_title"))} — {_esc(project.project_name)}</text>',
         ]
