@@ -75,6 +75,20 @@ from lv_assist.catalog import DB_PATH
 LANG_SEGMENT_TO_CODE = {"FA": "fa", "EN": "en", "DE": "de"}
 
 
+def _open_local_file(filepath: str) -> bool:
+    """Open a local file in the default browser using a valid file URI."""
+    try:
+        uri = Path(filepath).resolve().as_uri()
+        return webbrowser.open(uri)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Failed to open file in browser: %s (%s)", filepath, exc
+        )
+        return False
+
+
 def _prelim_gui(value: str, is_preliminary: bool) -> str:
     """Append a preliminary marker to an engineering value when needed."""
     return f"{value} (prelim.)" if is_preliminary else value
@@ -2299,7 +2313,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         f_outs, summary, validations = self.last_results
         path = str(get_output_dir("reports") / "LV_Panel_Engineering_Report.html")
         PrintableReportExporter.generate_html_report(path, self.current_project, f_outs, summary, validations)
-        webbrowser.open(f"file://{path}")
+        _open_local_file(path)
 
     def action_open_commercial_quote(self):
         if not self._get_results():
@@ -2308,7 +2322,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         f_outs, summary, _ = self.last_results
         path = str(get_output_dir("reports") / "LV_Panel_Commercial_Quotation.html")
         CommercialEngine.export_quote_html(path, self.current_project, f_outs, summary)
-        webbrowser.open(f"file://{path}")
+        _open_local_file(path)
 
     def action_export_dv(self):
         if not self._get_results(): return
@@ -2319,7 +2333,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         if not path: return
         report = build_design_verification(self.current_project, f_outs, summary, validations)
         DesignVerificationExporter.generate_html(path, self.current_project, summary, report)
-        webbrowser.open(f"file://{path}")
+        _open_local_file(path)
         messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
 
     def _get_results(self):
@@ -2336,7 +2350,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Single_Line_Diagram.svg", filetypes=[("SVG", "*.svg")])
         if path:
             SldGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            webbrowser.open(f"file://{path}")
+            _open_local_file(path)
             messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
 
     def action_export_tcc(self):
@@ -2345,7 +2359,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Time_Current_Curves.svg", filetypes=[("SVG", "*.svg")])
         if path:
             TccGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            webbrowser.open(f"file://{path}")
+            _open_local_file(path)
             messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
 
     def action_export_pdf(self):
@@ -2432,7 +2446,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Control_Circuits.svg", filetypes=[("SVG", "*.svg")])
         if path:
             ControlCircuitGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            webbrowser.open(f"file://{path}")
+            _open_local_file(path)
             messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
 
     def action_export_connections(self):
@@ -2449,7 +2463,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Panel_Layout.svg", filetypes=[("SVG", "*.svg")])
         if path:
             PanelLayoutGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            webbrowser.open(f"file://{path}")
+            _open_local_file(path)
             messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
 
     def action_export_parts(self):
@@ -2565,7 +2579,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         with open(preview_path, "w", encoding="utf-8") as fp:
             fp.write(f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{fname}</title></head>"
                      f"<body style='margin:20px;background:#F1F5F9;'>{svg_str}</body></html>")
-        webbrowser.open(f"file://{preview_path}")
+        _open_local_file(preview_path)
 
     def action_save_single_svg(self):
         svg_str, fname = self._get_selected_svg_and_name()
