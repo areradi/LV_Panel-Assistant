@@ -601,6 +601,16 @@ class FeederEditDialog(ctk.CTkToplevel):
         row('audit_rcd_type', 'rcd_type', lambda v: v.strip().upper() or None)
         row('audit_rcd_delta', 'rcd_sensitivity_ma', _opt_float)
         row('audit_earth_res', 'earth_resistance_ohm', _opt_float)
+        self._socket_outlets_var = ctk.BooleanVar(value=feeder.has_socket_outlets)
+        self._socket_outlets_checkbox = ctk.CTkCheckBox(
+            form, text=tr("xl_h_socket"), variable=self._socket_outlets_var, font=font,
+        )
+        self._socket_outlets_checkbox.pack(fill="x", padx=20, pady=6)
+        self._fire_resistant_var = ctk.BooleanVar(value=feeder.fire_resistant)
+        self._fire_resistant_checkbox = ctk.CTkCheckBox(
+            form, text=tr("xl_h_fr"), variable=self._fire_resistant_var, font=font,
+        )
+        self._fire_resistant_checkbox.pack(fill="x", padx=20, pady=6)
         self._fire_pump = ctk.BooleanVar(value=feeder.fire_pump_service)
         ctk.CTkCheckBox(form, text=tr('edt_fire_pump'), variable=self._fire_pump, font=font).pack(fill='x', padx=20, pady=6)
 
@@ -649,10 +659,11 @@ class FeederEditDialog(ctk.CTkToplevel):
                 demand_factor_kd=self._entries["demand_factor_kd"][1](self._entries["demand_factor_kd"][0].get()),
                 cable_length_m=self._entries["cable_length_m"][1](self._entries["cable_length_m"][0].get()),
                 cable_section_mm2=self._entries["cable_section_mm2"][1](self._entries["cable_section_mm2"][0].get()),
-                has_socket_outlets=f.has_socket_outlets,
+                has_socket_outlets=self._socket_outlets_var.get(),
                 conductor_material=ConductorMaterial(self._conductor_menu.get()),
                 insulation=InsulationType(self._ins_menu.get()),
-                installation_method=InstallationMethod(self._method_menu.get()), fire_resistant=f.fire_resistant,
+                installation_method=InstallationMethod(self._method_menu.get()),
+                fire_resistant=self._fire_resistant_var.get(),
                 thdi_pct=self._entries["thdi_pct"][1](self._entries["thdi_pct"][0].get()),
                 fire_pump_service=self._fire_pump.get(),
                 locked_rotor_current_a=self._entries['locked_rotor_current_a'][1](self._entries['locked_rotor_current_a'][0].get()),

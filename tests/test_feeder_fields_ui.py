@@ -30,6 +30,12 @@ class _FakeWidget:
         return None
 
 
+class _FakeCheckBox(_FakeWidget):
+    def __init__(self, *_args, **kwargs):
+        super().__init__(*_args, **kwargs)
+        self.variable = kwargs.get("variable")
+
+
 class _FakeBooleanVar:
     def __init__(self, value=False):
         self.value = value
@@ -37,13 +43,17 @@ class _FakeBooleanVar:
     def get(self):
         return self.value
 
+    def set(self, value):
+        self.value = value
+
 
 @pytest.fixture
 def dialog_factory(monkeypatch):
     for name in ("__init__", "title", "geometry", "resizable", "grab_set", "bind", "destroy"):
         monkeypatch.setattr(ctk.CTkToplevel, name, lambda *_args, **_kwargs: None)
-    for name in ("CTkScrollableFrame", "CTkFrame", "CTkLabel", "CTkEntry", "CTkCheckBox", "CTkButton"):
+    for name in ("CTkScrollableFrame", "CTkFrame", "CTkLabel", "CTkEntry", "CTkButton"):
         monkeypatch.setattr(ctk, name, _FakeWidget)
+    monkeypatch.setattr(ctk, "CTkCheckBox", _FakeCheckBox)
     monkeypatch.setattr(ctk, "CTkFont", lambda **_kwargs: None)
     monkeypatch.setattr(ctk, "BooleanVar", _FakeBooleanVar)
     monkeypatch.setattr(gui, "DirectionalOptionMenu", _FakeWidget)
@@ -156,3 +166,45 @@ def test_fields_roundtrip_load_save_load(dialog_factory):
     assert reloaded._conductor_menu.get() == "AL"
     assert reloaded._entries["thdi_pct"][0].get() == "80.0"
     reloaded.destroy()
+
+
+def test_socket_and_fire_resistant_checkboxes_exist_with_false_defaults(dialog_factory):
+    dialog = dialog_factory(_make_feeder(), [])
+    assert isinstance(dialog._socket_outlets_checkbox, _FakeCheckBox)
+    assert isinstance(dialog._fire_resistant_checkbox, _FakeCheckBox)
+    assert dialog._socket_outlets_var.get() is False
+    assert dialog._fire_resistant_var.get() is False
+
+
+def test_socket_and_fire_resistant_true_and_false_values_save(dialog_factory):
+    saved = []
+    dialog = dialog_factory(_make_feeder(), saved)
+    dialog._socket_outlets_var.set(True)
+    dialog._fire_resistant_var.set(True)
+    dialog._save()
+    assert saved[0].has_socket_outlets is True
+    assert saved[0].fire_resistant is True
+
+    saved_false = []
+    dialog = dialog_factory(
+        _make_feeder(has_socket_outlets=True, fire_resistant=True), saved_false,
+    )
+    dialog._socket_outlets_var.set(False)
+    dialog._fire_resistant_var.set(False)
+    dialog._save()
+    assert saved_false[0].has_socket_outlets is False
+    assert saved_false[0].fire_resistant is False
+
+
+def test_socket_and_fire_resistant_roundtrip_load_save_load(dialog_factory):
+    saved = []
+    dialog = dialog_factory(
+        _make_feeder(has_socket_outlets=True, fire_resistant=True), saved,
+    )
+    assert dialog._socket_outlets_var.get() is True
+    assert dialog._fire_resistant_var.get() is True
+    dialog._save()
+
+    reloaded = dialog_factory(saved[0], [])
+    assert reloaded._socket_outlets_var.get() is True
+    assert reloaded._fire_resistant_var.get() is True
