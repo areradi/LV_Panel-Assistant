@@ -51,6 +51,21 @@ def _prelim(value: str, is_preliminary: bool) -> str:
     return f"{value} (prelim.)" if is_preliminary else value
 
 
+def _provenance_lines(summary) -> List[tuple]:
+    """Return stable provenance rows for a generated report."""
+    from datetime import timezone
+
+    report_at = datetime.now(timezone.utc).isoformat()
+    return [
+        ("Input Hash", summary.verified_input_hash or "not recorded"),
+        ("Engine Version", summary.engine_version or "not recorded"),
+        ("Catalog Revision", summary.catalog_revision or "not recorded"),
+        ("Rules Revision", summary.rules_revision or "not recorded"),
+        ("Calculated At", summary.calculated_at or "not recorded"),
+        ("Report Generated At", report_at),
+    ]
+
+
 class ExcelExporter:
     @staticmethod
     def export_to_excel(filename: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput, validations: List[ValidationResult]):
@@ -134,6 +149,9 @@ class ExcelExporter:
             summary_rows.append((phase, current, 'A', 'Design current by phase'))
         summary_rows.append(('Neutral (fundamental)', summary.neutral_current_a, 'A', 'Harmonic currents require separate verification'))
         for r in summary_rows: _append_safe(ws1, r)
+        _append_safe(ws1, ["Provenance", "", "", ""])
+        for label, value in _provenance_lines(summary):
+            _append_safe(ws1, [label, value, "", ""])
 
         ws2 = wb.create_sheet("02_Feeder_Cable_Schedule")
         _append_safe(ws2, [tr("rpt_c_id"), tr("rpt_c_func"), tr("rpt_c_loc"), tr("rpt_c_desc"), tr("rpt_c_type"), tr("rpt_c_kw"), tr("rpt_c_ib"), tr("rpt_c_idelta"), tr("rpt_c_cable"), tr("rpt_c_pe_basis"), tr("rpt_c_iz"), tr("rpt_c_k1"), tr("rpt_c_k2"), tr("rpt_c_ktot"), tr("rpt_c_method"), tr("rpt_c_len"), tr("rpt_c_vd"), tr("rpt_c_prot"), tr("rpt_c_icu"), tr("rpt_c_km"), tr("rpt_c_kd"), tr("rpt_c_ky"), tr("rpt_c_bim"), tr("rpt_c_vfd"), tr("bom_soft_starter"), tr("rpt_c_24v"), tr("rpt_c_sel"), tr("rpt_c_loss"), tr("bom_suggested")])
@@ -477,6 +495,19 @@ class PrintableReportExporter:
   <div class="sign-cell"><b>{_h(tr("html_sign_date"))}</b><span dir="ltr">{_h(now_str)}</span></div>
 </div>"""
 
+        provenance_rows = "".join(
+            f'<tr><td style="padding: 2px 12px 2px 0; color: #566573;">{_h(label)}:</td>'
+            f'<td style="padding: 2px 0;">{_h(value)}</td></tr>'
+            for label, value in _provenance_lines(summary)
+        )
+        provenance_block = f"""
+<div class="provenance" style="margin-top: 24px; padding: 12px; background: #F8F9F9; border-left: 4px solid #7F8C8D; font-size: 9pt; font-family: monospace;">
+  <strong>Provenance</strong>
+  <table style="border-collapse: collapse; margin-top: 8px; font-size: 9pt;">
+    {provenance_rows}
+  </table>
+</div>"""
+
         html = f"""<!DOCTYPE html>
 <html lang="{_h(lang)}" dir="{_h(direction)}">
 <head><meta charset="UTF-8"><title>{_h(tr("html_title"))} - {_h(project.project_name)}</title>
@@ -560,6 +591,7 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <thead><tr><th>{_h(tr("rpt_ref_std"))}</th><th>{_h(tr("rpt_ref_scope"))}</th></tr></thead>
 <tbody>{ref_rows}</tbody></table>
 {sign_block}
+{provenance_block}
 <div class="disclaimer" style="margin-top: 24px; padding: 12px; background: #FFF8E1; border-left: 4px solid #FFA000; font-size: 10pt; font-style: italic; color: #5D4037;">
   <strong>PRELIMINARY:</strong> All engineering results are preliminary and require review by a qualified engineer. Not an IEC 61439 compliance certificate.
 </div>
