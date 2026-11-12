@@ -2,6 +2,7 @@
 from lv_assist.drawing_status import build_provenance_metadata, preliminary_drawing
 from lv_assist.calculation_state import require_current_calculation
 import csv
+import logging
 import math
 import os
 import shutil
@@ -16,6 +17,8 @@ from lv_assist.models import (
 )
 from lv_assist.catalog import TripCurveRepository
 from lv_assist.i18n import tr
+
+logger = logging.getLogger(__name__)
 
 
 def _esc(s: str) -> str:
@@ -360,6 +363,7 @@ class TccGenerator:
                 parts.append(f'<text x="{x + 5:.1f}" y="{TccGenerator.Y0 + 30}" font-size="9" fill="#B7950B">{_esc(tr("tcc_sel"))} {_esc(f.feeder_id)} = {f.selectivity_limit_is_ka:g} kA</text>')
 
         # فاز تحلیل TCC: علامت‌گذاری تقاطع ریاضی منحنی کلید اصلی و هر فیدر
+        intersection_errors = []
         if summary.main_breaker:
             from lv_assist.tcc_analyzer import TccAnalyzer
             inter_y = (TccGenerator.Y0 + TccGenerator.Y1) / 2.0
@@ -370,6 +374,12 @@ class TccGenerator:
                 try:
                     inter = TccAnalyzer.find_intersection(summary.main_breaker, dev)
                 except Exception:
+                    logger.warning(
+                        "TCC intersection calculation failed for feeder %s",
+                        f.feeder_id,
+                        exc_info=True,
+                    )
+                    intersection_errors.append(f.feeder_id)
                     continue
                 if not inter.intersection_a or inter.intersection_a <= TccGenerator.X_MIN \
                         or inter.intersection_a >= TccGenerator.X_MAX:
@@ -379,6 +389,15 @@ class TccGenerator:
                 parts.append(f'<circle cx="{x:.1f}" cy="{inter_y:.1f}" r="5" fill="none" stroke="{color}" stroke-width="2"/>')
                 parts.append(f'<circle cx="{x:.1f}" cy="{inter_y:.1f}" r="1.8" fill="{color}"/>')
                 parts.append(f'<text x="{x:.1f}" y="{inter_y - 9:.1f}" text-anchor="middle" font-size="8.5" fill="{color}" dir="ltr">Is = {inter.intersection_a / 1000.0:g} kA</text>')
+
+        if intersection_errors:
+            failed_feeders = ", ".join(intersection_errors)
+            parts.append(
+                f'<text x="{TccGenerator.X0}" y="50" font-size="10" '
+                'font-weight="bold" fill="#C0392B">'
+                f'ERROR: intersection calculation failed for {_esc(failed_feeders)}; '
+                'review required.</text>'
+            )
 
         # F-003: برچسب بصری واضح برای منحنی‌های تخمینی
         if any_estimated:

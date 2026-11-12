@@ -2,6 +2,7 @@
 from lv_assist.calculation_state import require_current_calculation
 import html
 import json
+import logging
 from datetime import datetime
 from typing import List
 import openpyxl
@@ -16,6 +17,8 @@ from lv_assist.outputs import TccGenerator
 from lv_assist.control_circuits import ControlCircuitGenerator
 from lv_assist.engine import build_design_verification
 from lv_assist.i18n import tr, i18n
+
+logger = logging.getLogger(__name__)
 
 
 def _h(val) -> str:
@@ -483,7 +486,13 @@ class PrintableReportExporter:
         try:
             tcc_svg_inline = TccGenerator.generate_svg(project, feeders, summary)
         except Exception:
-            tcc_svg_inline = ""
+            logger.exception("Failed to generate the TCC chart for the HTML report")
+            tcc_svg_inline = (
+                '<div class="tcc-error" role="alert" '
+                'style="border:1px solid #C0392B;color:#922B21;padding:10px;">'
+                f'{_h(tr("msg_error"))}: TCC chart could not be generated; '
+                'see the application log.</div>'
+            )
         tcc_svg_inline = tcc_svg_inline.replace("<svg ", '<svg style="max-width:100%;height:auto;" ', 1)
 
         sign_block = f"""

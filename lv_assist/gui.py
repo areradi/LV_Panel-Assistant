@@ -2349,18 +2349,28 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         if not res: return
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Single_Line_Diagram.svg", filetypes=[("SVG", "*.svg")])
         if path:
-            SldGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            _open_local_file(path)
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            try:
+                SldGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
+                _open_local_file(path)
+                messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except Exception as ex:
+                messagebox.showerror(
+                    tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+                )
 
     def action_export_tcc(self):
         res = self._get_results()
         if not res: return
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Time_Current_Curves.svg", filetypes=[("SVG", "*.svg")])
         if path:
-            TccGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            _open_local_file(path)
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            try:
+                TccGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
+                _open_local_file(path)
+                messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except Exception as ex:
+                messagebox.showerror(
+                    tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+                )
 
     def action_export_pdf(self):
         res = self._get_results()
@@ -2445,9 +2455,14 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         if not res: return
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Control_Circuits.svg", filetypes=[("SVG", "*.svg")])
         if path:
-            ControlCircuitGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            _open_local_file(path)
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            try:
+                ControlCircuitGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
+                _open_local_file(path)
+                messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except Exception as ex:
+                messagebox.showerror(
+                    tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+                )
 
     def action_export_connections(self):
         res = self._get_results()
@@ -2462,9 +2477,14 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         if not res: return
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Panel_Layout.svg", filetypes=[("SVG", "*.svg")])
         if path:
-            PanelLayoutGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            _open_local_file(path)
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            try:
+                PanelLayoutGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
+                _open_local_file(path)
+                messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except Exception as ex:
+                messagebox.showerror(
+                    tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+                )
 
     def action_export_parts(self):
         res = self._get_results()
