@@ -426,7 +426,21 @@ class EngineeringEngine:
         ids = [f.feeder_id for f in feeders]
         if len(ids) != len(set(ids)):
             raise ValueError(tr('paste_duplicate'))
-        input_hash = project.compute_input_hash(feeders)
+        from datetime import datetime, timezone
+        from lv_assist.models import (
+            _compute_catalog_revision,
+            _compute_engine_version,
+            _compute_rules_revision,
+            compute_input_hash,
+        )
+        from lv_assist.paths import get_data_dir
+
+        data_dir = get_data_dir()
+        engine_version = _compute_engine_version()
+        catalog_revision = _compute_catalog_revision(data_dir)
+        rules_revision = _compute_rules_revision(data_dir)
+        calculated_at = datetime.now(timezone.utc).isoformat()
+        input_hash = compute_input_hash(project, feeders)
         self.catalog = list(self._full_catalog)
         if project.preferred_manufacturer != "ANY":
             filtered = [d for d in self.catalog if d.manufacturer == project.preferred_manufacturer]
@@ -477,6 +491,10 @@ class EngineeringEngine:
                 check.rule_category = 'OEM_MANUFACTURER_RULE'
         apply_vde_standard_refs(project, validations)
         summary.verified_input_hash = input_hash
+        summary.engine_version = engine_version
+        summary.catalog_revision = catalog_revision
+        summary.rules_revision = rules_revision
+        summary.calculated_at = calculated_at
         summary.assumptions = {'PROJECT': {name: project.model_dump(mode='json')[name]
                                           for name in project.assumed_fields}}
         for source, output in zip(feeders, feeder_outputs):

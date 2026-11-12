@@ -4,15 +4,56 @@ from typing import List, Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, AliasChoices, ValidationError
 import hashlib
 import json
+from pathlib import Path
 
 InputValidationError = ValidationError
 
 
+def _file_sha256(path: Path) -> Optional[str]:
+    """Return a file's SHA-256 digest, or None when it is absent."""
+    if not path.exists():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _compute_catalog_revision(data_dir: Path) -> Optional[str]:
+    return _file_sha256(data_dir / "catalog_devices.json")
+
+
+def _compute_rules_revision(data_dir: Path) -> Optional[str]:
+    digest = hashlib.sha256()
+    paths = [
+        data_dir / filename
+        for filename in sorted(("selectivity_rules.json", "trip_curves.json", "standards_registry.json"))
+        if (data_dir / filename).exists()
+    ]
+    if not paths:
+        return None
+    for path in paths:
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def _compute_engine_version() -> Optional[str]:
+    try:
+        from lv_assist import __version__
+        return str(__version__)
+    except Exception:
+        return None
+
+
 def compute_input_hash(project, feeders) -> str:
-    payload = {"project": project.model_dump(mode="json"),
-               "feeders": [f.model_dump(mode="json") for f in feeders]}
-    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False,
-                                     separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+    payload = {
+        "project": project.model_dump(mode="json"),
+        "feeders": [feeder.model_dump(mode="json") for feeder in feeders],
+    }
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False,
+                         separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def feeder_reference_tag(index: int, role: str) -> str:
@@ -456,6 +497,10 @@ class FeederCalcOutput(BaseModel):
 class PanelSummaryOutput(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
     verified_input_hash: Optional[str] = None
+    engine_version: Optional[str] = None
+    catalog_revision: Optional[str] = None
+    rules_revision: Optional[str] = None
+    calculated_at: Optional[str] = None
     calculation_inputs: List[FeederInput] = Field(default_factory=list)
     _source_feeders: Optional[List[FeederInput]] = PrivateAttr(default=None)
 
