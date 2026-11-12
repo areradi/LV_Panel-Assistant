@@ -388,7 +388,7 @@ class TccGenerator:
                 color = TccGenerator.PALETTE[(i + 1) % len(TccGenerator.PALETTE)]
                 parts.append(f'<circle cx="{x:.1f}" cy="{inter_y:.1f}" r="5" fill="none" stroke="{color}" stroke-width="2"/>')
                 parts.append(f'<circle cx="{x:.1f}" cy="{inter_y:.1f}" r="1.8" fill="{color}"/>')
-                parts.append(f'<text x="{x:.1f}" y="{inter_y - 9:.1f}" text-anchor="middle" font-size="8.5" fill="{color}" dir="ltr">Is = {inter.intersection_a / 1000.0:g} kA</text>')
+                parts.append(f'<text x="{x:.1f}" y="{inter_y - 9:.1f}" text-anchor="middle" font-size="8.5" fill="{color}" dir="ltr">Is ≈ {inter.intersection_a / 1000.0:g} kA</text>')
 
         if intersection_errors:
             failed_feeders = ", ".join(intersection_errors)
