@@ -1533,8 +1533,8 @@ class TestPhase7HtmlReport:
         assert summary.recommended_pe_busbar_spec in content
         n_err = sum(1 for v in validations if v.status == ValidationStatus.ERROR)
         n_warn = sum(1 for v in validations if v.status == ValidationStatus.WARNING)
-        assert f"{n_err} {html.escape(tr('html_kpi_err'))}" in content
-        assert f"{n_warn} {html.escape(tr('html_kpi_warn'))}" in content
+        assert f'<span class="ltr-isolate" dir="ltr">{n_err}</span> {html.escape(tr("html_kpi_err"))}' in content
+        assert f'<span class="ltr-isolate" dir="ltr">{n_warn}</span> {html.escape(tr("html_kpi_warn"))}' in content
 
     def test_calculation_trace_formula(self, tmp_path):
         _, outs, _, _, content = self._html_project(tmp_path)
@@ -1546,7 +1546,7 @@ class TestPhase7HtmlReport:
         assert html.escape(tr("html_trace_formula")) in content
         assert html.escape(tr("html_trace_vd")) in content
         for f in outs:
-            assert f"<b>{f.feeder_id}</b>" in content
+            assert f'<b><bdi dir="ltr">{f.feeder_id}</bdi></b>' in content
         f = outs[0]
         assert f.cable_derated_iz_a is not None and f.cable_total_derating_k
         iz0 = round(f.cable_derated_iz_a / f.cable_total_derating_k, 1)
