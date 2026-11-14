@@ -10,8 +10,20 @@ class _FakeWidget:
     def __init__(self, *_args, **kwargs):
         self.value = ""
         self.values = kwargs.get("values", [])
+        self.master = _args[0] if _args else None
+        self.children = []
+        self.geometry_manager = None
+        if self.master is not None:
+            if not hasattr(self.master, "_fake_children"):
+                self.master._fake_children = []
+            self.master._fake_children.append(self)
 
     def pack(self, **_kwargs):
+        self.geometry_manager = "pack"
+        return None
+
+    def grid(self, **_kwargs):
+        self.geometry_manager = "grid"
         return None
 
     def insert(self, _index, value):
@@ -208,3 +220,19 @@ def test_socket_and_fire_resistant_roundtrip_load_save_load(dialog_factory):
     reloaded = dialog_factory(saved[0], [])
     assert reloaded._socket_outlets_var.get() is True
     assert reloaded._fire_resistant_var.get() is True
+
+
+def test_dialog_frames_use_one_geometry_manager(dialog_factory):
+    dialog = dialog_factory(_make_feeder(), [])
+
+    def assert_consistent(widget):
+        managers = {
+            child.geometry_manager for child in widget.children
+            if child.geometry_manager is not None
+        }
+        assert len(managers) <= 1
+        for child in widget.children:
+            assert_consistent(child)
+
+    form = next(child for child in dialog._fake_children if isinstance(child, _FakeWidget))
+    assert_consistent(form)

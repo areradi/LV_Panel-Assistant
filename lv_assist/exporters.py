@@ -309,8 +309,9 @@ class PrintableReportExporter:
     def generate_html_report(filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput, validations: List[ValidationResult]):
         require_current_calculation(project, summary, feeders)
         assumption_rows = ''.join(
-            f'<tr><td dir="ltr">{_h(target)}</td><td dir="ltr">{_h(name)}</td>'
-            f'<td dir="ltr">{_h(json.dumps(value, ensure_ascii=False))}</td><td>ASSUMED_DEFAULT</td></tr>'
+            f'<tr><td dir="auto"><span class="ltr-isolate" dir="ltr">{_h(target)}</span></td><td dir="auto"><span class="ltr-isolate" dir="ltr">{_h(name)}</span></td>'
+            f'<td class="assumption-json" dir="auto"><span class="bidi-isolate" dir="auto">{_h(json.dumps(value, ensure_ascii=False))}</span></td>'
+            f'<td dir="auto"><span class="ltr-isolate" dir="ltr">ASSUMED_DEFAULT</span></td></tr>'
             for target, fields in summary.assumptions.items() for name, value in fields.items() if value != [])
         assumptions_html = (f'<h2>{_h(tr("audit_assumptions"))}</h2><table class="assumptions-table"><tbody>{assumption_rows}</tbody></table>'
                             f'<p>{_h(summary.thermal_method)}</p>')
@@ -353,7 +354,7 @@ class PrintableReportExporter:
                 <td dir="auto"><b><bdi dir="ltr">{_h(f.feeder_id)}</bdi></b><br><small><bdi dir="ltr">{_h(f.func_tag)}{_h(f.loc_tag)}</bdi></small></td>
                 <td class="cell-wrap" dir="auto">{_h(f.description)}</td><td>{_h(f.load_type.value)}</td><td>{_h(f.power_kw)}</td>
                 <td><b>{_h(f.design_current_ib_a)} A</b></td><td dir="auto"><bdi dir="ltr">{eq}</bdi>{suggestion}</td>
-                <td dir="auto"><b><bdi dir="ltr">{_h(f.cable_designation_str)}</bdi></b><br><small><bdi dir="ltr">Iz={'?' if f.cable_derated_iz_a is None else _h(f.cable_derated_iz_a)}A | L={_h(f.cable_length_m)}m</bdi></small><br><small><bdi dir="ltr">k1={_h(k1)} | k2={_h(k2)} | kΣ={_h(k_total)}</bdi> | <bdi dir="auto">{_h(f.cable_method_ref_str)}</bdi></small><br><small dir="auto">{_h(pe_basis)}</small></td>
+                <td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(f.cable_designation_str)}</span></b><br><small><span class="ltr-isolate" dir="ltr">Iz={'?' if f.cable_derated_iz_a is None else _h(f.cable_derated_iz_a)}A | L={_h(f.cable_length_m)}m</span></small><br><small><span class="ltr-isolate" dir="ltr">k1={_h(k1)} | k2={_h(k2)} | kΣ={_h(k_total)}</span> | <span class="bidi-isolate" dir="auto">{_h(f.cable_method_ref_str)}</span></small><br><small dir="auto">{_h(pe_basis)}</small></td>
                 <td>{_h(f.voltage_drop_percent)}%</td><td><span class="badge {sel_cls}">{_h(f.selectivity_state.value)}</span></td><td>{_h(f.total_feeder_loss_w)} W</td>
             </tr>"""
 
@@ -443,19 +444,21 @@ class PrintableReportExporter:
         therm_sub += f"<br>IP: {_h(summary.effective_ip_str or project.target_ip)}"
 
         kpi_html = f"""
+<div class="summary-box">
 <div class="kpi-strip">
   <div class="kpi-card"><div class="kpi-title">{_h(tr("kpi_main_current"))}</div>
-    <div class="kpi-value" dir="ltr">{_h(summary.design_main_current_a)} A</div>
-    <div class="kpi-sub" dir="ltr">{main_sub}</div></div>
+    <div class="kpi-value" dir="auto"><span class="ltr-isolate" dir="ltr">{_h(summary.design_main_current_a)} A</span></div>
+    <div class="kpi-sub" dir="auto"><span class="bidi-isolate" dir="auto">{main_sub}</span></div></div>
   <div class="kpi-card"><div class="kpi-title">{_h(tr("kpi_busbar"))}</div>
-    <div class="kpi-value" dir="ltr">{_h(summary.recommended_busbar_spec)}</div>
-    <div class="kpi-sub" dir="ltr">{bus_sub}</div></div>
+    <div class="kpi-value" dir="auto"><span class="bidi-isolate" dir="auto">{_h(summary.recommended_busbar_spec)}</span></div>
+    <div class="kpi-sub" dir="auto"><span class="bidi-isolate" dir="auto">{bus_sub}</span></div></div>
   <div class="kpi-card"><div class="kpi-title">{_h(tr("kpi_thermal"))}</div>
-    <div class="kpi-value" dir="ltr">{_h(summary.total_power_loss_w)} W</div>
-    <div class="kpi-sub" dir="ltr">{therm_sub}</div></div>
+    <div class="kpi-value" dir="auto"><span class="ltr-isolate" dir="ltr">{_h(summary.total_power_loss_w)} W</span></div>
+    <div class="kpi-sub" dir="auto"><span class="bidi-isolate" dir="auto">{therm_sub}</span></div></div>
   <div class="kpi-card"><div class="kpi-title">{_h(tr("kpi_val_summary"))}</div>
-    <div class="kpi-value" dir="ltr"><span class="badge badge-error">{n_err} {_h(tr("html_kpi_err"))}</span> <span class="badge badge-preliminary">{n_warn} {_h(tr("html_kpi_warn"))}</span></div>
-    <div class="kpi-sub" dir="ltr"><span class="badge badge-verified">{n_ok} {_h(tr("html_kpi_ok"))}</span> <span class="badge badge-insufficient">{n_ins} {_h(tr("html_kpi_ins"))}</span></div></div>
+    <div class="kpi-value" dir="auto"><span class="badge badge-error"><span class="ltr-isolate" dir="ltr">{n_err}</span> {_h(tr("html_kpi_err"))}</span> <span class="badge badge-preliminary"><span class="ltr-isolate" dir="ltr">{n_warn}</span> {_h(tr("html_kpi_warn"))}</span></div>
+    <div class="kpi-sub" dir="auto"><span class="badge badge-verified"><span class="ltr-isolate" dir="ltr">{n_ok}</span> {_h(tr("html_kpi_ok"))}</span> <span class="badge badge-insufficient"><span class="ltr-isolate" dir="ltr">{n_ins}</span> {_h(tr("html_kpi_ins"))}</span></div></div>
+</div>
 </div>"""
 
         trace_rows = ""
@@ -474,15 +477,15 @@ class PrintableReportExporter:
                 iz0_str = iz_str = ktot_str = formula = "?"
                 formula = "-"
             trace_rows += f"""<tr>
-                <td><b>{_h(f.feeder_id)}</b></td>
-                <td dir="ltr">{_h(f.design_current_ib_a)}</td>
-                <td dir="ltr">{iz0_str}</td>
-                <td dir="ltr">{_h(k1)}</td>
-                <td dir="ltr">{_h(k2)}</td>
-                <td dir="ltr">{_h(k_total)}</td>
-                <td dir="ltr"><b>{iz_str}</b></td>
+                <td dir="auto"><b><bdi dir="ltr">{_h(f.feeder_id)}</bdi></b></td>
+                <td dir="auto"><bdi dir="ltr">{_h(f.design_current_ib_a)}</bdi></td>
+                <td dir="auto"><bdi dir="ltr">{iz0_str}</bdi></td>
+                <td dir="auto"><bdi dir="ltr">{_h(k1)}</bdi></td>
+                <td dir="auto"><bdi dir="ltr">{_h(k2)}</bdi></td>
+                <td dir="auto"><bdi dir="ltr">{_h(k_total)}</bdi></td>
+                <td dir="auto"><b><bdi dir="ltr">{iz_str}</bdi></b></td>
                 <td dir="auto"><small><bdi dir="ltr">{_h(formula)}</bdi></small></td>
-                <td dir="ltr">{_h(f.voltage_drop_percent)}%</td>
+                <td dir="auto"><bdi dir="ltr">{_h(f.voltage_drop_percent)}%</bdi></td>
             </tr>"""
 
         try:
@@ -502,12 +505,14 @@ class PrintableReportExporter:
         )
 
         sign_block = f"""
+<div class="signature-block">
 <h2>{_h(tr("html_sign_title"))}</h2>
 <div class="sign-block">
   <div class="sign-cell"><b>{_h(tr("html_sign_designer"))}</b><span>{_h(project.designer_name or "-")}</span></div>
   <div class="sign-cell"><b>{_h(tr("html_sign_reviewer"))}</b><span>-</span></div>
   <div class="sign-cell"><b>{_h(tr("html_sign_approver"))}</b><span>-</span></div>
-  <div class="sign-cell"><b>{_h(tr("html_sign_date"))}</b><span dir="ltr">{_h(now_str)}</span></div>
+  <div class="sign-cell" dir="auto"><b>{_h(tr("html_sign_date"))}</b><span><span class="ltr-isolate" dir="ltr">{_h(now_str)}</span></span></div>
+</div>
 </div>"""
 
         provenance_rows = "".join(
@@ -536,6 +541,8 @@ h2 {{ font-size: 14px; background: #1F4E78; color: white; padding: 6px 12px; bor
 table {{ width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 11px; }}
 th, td {{ border: 1px solid #BDC3C7; padding: 6px 8px; vertical-align: middle; }}
 th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
+.ltr-isolate {{ direction: ltr; unicode-bidi: isolate; }}
+.bidi-isolate {{ unicode-bidi: isolate; }}
 .grid-2 {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }}
 .tcc-chart > svg {{ display: block; width: 100%; height: auto; }}
 .kpi-strip {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }}
@@ -548,28 +555,39 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 .badge-preliminary {{ background: #FEF9C3; color: #854D0E; border: 1px solid #FDE047; }}
 .badge-error {{ background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }}
 .badge-insufficient {{ background: #E5E7EB; color: #4B5563; border: 1px solid #D1D5DB; }}
-.sign-block {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 10px 0 24px; }}
+.signature-block {{ margin: 10px 0 24px; }}
+.sign-block {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 0; }}
 .sign-cell {{ border-top: 1.5px solid #1F4E78; padding-top: 6px; font-size: 11px; min-height: 44px; }}
 .sign-cell b {{ display: block; font-size: 10px; color: #566573; margin-bottom: 10px; }}
+.disclaimer {{ margin: 24px 0 0; padding: 12px; background: #FFF8E1; border-left: 4px solid #FFA000; font-size: 10pt; font-style: italic; color: #5D4037; }}
 .page-footer {{ display: none; }}
 @media print {{
   body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9pt; background: #FFF; margin: 0; }}
-  table {{ page-break-inside: auto; width: 100%; max-width: 100%; border-collapse: collapse; }}
-  th, td {{ word-break: normal; overflow-wrap: break-word; }}
+  table {{ page-break-inside: auto; width: 100%; max-width: 100%; border-collapse: collapse; orphans: 3; widows: 3; }}
+  td, th {{ word-break: normal; overflow-wrap: break-word; break-inside: avoid; page-break-inside: avoid; }}
+  tr {{ break-inside: auto; page-break-inside: auto; page-break-after: auto; }}
+  p, blockquote {{ orphans: 2; widows: 2; }}
+  th {{ background-color: #e0e0e0 !important; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
   .cell-wrap {{ overflow-wrap: anywhere; }}
-  .assumptions-table td:first-child {{ min-width: 6ch; }}
-  .assumptions-table td:nth-child(2) {{ min-width: 24ch; }}
-  .assumptions-table td:last-child {{ min-width: 18ch; }}
+  .assumptions-table {{ width: 100%; max-width: 100%; table-layout: fixed; }}
+  .assumptions-table td {{ white-space: normal; word-break: normal; overflow-wrap: break-word; }}
+  .assumptions-table td:first-child {{ width: 16%; min-width: 0; }}
+  .assumptions-table td:nth-child(2) {{ width: 24%; min-width: 0; }}
+  .assumptions-table .assumption-json {{ width: 46%; max-width: 46%; min-width: 0; font-size: 6pt; overflow-wrap: anywhere; word-break: break-all; white-space: normal; }}
+  .assumptions-table td:last-child {{ width: 14%; min-width: 0; }}
   .grid-2 td:first-child {{ width: 32%; }}
   .tcc-chart {{ break-inside: avoid; page-break-inside: avoid; width: 100%; overflow: hidden; }}
   h2 {{ break-inside: avoid; break-after: avoid; page-break-after: avoid; }}
   td .badge {{ white-space: normal; }}
-  tr {{ page-break-inside: avoid; page-break-after: auto; }}
-  thead {{ display: table-header-group; }}
+  tr {{ break-inside: auto; page-break-inside: auto; page-break-after: auto; }}
+  .feeder-table thead, .trace-table thead, .validation-table thead, .reference-table thead {{ display: table-header-group; }}
   .section-card {{ break-inside: avoid; box-shadow: none !important; border: 1px solid #CBD5E1; }}
   .no-print {{ display: none !important; }}
   .container {{ border: none; padding: 0; }}
-  .kpi-card, .sign-block {{ break-inside: avoid; }}
+  .signature-block {{ break-before: auto; page-break-before: auto; break-inside: auto; page-break-inside: auto; margin-top: 0; }}
+  .summary-box {{ break-inside: avoid; page-break-inside: avoid; margin-top: 0; }}
+  .disclaimer {{ break-inside: avoid; page-break-inside: avoid; margin-top: 0; }}
+  .kpi-card {{ break-inside: avoid; page-break-inside: avoid; }}
   .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; padding: 4px 0; text-align: center; background: #FFF; }}
 }}
 </style></head>
@@ -581,29 +599,29 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <div class="grid-2">
 <div><h2>{tr("html_s1")}</h2><table>
 <tr><th>{tr("html_param")}</th><th>{tr("html_value")}</th></tr>
-<tr><td>{_h(tr("html_voltage"))}</td><td dir="ltr"><b>{_h(project.nominal_voltage_v)}V / {_h(project.earthing_system.value)}</b></td></tr>
-<tr><td>{_h(tr("rpt_ik"))}</td><td dir="ltr"><b>{_h(ik_cell)}</b><br><small>{_h(ik_note)}</small></td></tr>
+<tr><td>{_h(tr("html_voltage"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(project.nominal_voltage_v)}V / {_h(project.earthing_system.value)}</span></b></td></tr>
+<tr><td>{_h(tr("rpt_ik"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(ik_cell)}</span></b><br><small dir="auto">{_h(ik_note)}</small></td></tr>
 <tr><td>{_h(tr("rpt_scenario"))}</td><td><b>{_h(tr('panel_' + project.panel_type.value))} / {_h(tr('scenario_' + project.special_scenario.value))}</b></td></tr>
 <tr><td>{_h(tr('wiz_mounting'))}</td><td>{_h(tr('mount_' + project.enclosure_mounting.value))}</td></tr>
-<tr><td>{_h(tr("rpt_dip"))}</td><td dir="ltr"><b>{_h(dip_cell)}</b> <small>{_h(summary.max_starting_dip_motor)}</small></td></tr>
-<tr><td>{_h(tr("html_budget"))}</td><td dir="ltr"><b>{_h(summary.ctrl_24v_total_continuous_w)} W ({_h(summary.ctrl_24v_design_current_with_spare_a)} A)</b></td></tr>
-<tr><td>{_h(tr("html_psu"))}</td><td dir="ltr"><b>{_h(summary.selected_psu_24v.part_number if summary.selected_psu_24v else summary.suggested_psu_str)}</b></td></tr>
+<tr><td>{_h(tr("rpt_dip"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(dip_cell)}</span></b> <small dir="auto">{_h(summary.max_starting_dip_motor)}</small></td></tr>
+<tr><td>{_h(tr("html_budget"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.ctrl_24v_total_continuous_w)} W ({_h(summary.ctrl_24v_design_current_with_spare_a)} A)</span></b></td></tr>
+<tr><td>{_h(tr("html_psu"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.selected_psu_24v.part_number if summary.selected_psu_24v else summary.suggested_psu_str)}</span></b></td></tr>
 </table></div>
 <div><h2>{_h(tr("html_s2"))}</h2><table>
 <tr><th>{_h(tr("html_param"))}</th><th>{_h(tr("html_value"))}</th></tr>
-<tr><td>{_h(tr("html_imain"))}</td><td dir="ltr"><b>{_h(summary.design_main_current_a)} A</b> (Main: {_h(summary.main_breaker.part_number if summary.main_breaker else summary.suggested_main_breaker_str)})</td></tr>
-<tr><td>{_h(tr("html_busbar"))}</td><td dir="ltr"><b>{_h(summary.recommended_busbar_spec)} | PE: {_h(summary.recommended_pe_busbar_spec)}</b></td></tr>
-<tr><td>{_h(tr("html_loss"))}</td><td dir="ltr"><b>{_h(summary.total_power_loss_w)} W / {_h(summary.enclosure_natural_dissipation_w)} W</b></td></tr>
-<tr><td>{_h(tr("html_tint"))}</td><td dir="ltr"><b>{_h(tint_cell)}</b>{tint_warn}</td></tr>
-<tr><td>{_h(tr("html_enclosure"))}</td><td dir="ltr"><b>{_h(summary.selected_enclosure.part_number if summary.selected_enclosure else '-')}</b>{ip_note}</td></tr>
-<tr><td>{_h(tr("rpt_thdi"))}</td><td dir="ltr"><b>{_h(thdi_cell)}</b></td></tr>
-<tr><td>{_h(tr("rpt_cap_bank"))}</td><td dir="ltr"><b>{_h(cap_txt)}</b></td></tr>
-<tr><td>{_h(tr("rpt_spd"))}</td><td dir="ltr"><b>{_h(spd_txt)}</b></td></tr>
+<tr><td>{_h(tr("html_imain"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.design_main_current_a)} A</span></b> <span dir="auto">(Main: <span class="ltr-isolate" dir="ltr">{_h(summary.main_breaker.part_number if summary.main_breaker else summary.suggested_main_breaker_str)}</span>)</span></td></tr>
+<tr><td>{_h(tr("html_busbar"))}</td><td dir="auto"><b><span class="bidi-isolate" dir="auto">{_h(summary.recommended_busbar_spec)} | PE: {_h(summary.recommended_pe_busbar_spec)}</span></b></td></tr>
+<tr><td>{_h(tr("html_loss"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.total_power_loss_w)} W / {_h(summary.enclosure_natural_dissipation_w)} W</span></b></td></tr>
+<tr><td>{_h(tr("html_tint"))}</td><td dir="auto"><span class="bidi-isolate" dir="auto">{_h(tint_cell)}</span>{tint_warn}</td></tr>
+<tr><td>{_h(tr("html_enclosure"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.selected_enclosure.part_number if summary.selected_enclosure else '-')}</span></b>{ip_note}</td></tr>
+<tr><td>{_h(tr("rpt_thdi"))}</td><td dir="auto"><b><span class="bidi-isolate" dir="auto">{_h(thdi_cell)}</span></b></td></tr>
+<tr><td>{_h(tr("rpt_cap_bank"))}</td><td dir="auto"><b><span class="bidi-isolate" dir="auto">{_h(cap_txt)}</span></b></td></tr>
+<tr><td>{_h(tr("rpt_spd"))}</td><td dir="auto"><b><span class="bidi-isolate" dir="auto">{_h(spd_txt)}</span></b></td></tr>
 </table></div></div>
-<h2>{_h(tr("html_s3"))}</h2><table>
+<h2>{_h(tr("html_s3"))}</h2><table class="feeder-table">
 <thead><tr><th>{_h(tr("html_f_id"))}</th><th>{_h(tr("html_f_desc"))}</th><th>{_h(tr("html_f_type"))}</th><th>{_h(tr("html_f_kw"))}</th><th>{_h(tr("html_f_ib"))}</th><th>{_h(tr("html_f_eq"))}</th><th>{_h(tr("html_f_cable"))}</th><th>{_h(tr("html_f_vd"))}</th><th>{_h(tr("html_f_sel"))}</th><th>{_h(tr("html_f_loss"))}</th></tr></thead>
 <tbody>{feeder_rows}</tbody></table>
-<h2>{_h(tr("html_s4"))}</h2><table>
+<h2>{_h(tr("html_s4"))}</h2><table class="trace-table">
 <thead><tr><th>{_h(tr("html_f_id"))}</th><th>{_h(tr("html_trace_ib"))}</th><th>{_h(tr("html_trace_iz0"))}</th><th>{_h(tr("html_trace_k1"))}</th><th>{_h(tr("html_trace_k2"))}</th><th>{_h(tr("html_trace_ktot"))}</th><th>{_h(tr("html_trace_iz"))}</th><th>{_h(tr("html_trace_formula"))}</th><th>{_h(tr("html_trace_vd"))}</th></tr></thead>
 <tbody>{trace_rows}</tbody></table>
 <h2>{_h(tr("html_s5"))}</h2><table class="validation-table">
@@ -612,12 +630,12 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <h2>{_h(tr("html_tcc_section"))}</h2>
 <div class="tcc-chart" dir="ltr">{tcc_svg_inline}</div>
 <p style="font-size:11px;color:#566573;">{_h(tr("html_tcc_note"))}</p>
-<h2>{_h(tr("rpt_refs"))}</h2><table>
+<h2>{_h(tr("rpt_refs"))}</h2><table class="reference-table">
 <thead><tr><th>{_h(tr("rpt_ref_std"))}</th><th>{_h(tr("rpt_ref_scope"))}</th></tr></thead>
 <tbody>{ref_rows}</tbody></table>
 {sign_block}
 {provenance_block}
-<div class="disclaimer" style="margin-top: 24px; padding: 12px; background: #FFF8E1; border-left: 4px solid #FFA000; font-size: 10pt; font-style: italic; color: #5D4037;">
+<div class="disclaimer">
   <strong>PRELIMINARY:</strong> All engineering results are preliminary and require review by a qualified engineer. Not an IEC 61439 compliance certificate.
 </div>
 <div class="page-footer">{_h(project.project_name)} | LV-PanelAssist | {_h(now_str)}</div>
@@ -649,12 +667,12 @@ class DesignVerificationExporter:
             method = tr(f"dv_method_{it.method.value.lower()}")
             rules = ", ".join(it.rule_ids) if it.rule_ids else "-"
             rows += f"""<tr>
-                <td dir="ltr" style="text-align:center;"><b>{_h(it.clause_ref)}</b></td>
-                <td><b>{_h(it.title)}</b><br><small>{_h(it.requirement)}</small></td>
-                <td style="text-align:center;">{_h(method)}</td>
-                <td dir="ltr"><b>{_h(it.computed_value)}</b></td>
-                <td dir="ltr"><small>{_h(it.evidence)}</small></td>
-                <td dir="ltr"><small>{_h(rules)}</small></td>
+                <td dir="auto" style="text-align:center;"><b><bdi dir="ltr">{_h(it.clause_ref)}</bdi></b></td>
+                <td dir="auto"><span class="bidi-isolate" dir="auto"><b>{_h(it.title)}</b><br><small>{_h(it.requirement)}</small></span></td>
+                <td dir="auto" style="text-align:center;"><span class="bidi-isolate" dir="auto">{_h(method)}</span></td>
+                <td dir="auto"><b><bdi dir="ltr">{_h(it.computed_value)}</bdi></b></td>
+                <td dir="auto"><small><span class="bidi-isolate" dir="auto">{_h(it.evidence)}</span></small></td>
+                <td dir="auto"><small><bdi dir="ltr">{_h(rules)}</bdi></small></td>
                 <td style="text-align:center;"><span class="badge {cls}">{_h(label)}</span></td>
             </tr>"""
 
@@ -675,6 +693,8 @@ h2 {{ font-size: 14px; background: #1F4E78; color: white; padding: 6px 12px; bor
 table {{ width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 11px; }}
 th, td {{ border: 1px solid #BDC3C7; padding: 6px 8px; vertical-align: middle; }}
 th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
+.ltr-isolate {{ direction: ltr; unicode-bidi: isolate; }}
+.bidi-isolate {{ unicode-bidi: isolate; }}
 .badge {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; white-space: nowrap; }}
 .badge-verified {{ background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }}
 .badge-preliminary {{ background: #FEF9C3; color: #854D0E; border: 1px solid #FDE047; }}
@@ -682,38 +702,45 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 .badge-insufficient {{ background: #E5E7EB; color: #4B5563; border: 1px solid #D1D5DB; }}
 .meta-table td {{ background: #F8FAFC; }}
 .conclusion-box {{ border: 2px solid #1F4E78; border-radius: 8px; padding: 14px 18px; margin: 12px 0; background: #F8FAFC; }}
-.sign-block {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 10px 0 24px; }}
+.signature-block {{ margin: 10px 0 24px; }}
+.sign-block {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 0; }}
 .sign-cell {{ border-top: 1.5px solid #1F4E78; padding-top: 6px; font-size: 11px; min-height: 44px; }}
 .sign-cell b {{ display: block; font-size: 10px; color: #566573; margin-bottom: 10px; }}
 .page-footer {{ display: none; }}
 @media print {{
   body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9pt; background: #FFF; margin: 0; }}
-  tr {{ page-break-inside: avoid; }}
+  th {{ background-color: #e0e0e0 !important; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+  table {{ orphans: 3; widows: 3; }}
+  td, th {{ break-inside: avoid; page-break-inside: avoid; }}
+  tr {{ break-inside: auto; page-break-inside: auto; }}
+  p, blockquote {{ orphans: 2; widows: 2; }}
   thead {{ display: table-header-group; }}
   .no-print {{ display: none !important; }}
   .container {{ border: none; padding: 0; }}
-  .sign-block, .conclusion-box {{ break-inside: avoid; }}
+  .signature-block {{ break-before: auto; page-break-before: auto; break-inside: auto; page-break-inside: auto; margin-top: 0; }}
+  .summary-box, .conclusion-box {{ break-inside: avoid; page-break-inside: avoid; margin-top: 0; }}
+  .signature-block h2 {{ margin-top: 0; }}
   h2 {{ break-inside: avoid; break-after: avoid; page-break-after: avoid; }}
   .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; padding: 4px 0; text-align: center; background: #FFF; }}
 }}
 </style></head>
 <body><div class="container">
 <div class="header-box"><div><h1>{_h(tr("dv_title"))}</h1>
-<p>{_h(tr("dv_subtitle"))} — {_h(report.standard_ref)} / {_h(report.clause_ref)} | {_h(tr("html_date"))} {_h(now_str)}</p></div>
+<p dir="auto">{_h(tr("dv_subtitle"))} — <span class="ltr-isolate" dir="ltr">{_h(report.standard_ref)} / {_h(report.clause_ref)}</span> | <span class="ltr-isolate" dir="ltr">{_h(tr("html_date"))} {_h(now_str)}</span></p></div>
 <div class="no-print"><button class="print-btn" onclick="window.print()">{_h(tr("html_print"))}</button></div></div>
 
 <h2>{_h(tr("dv_h_proj"))}</h2>
 <table class="meta-table">
 <tr><th>{_h(tr("rpt_h_param"))}</th><th>{_h(tr("rpt_h_value"))}</th>
 <th>{_h(tr("rpt_h_param"))}</th><th>{_h(tr("rpt_h_value"))}</th></tr>
-<tr><td>{_h(tr("rpt_s_name"))}</td><td><b>{_h(project.project_name)}</b></td>
-<td>{_h(tr("rpt_s_tag"))}</td><td dir="ltr"><b>{_h(project.panel_tag)}</b></td></tr>
-<tr><td>{_h(tr("html_voltage"))}</td><td dir="ltr"><b>{_h(project.nominal_voltage_v)}V / {_h(project.earthing_system.value)}</b></td>
-<td>{_h(tr("rpt_s_temp"))}</td><td dir="ltr"><b>{_h(project.ambient_temp_c)} / {_h(project.max_internal_temp_c)}°C</b></td></tr>
-<tr><td>{_h(tr("rpt_ik"))}</td><td dir="ltr"><b>{_h(ik_line)}</b><br><small>{_h(summary.ik_source_str)}</small></td>
-<td>{_h(tr("kpi_main_current"))}</td><td dir="ltr"><b>{_h(summary.design_main_current_a)} A</b></td></tr>
-<tr><td>{_h(tr("html_sign_designer"))}</td><td>{_h(project.designer_name or "-")}</td>
-<td>{_h(tr("dv_gen_by"))}</td><td dir="ltr">{_h(report.generated_by)}</td></tr>
+<tr><td>{_h(tr("rpt_s_name"))}</td><td dir="auto"><span class="bidi-isolate" dir="auto"><b>{_h(project.project_name)}</b></span></td>
+<td>{_h(tr("rpt_s_tag"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(project.panel_tag)}</span></b></td></tr>
+<tr><td>{_h(tr("html_voltage"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(project.nominal_voltage_v)}V / {_h(project.earthing_system.value)}</span></b></td>
+<td>{_h(tr("rpt_s_temp"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(project.ambient_temp_c)} / {_h(project.max_internal_temp_c)}°C</span></b></td></tr>
+<tr><td>{_h(tr("rpt_ik"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(ik_line)}</span></b><br><small dir="auto">{_h(summary.ik_source_str)}</small></td>
+<td>{_h(tr("kpi_main_current"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.design_main_current_a)} A</span></b></td></tr>
+<tr><td>{_h(tr("html_sign_designer"))}</td><td dir="auto"><span class="bidi-isolate" dir="auto">{_h(project.designer_name or "-")}</span></td>
+<td>{_h(tr("dv_gen_by"))}</td><td dir="auto"><span class="ltr-isolate" dir="ltr">{_h(report.generated_by)}</span></td></tr>
 </table>
 
 <h2>{_h(tr("dv_h_items"))}</h2>
@@ -723,134 +750,20 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <th>{_h(tr("dv_h_rules"))}</th><th>{_h(tr("dv_h_status"))}</th></tr></thead>
 <tbody>{rows}</tbody></table>
 
-<div class="conclusion-box">
+<div class="conclusion-box summary-box">
 <b>{_h(tr("dv_conclusion_title"))}:</b> <span class="badge {concl_cls}">{_h(concl_label)}</span>
 <p style="margin:8px 0 0;">{_h(report.conclusion_text)}</p>
 <p style="margin:8px 0 0; font-size:10px; color:#566573;">{_h(tr("dv_note_scope"))}</p>
 </div>
 
+<div class="signature-block">
 <h2>{_h(tr("html_sign_title"))}</h2>
 <div class="sign-block">
   <div class="sign-cell"><b>{_h(tr("html_sign_designer"))}</b><span>{_h(project.designer_name or "-")}</span></div>
   <div class="sign-cell"><b>{_h(tr("html_sign_reviewer"))}</b><span>-</span></div>
   <div class="sign-cell"><b>{_h(tr("html_sign_approver"))}</b><span>-</span></div>
-  <div class="sign-cell"><b>{_h(tr("html_sign_date"))}</b><span dir="ltr">{_h(now_str)}</span></div>
+  <div class="sign-cell" dir="auto"><b>{_h(tr("html_sign_date"))}</b><span><span class="ltr-isolate" dir="ltr">{_h(now_str)}</span></span></div>
 </div>
-<div class="page-footer">{_h(project.project_name)} | {_h(tr("dv_title"))} | LV-PanelAssist | {_h(now_str)}</div>
-</div></body></html>"""
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(html)
-
-
-class DesignVerificationExporter:
-    """فاز ۱۲: سند رسمی گزارش تأیید طراحی مطابق IEC 61439-1 بند ۱۰ — قابل تحویل به مشتری/بازرس."""
-    BADGE = {
-        VerificationStatus.PASS: "badge-verified",
-        VerificationStatus.WARNING: "badge-preliminary",
-        VerificationStatus.FAIL: "badge-error",
-        VerificationStatus.NOT_VERIFIED: "badge-insufficient",
-    }
-
-    @staticmethod
-    def generate_html(filepath: str, project: ProjectSpec, summary: PanelSummaryOutput,
-                      report: DesignVerificationReport):
-        require_current_calculation(project, summary)
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        lang = i18n.get_language()
-        direction = i18n.direction()
-        rows = ""
-        for it in report.items:
-            cls = DesignVerificationExporter.BADGE[it.status]
-            label = tr(f"dv_status_{it.status.value.lower()}")
-            method = tr(f"dv_method_{it.method.value.lower()}")
-            rules = ", ".join(it.rule_ids) if it.rule_ids else "-"
-            rows += f"""<tr>
-                <td dir="ltr" style="text-align:center;"><b>{_h(it.clause_ref)}</b></td>
-                <td><b>{_h(it.title)}</b><br><small>{_h(it.requirement)}</small></td>
-                <td style="text-align:center;">{_h(method)}</td>
-                <td dir="ltr"><b>{_h(it.computed_value)}</b></td>
-                <td dir="ltr"><small>{_h(it.evidence)}</small></td>
-                <td dir="ltr"><small>{_h(rules)}</small></td>
-                <td style="text-align:center;"><span class="badge {cls}">{_h(label)}</span></td>
-            </tr>"""
-
-        concl_cls = DesignVerificationExporter.BADGE[report.conclusion_status]
-        concl_label = tr(f"dv_status_{report.conclusion_status.value.lower()}")
-        ik_line = f"{summary.ik_bus_total_ka if summary.ik_bus_total_ka is not None else (summary.ik_used_ka if summary.ik_used_ka is not None else '-')} kA"
-
-        html = f"""<!DOCTYPE html>
-<html lang="{_h(lang)}" dir="{_h(direction)}">
-<head><meta charset="UTF-8"><title>{_h(tr("dv_title"))} - {_h(project.project_name)}</title>
-<style>
-@page {{ size: A4 landscape; margin: 12mm 10mm 15mm 10mm; }}
-body {{ font-family: Tahoma, sans-serif; font-size: 12px; color: #1C2833; background: #F8F9F9; margin: 20px; }}
-.container {{ background: #FFFFFF; padding: 20px; border: 1px solid #BDC3C7; }}
-.header-box {{ display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #1F4E78; padding-bottom: 12px; margin-bottom: 16px; }}
-.print-btn {{ background: #1F4E78; color: white; border: none; padding: 10px 18px; border-radius: 5px; cursor: pointer; font-weight: bold; }}
-h2 {{ font-size: 14px; background: #1F4E78; color: white; padding: 6px 12px; border-radius: 4px; margin-top: 18px; }}
-table {{ width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 11px; }}
-th, td {{ border: 1px solid #BDC3C7; padding: 6px 8px; vertical-align: middle; }}
-th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
-.badge {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; white-space: nowrap; }}
-.badge-verified {{ background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }}
-.badge-preliminary {{ background: #FEF9C3; color: #854D0E; border: 1px solid #FDE047; }}
-.badge-error {{ background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }}
-.badge-insufficient {{ background: #E5E7EB; color: #4B5563; border: 1px solid #D1D5DB; }}
-.meta-table td {{ background: #F8FAFC; }}
-.conclusion-box {{ border: 2px solid #1F4E78; border-radius: 8px; padding: 14px 18px; margin: 12px 0; background: #F8FAFC; }}
-.sign-block {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 10px 0 24px; }}
-.sign-cell {{ border-top: 1.5px solid #1F4E78; padding-top: 6px; font-size: 11px; min-height: 44px; }}
-.sign-cell b {{ display: block; font-size: 10px; color: #566573; margin-bottom: 10px; }}
-.page-footer {{ display: none; }}
-@media print {{
-  body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9pt; background: #FFF; margin: 0; }}
-  tr {{ page-break-inside: avoid; }}
-  thead {{ display: table-header-group; }}
-  .no-print {{ display: none !important; }}
-  .container {{ border: none; padding: 0; }}
-  .sign-block, .conclusion-box {{ break-inside: avoid; }}
-  h2 {{ break-inside: avoid; break-after: avoid; page-break-after: avoid; }}
-  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; padding: 4px 0; text-align: center; background: #FFF; }}
-}}
-</style></head>
-<body><div class="container">
-<div class="header-box"><div><h1>{_h(tr("dv_title"))}</h1>
-<p>{_h(tr("dv_subtitle"))} — {_h(report.standard_ref)} / {_h(report.clause_ref)} | {_h(tr("html_date"))} {_h(now_str)}</p></div>
-<div class="no-print"><button class="print-btn" onclick="window.print()">{_h(tr("html_print"))}</button></div></div>
-
-<h2>{_h(tr("dv_h_proj"))}</h2>
-<table class="meta-table">
-<tr><th>{_h(tr("rpt_h_param"))}</th><th>{_h(tr("rpt_h_value"))}</th>
-<th>{_h(tr("rpt_h_param"))}</th><th>{_h(tr("rpt_h_value"))}</th></tr>
-<tr><td>{_h(tr("rpt_s_name"))}</td><td><b>{_h(project.project_name)}</b></td>
-<td>{_h(tr("rpt_s_tag"))}</td><td dir="ltr"><b>{_h(project.panel_tag)}</b></td></tr>
-<tr><td>{_h(tr("html_voltage"))}</td><td dir="ltr"><b>{_h(project.nominal_voltage_v)}V / {_h(project.earthing_system.value)}</b></td>
-<td>{_h(tr("rpt_s_temp"))}</td><td dir="ltr"><b>{_h(project.ambient_temp_c)} / {_h(project.max_internal_temp_c)}°C</b></td></tr>
-<tr><td>{_h(tr("rpt_ik"))}</td><td dir="ltr"><b>{_h(ik_line)}</b><br><small>{_h(summary.ik_source_str)}</small></td>
-<td>{_h(tr("kpi_main_current"))}</td><td dir="ltr"><b>{_h(summary.design_main_current_a)} A</b></td></tr>
-<tr><td>{_h(tr("html_sign_designer"))}</td><td>{_h(project.designer_name or "-")}</td>
-<td>{_h(tr("dv_gen_by"))}</td><td dir="ltr">{_h(report.generated_by)}</td></tr>
-</table>
-
-<h2>{_h(tr("dv_h_items"))}</h2>
-<table>
-<thead><tr><th>{_h(tr("dv_h_clause"))}</th><th>{_h(tr("dv_h_item"))} / {_h(tr("dv_h_req"))}</th>
-<th>{_h(tr("dv_h_method"))}</th><th>{_h(tr("dv_h_value"))}</th><th>{_h(tr("dv_h_evidence"))}</th>
-<th>{_h(tr("dv_h_rules"))}</th><th>{_h(tr("dv_h_status"))}</th></tr></thead>
-<tbody>{rows}</tbody></table>
-
-<div class="conclusion-box">
-<b>{_h(tr("dv_conclusion_title"))}:</b> <span class="badge {concl_cls}">{_h(concl_label)}</span>
-<p style="margin:8px 0 0;">{_h(report.conclusion_text)}</p>
-<p style="margin:8px 0 0; font-size:10px; color:#566573;">{_h(tr("dv_note_scope"))}</p>
-</div>
-
-<h2>{_h(tr("html_sign_title"))}</h2>
-<div class="sign-block">
-  <div class="sign-cell"><b>{_h(tr("html_sign_designer"))}</b><span>{_h(project.designer_name or "-")}</span></div>
-  <div class="sign-cell"><b>{_h(tr("html_sign_reviewer"))}</b><span>-</span></div>
-  <div class="sign-cell"><b>{_h(tr("html_sign_approver"))}</b><span>-</span></div>
-  <div class="sign-cell"><b>{_h(tr("html_sign_date"))}</b><span dir="ltr">{_h(now_str)}</span></div>
 </div>
 <div class="page-footer">{_h(project.project_name)} | {_h(tr("dv_title"))} | LV-PanelAssist | {_h(now_str)}</div>
 </div></body></html>"""

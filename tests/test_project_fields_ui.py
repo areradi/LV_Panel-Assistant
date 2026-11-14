@@ -104,6 +104,39 @@ def test_project_fields_survive_rebuild(app):
     assert app.wiz_entries["designer_name"].get() == "Rebuild Test"
 
 
+def test_project_form_idle_callbacks_do_not_mix_geometry_managers(window):
+    callback_errors = []
+    window.report_callback_exception = lambda _type, error, _traceback: callback_errors.append(error)
+    entry = window.wiz_entries["wiz_project_name"]
+
+    # Run the deferred operation synchronously too: Tk reports exceptions from
+    # after_idle callbacks through report_callback_exception instead of raising.
+    indicator = window._attach_assumed_field_indicator(
+        entry.master, "wiz_project_name", entry, row=0,
+    )
+    assert indicator.winfo_manager() == "grid"
+    form_managers = {
+        child.winfo_manager() for child in window._project_form_frame.winfo_children()
+        if child.winfo_manager() in {"pack", "grid"}
+    }
+    assert form_managers <= {"grid"}
+
+    window.update_idletasks()
+
+    assert not callback_errors, [str(error) for error in callback_errors]
+
+
+def test_feeder_edit_dialog_builds_with_real_widgets(app):
+    dialog = gui.FeederEditDialog(app, app.current_feeders[0], lambda _feeder: None)
+    try:
+        app.update_idletasks()
+        assert isinstance(dialog._form_frame, ctk.CTkScrollableFrame)
+        child_managers = {child.winfo_manager() for child in dialog.winfo_children()}
+        assert child_managers <= {"pack"}
+    finally:
+        dialog.destroy()
+
+
 def test_blank_designer_name_maps_to_none(app):
     app.current_project, app.current_feeders = gui.build_demo_project()
     app._fill_project_form(app.current_project)

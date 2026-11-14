@@ -93,8 +93,8 @@ class QuoteLineItem:
     description: str
     qty: float
     unit: str
-    unit_price: float
-    total_price: float
+    unit_price: Optional[float]
+    total_price: Optional[float]
     currency: str = "EUR"
     price_source: str = "CATALOG"
 
@@ -191,14 +191,15 @@ class CommercialEngine:
                 pn = dev.part_number
                 mfg = dev.manufacturer
             else:
-                u_price = 0.0
+                u_price = None
                 p_src = "TBD"
                 desc = sug_spec or "Auxiliary / Fuse"
                 pn = "TBD"
                 mfg = "-"
 
-            t_price = round(qty * u_price, 2)
-            eq_subtotal += t_price
+            t_price = round(qty * u_price, 2) if u_price is not None else None
+            if t_price is not None:
+                eq_subtotal += t_price
             lines.append(QuoteLineItem(
                 item_no=idx, category=cat, tag=tag_str, part_number=pn,
                 manufacturer=mfg, description=desc, qty=qty, unit=units.get(tags[0], "pcs"),
@@ -263,18 +264,28 @@ class CommercialEngine:
 
         rows_html = ""
         for it in q.lines:
+            unit_price = f"{it.unit_price:,.2f}" if it.unit_price is not None else "—"
+            total_price = f"{it.total_price:,.2f}" if it.total_price is not None else "—"
             rows_html += f"""
             <tr>
                 <td style="text-align:center;">{it.item_no}</td>
-                <td>{esc(it.category)}</td>
-                <td dir="ltr"><b>{esc(it.tag)}</b></td>
-                <td dir="ltr"><b>{esc(it.part_number)}</b></td>
-                <td dir="ltr">{esc(it.manufacturer)}</td>
-                <td dir="ltr">{esc(it.description)}</td>
-                <td style="text-align:center;">{it.qty:g} {esc(it.unit)}</td>
-                <td dir="ltr" style="text-align:right;">{it.unit_price:,.2f} {q.currency}</td>
-                <td dir="ltr" style="text-align:right;"><b>{it.total_price:,.2f} {q.currency}</b></td>
+                <td dir="auto">{esc(it.category)}</td>
+                <td dir="auto"><b><bdi dir="ltr">{esc(it.tag)}</bdi></b></td>
+                <td dir="auto"><b><bdi dir="ltr">{esc(it.part_number)}</bdi></b></td>
+                <td dir="auto"><span class="bidi-isolate" dir="auto">{esc(it.manufacturer)}</span></td>
+                <td dir="auto"><span class="bidi-isolate" dir="auto">{esc(it.description)}</span></td>
+                <td dir="auto" style="text-align:right;"><bdi dir="ltr">{it.qty:g}</bdi></td>
+                <td dir="auto" style="text-align:center;"><bdi dir="auto">{esc(it.unit)}</bdi></td>
+                <td dir="auto" style="text-align:right;"><bdi dir="ltr">{unit_price}</bdi></td>
+                <td dir="auto" style="text-align:right;"><b><bdi dir="ltr">{total_price}</bdi></b></td>
             </tr>"""
+
+        unpriced_count = sum(1 for item in q.lines if item.price_source == "TBD")
+        unpriced_notice = (
+            f'<p class="unpriced-warning" dir="auto">توجه: <bdi dir="ltr">{unpriced_count}</bdi> قلم '
+            "قیمت‌گذاری نشده‌اند و در جمع کل لحاظ نشده‌اند.</p>"
+            if unpriced_count else ""
+        )
 
         html_doc = f"""<!DOCTYPE html>
 <html lang="{i18n.get_language()}" dir="{direction}">
@@ -291,44 +302,62 @@ h1 {{ font-size: 18px; color: #0F172A; margin: 0 0 6px 0; }}
 table {{ width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 11px; }}
 th, td {{ border: 1px solid #CBD5E1; padding: 7px 8px; }}
 th {{ background: #EFF6FF; color: #1E3A8A; text-align: center; }}
+.ltr-isolate {{ direction: ltr; unicode-bidi: isolate; }}
+.bidi-isolate {{ unicode-bidi: isolate; }}
 .totals {{ width: 420px; margin-right: auto; border: 2px solid #1E3A8A; border-radius: 6px; overflow: hidden; }}
 .totals tr td {{ padding: 8px 12px; font-size: 12px; }}
 .totals tr.grand {{ background: #1E3A8A; color: #FFFFFF; font-weight: bold; font-size: 13px; }}
 .btn {{ background: #2563EB; color: #FFF; border: none; padding: 9px 18px; border-radius: 6px; cursor: pointer; font-weight: bold; }}
-@media print {{ .no-print {{ display: none !important; }} body {{ background: #FFF; margin: 0; }} .container {{ border: none; }} }}
+@media print {{
+  .no-print {{ display: none !important; }}
+  body {{ background: #FFF; margin: 0; }}
+  .container {{ border: none; padding: 0; max-width: none; width: 100%; }}
+  table {{ orphans: 3; widows: 3; }}
+  tr {{ break-inside: auto; page-break-inside: auto; page-break-after: auto; }}
+  td, th {{ break-inside: avoid; page-break-inside: avoid; }}
+  p, blockquote {{ orphans: 2; widows: 2; }}
+  th {{ background-color: #e0e0e0 !important; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+  .bom-table {{ width: 100%; max-width: 100%; table-layout: auto; }}
+  .bom-table th, .bom-table td {{ word-break: normal; overflow-wrap: break-word; padding: 3px 4px; line-height: 1.15; }}
+  .bom-table thead {{ display: table-header-group; }}
+  .totals {{ break-inside: avoid; page-break-inside: avoid; margin-top: 0; }}
+  .totals tr, .totals td {{ break-inside: avoid; page-break-inside: avoid; }}
+}}
 </style></head>
 <body><div class="container">
 <div class="hdr">
   <div>
-    <h1>پیش‌فاکتور تجاری و برآورد مالی تابلو (Commercial Quotation & Cost Breakdown)</h1>
-    <div>پروژه: <b>{esc(project.project_name)} ({esc(project.panel_tag)})</b> | استاندارد: <b>{esc(project.standard_ref)}</b> | تاریخ: {now_str}</div>
+    <h1 dir="auto">پیش‌فاکتور تجاری و برآورد مالی تابلو <span class="ltr-isolate" dir="ltr">(Commercial Quotation &amp; Cost Breakdown)</span></h1>
+    <div dir="auto">پروژه: <b><span class="bidi-isolate" dir="auto">{esc(project.project_name)}</span> (<span class="ltr-isolate" dir="ltr">{esc(project.panel_tag)}</span>)</b> | استاندارد: <b><span class="ltr-isolate" dir="ltr">{esc(project.standard_ref)}</span></b> | تاریخ: <span class="ltr-isolate" dir="ltr">{now_str}</span></div>
   </div>
   <div class="no-print"><button class="btn" onclick="window.print()">چاپ / دریافت PDF</button></div>
 </div>
 
 <div class="kpi-row">
-  <div class="kpi">هزینه تجهیزات کاتالوگ<b dir="ltr">{q.equipment_subtotal:,.2f} {q.currency}</b></div>
-  <div class="kpi">شینه مسی و ترمینال‌بندی<b dir="ltr">{(q.busbar_copper_cost + q.wiring_and_accessories_cost):,.2f} {q.currency}</b></div>
-  <div class="kpi">مهندسی، مونتاژ و تست FAT<b dir="ltr">{q.engineering_and_fat_cost:,.2f} {q.currency}</b></div>
-  <div class="kpi">مبلغ کل نهایی (با ارزش افزوده)<b dir="ltr">{q.grand_total_inc_vat:,.2f} {q.currency}</b></div>
+  <div class="kpi" dir="auto">هزینه تجهیزات کاتالوگ<b dir="ltr">{q.equipment_subtotal:,.2f} {q.currency}</b></div>
+  <div class="kpi" dir="auto">شینه مسی و ترمینال‌بندی<b dir="ltr">{(q.busbar_copper_cost + q.wiring_and_accessories_cost):,.2f} {q.currency}</b></div>
+  <div class="kpi" dir="auto">مهندسی، مونتاژ و تست FAT<b dir="ltr">{q.engineering_and_fat_cost:,.2f} {q.currency}</b></div>
+  <div class="kpi" dir="auto">مبلغ کل نهایی (با ارزش افزوده)<b dir="ltr">{q.grand_total_inc_vat:,.2f} {q.currency}</b></div>
 </div>
 
-<table>
+{unpriced_notice}
+<table class="bom-table">
   <thead>
     <tr>
-      <th>ردیف</th><th>دسته</th><th>تگ (IEC 81346)</th><th>پارت‌نامبر</th><th>سازنده</th>
-      <th>شرح فنی</th><th>تعداد</th><th>قیمت واحد</th><th>قیمت کل</th>
+      <th rowspan="2">ردیف</th><th rowspan="2">دسته</th><th rowspan="2">تگ (IEC 81346)</th><th rowspan="2">پارت‌نامبر</th><th rowspan="2">سازنده</th>
+      <th rowspan="2">شرح فنی</th><th rowspan="2">تعداد</th><th rowspan="2">واحد</th><th colspan="2">مبالغ ({esc(q.currency)})</th>
     </tr>
+    <tr><th>قیمت واحد</th><th>قیمت کل</th></tr>
   </thead>
   <tbody>{rows_html}</tbody>
 </table>
 
 <table class="totals">
-  <tr><td>جمع خالص تجهیزات، شینه و ساخت (Net Cost)</td><td dir="ltr" style="text-align:right;"><b>{q.subtotal_net:,.2f} {q.currency}</b></td></tr>
-  <tr><td>بالاسری و حاشیه سود پیمانکار ({q.margin_pct:g}%)</td><td dir="ltr" style="text-align:right;">{q.margin_amount:,.2f} {q.currency}</td></tr>
-  <tr><td><b>مبلغ قابل پیشنهاد بدون مالیات (Total Excl. VAT)</b></td><td dir="ltr" style="text-align:right;"><b>{q.total_offer_ex_vat:,.2f} {q.currency}</b></td></tr>
-  <tr><td>مالیات بر ارزش افزوده (VAT / MwSt {q.vat_pct:g}%)</td><td dir="ltr" style="text-align:right;">{q.vat_amount:,.2f} {q.currency}</td></tr>
-  <tr class="grand"><td>مبلغ کل پیش‌فاکتور (Grand Total Incl. VAT)</td><td dir="ltr" style="text-align:right;">{q.grand_total_inc_vat:,.2f} {q.currency}</td></tr>
+  <tr><td dir="auto">جمع خالص تجهیزات، شینه و ساخت (Net Cost)</td><td dir="auto" style="text-align:right;"><b><span class="ltr-isolate" dir="ltr">{q.subtotal_net:,.2f}</span></b></td></tr>
+  <tr><td dir="auto">بالاسری و حاشیه سود پیمانکار ({q.margin_pct:g}%)</td><td dir="auto" style="text-align:right;"><span class="ltr-isolate" dir="ltr">{q.margin_amount:,.2f}</span></td></tr>
+  <tr><td dir="auto"><b>مبلغ قابل پیشنهاد بدون مالیات (Total Excl. VAT)</b></td><td dir="auto" style="text-align:right;"><b><span class="ltr-isolate" dir="ltr">{q.total_offer_ex_vat:,.2f}</span></b></td></tr>
+  <tr><td dir="auto">مالیات بر ارزش افزوده (VAT / MwSt {q.vat_pct:g}%)</td><td dir="auto" style="text-align:right;"><span class="ltr-isolate" dir="ltr">{q.vat_amount:,.2f}</span></td></tr>
+  <tr class="grand"><td dir="auto">مبلغ کل پیش‌فاکتور (Grand Total Incl. VAT)</td><td dir="auto" style="text-align:right;"><b><span class="ltr-isolate" dir="ltr">{q.grand_total_inc_vat:,.2f}</span></b></td></tr>
 </table>
 <p style="font-size:10.5px; color:#64748B; margin-top:14px;">
 * قیمت‌های واحد از بانک اطلاعاتی SQLite پروژه (تب مدیریت کاتالوگ و قیمت‌ها) استخراج شده‌اند و قابل ویرایش توسط مهندس طراح/فروش هستند.

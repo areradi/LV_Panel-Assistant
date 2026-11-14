@@ -561,6 +561,7 @@ class FeederEditDialog(ctk.CTkToplevel):
         font = ctk.CTkFont(family=i18n.font_family(), size=12)
         self._entries = {}
         form = ctk.CTkScrollableFrame(self)
+        self._form_frame = form
         form.pack(fill='both', expand=True, padx=8, pady=8)
 
         def row(key, attr, caster):
@@ -1171,6 +1172,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         ctk.CTkButton(parent, text=tr('scenario_settings'), height=34,
                       command=self.action_scenario_settings).pack(anchor='e', padx=14, pady=4)
         form = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        self._project_form_frame = form
         form.pack(fill="both", expand=True, padx=14, pady=6)
         self.wiz_entries = {}
         fields = [
@@ -1223,11 +1225,13 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         }
         fields.sort(key=lambda field: field[0] not in primary)
         self._advanced_widgets = []
+        self._advanced_field_keys = {key for key, _kind, _default in fields if key not in primary}
         self._advanced_fields_visible = False
+        input_column = 1
+        self._assumed_indicator_column = 0 if rtl else 2
         for i, (key, kind, default) in enumerate(fields):
-            r, c = i, 0
-            label_column = c * 2 + (1 if rtl else 0)
-            input_column = c * 2 + (0 if rtl else 1)
+            r = i
+            label_column = 2 if rtl else 0
             lbl = ctk.CTkLabel(form, text=tr(label_keys.get(key, key)), font=font, anchor="e" if rtl else "w")
             lbl.grid(row=r, column=label_column, padx=(12, 8), pady=6, sticky="ew")
             if kind == "entry":
@@ -1238,7 +1242,10 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 ent.grid(row=r, column=input_column, padx=(8, 16), pady=6, sticky="ew")
                 self.wiz_entries[key] = ent
                 # UI-08: نشانگر نقطه‌ای برای فیلد فرضی
-                self.after_idle(lambda w=ent, k=key: self._attach_assumed_field_indicator(form, k, w))
+                self.after_idle(
+                    lambda w=ent, k=key, row=r:
+                    self._attach_assumed_field_indicator(form, k, w, row)
+                )
             else:
                 prefix = {"wiz_panel_type": "panel_", "wiz_scenario": "scenario_", "wiz_mounting": "mount_"}.get(key)
                 menu_class = LocalizedOptionMenu if prefix else DirectionalOptionMenu
@@ -1252,13 +1259,12 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 self._advanced_widgets.extend((lbl, self.wiz_entries[key]))
                 lbl.grid_remove()
                 self.wiz_entries[key].grid_remove()
-        for cidx in range(2):
-            is_input = cidx % 2 == (0 if rtl else 1)
-            form.grid_columnconfigure(cidx, weight=1 if is_input else 0,
-                                      uniform="project_inputs" if is_input else "project_labels")
+        form.grid_columnconfigure(input_column, weight=1, uniform="project_inputs")
+        for cidx in (0, 2):
+            form.grid_columnconfigure(cidx, weight=0)
 
         spd_row = ctk.CTkFrame(form, fg_color="transparent")
-        spd_row.grid(row=len(fields), column=0, columnspan=2, pady=8, sticky="ew")
+        spd_row.grid(row=len(fields), column=0, columnspan=3, pady=8, sticky="ew")
         self.spd_values = [c.value for c in SpdClass]
         self.spd_display = [tr("gui_spd_" + v.lower()) for v in self.spd_values]
         self.spd_menu = DirectionalOptionMenu(spd_row, values=self.spd_display, width=130, font=font,
@@ -1277,7 +1283,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         ToolTip(self.lps_menu, tr("tip_lps"))
 
         row2 = ctk.CTkFrame(form, fg_color="transparent")
-        row2.grid(row=len(fields) + 1, column=0, columnspan=2, pady=8, sticky="ew")
+        row2.grid(row=len(fields) + 1, column=0, columnspan=3, pady=8, sticky="ew")
         self._advanced_widgets.append(row2)
         row2.grid_remove()
         self.mfg_values = ["ANY"] + sorted({d.manufacturer for d in self.catalog})
@@ -1304,7 +1310,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         for widget in self._advanced_widgets:
             widget.grid() if self._advanced_fields_visible else widget.grid_remove()
 
-    def _attach_assumed_field_indicator(self, parent_row, field_name: str, widget):
+    def _attach_assumed_field_indicator(self, parent_row, field_name: str, widget, row: int):
         """UI-08: نشانگر نقطه‌ای آبی برای فیلدهای با مقدار فرضی (assumed_fields).
         اگر کاربر مقداری دستی وارد کند، نشانگر پاک می‌شود.
         """
@@ -1318,7 +1324,17 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             text_color='#38BDF8',
             width=16,
         )
-        dot.pack(side='right', padx=2)
+        dot.grid(
+            row=row,
+            column=self._assumed_indicator_column,
+            padx=2,
+            pady=6,
+            sticky='w' if i18n.direction() == 'rtl' else 'e',
+        )
+        if field_name in self._advanced_field_keys:
+            self._advanced_widgets.append(dot)
+            if not self._advanced_fields_visible:
+                dot.grid_remove()
 
         def _clear_assumed(_event=None):
             cur_spec = getattr(self, 'current_project', None) or getattr(self, 'project_spec', None)
