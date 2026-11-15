@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import customtkinter as ctk
 import pytest
 from openpyxl import load_workbook
@@ -5,6 +8,31 @@ from openpyxl import load_workbook
 from lv_assist import gui
 from lv_assist.gui import ExcelInputManager, LVAssistApp
 from lv_assist.i18n import i18n
+
+
+def test_sidebar_section_labels_are_translated_in_all_locales():
+    expected = {
+        "fa": {
+            "sidebar_active_project": "پروژه فعال",
+            "sidebar_validation_center": "مرکز اعتبارسنجی اسناد",
+        },
+        "en": {
+            "sidebar_active_project": "Active Project",
+            "sidebar_validation_center": "Document Validation Center",
+        },
+        "de": {
+            "sidebar_active_project": "Aktives Projekt",
+            "sidebar_validation_center": "Dokumentenvalidierung",
+        },
+    }
+    translations_dir = Path(__file__).resolve().parents[1] / "lv_assist" / "translations"
+
+    for language, expected_labels in expected.items():
+        translations = json.loads(
+            (translations_dir / f"{language}.json").read_text(encoding="utf-8")
+        )
+        for key, value in expected_labels.items():
+            assert translations.get(key) == value
 
 
 @pytest.fixture(scope="module")
@@ -166,6 +194,46 @@ def test_project_action_buttons_remain_mapped_at_minsize(app):
         assert all(button.winfo_ismapped() for button in app._project_action_buttons)
     finally:
         app.withdraw()
+
+
+def test_catalog_preview_copy_uses_english_without_persian_literals(app):
+    import re
+
+    original_language = i18n.get_language()
+
+    def texts(root):
+        values = []
+        for widget in (root, *root.winfo_children()):
+            try:
+                value = widget.cget("text")
+            except Exception:
+                value = ""
+            if isinstance(value, str) and value:
+                values.append(value)
+            if widget is not root and widget.winfo_children():
+                values.extend(texts(widget))
+        return values
+
+    try:
+        i18n.set_language("en")
+        app._rebuild_preserving_project_form()
+        app_copy = texts(app)
+        guardrail = texts(app._guardrail_bar)
+        catalog = texts(app.views[5])
+        assert "Active Project" in app_copy
+        assert "Document Validation Center" in app_copy
+        assert any("active on baseline assumptions" in value for value in guardrail)
+        assert any("unique documents" in value for value in guardrail)
+        assert {"All", "Preview", "Awaiting", "Insufficient data"}.issubset(set(catalog))
+        assert any("isolated preview" in value for value in catalog)
+        assert any("inquiry tracker" in value.lower() for value in catalog)
+        assert len({value for value in catalog if value.startswith("Step ")}) == 4
+        target_copy = guardrail + catalog
+        assert not any(re.search(r"[\u0600-\u06ff]", value) for value in target_copy)
+        assert not any("PR #13" in value for value in catalog)
+    finally:
+        i18n.set_language(original_language)
+        app._rebuild_preserving_project_form()
 
 
 def test_feeder_save_cancel_buttons_stay_outside_scrollable_form(app):

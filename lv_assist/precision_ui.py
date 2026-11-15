@@ -65,17 +65,17 @@ class PrecisionShell:
         ).pack(side='left', padx=12, pady=6)
         ctk.CTkLabel(
             self._guardrail_bar,
-            text='موتور فعال بر فرضیات پایه',
+            text=tr("topbar_active_engine"),
             font=_gfont, text_color='#F59E0B'
         ).pack(side='right', padx=12, pady=6)
         ctk.CTkLabel(
             self._guardrail_bar,
-            text='۱۰۲ تجهیز',
+            text=tr("topbar_device_count"),
             font=_gfont, text_color=('#0F172A', '#F8FAFC')
         ).pack(side='right', padx=12, pady=6)
         ctk.CTkLabel(
             self._guardrail_bar,
-            text='۱۹۴ سند یکتا / ۲۴۶ مدرک بررسی‌شده',
+            text=tr("topbar_document_counts"),
             font=_gfont, text_color='#10B981'
         ).pack(side='right', padx=12, pady=6)
 
@@ -94,7 +94,7 @@ class PrecisionShell:
 
         # بلوک اول: پروژه فعال (ایندکس 0 تا 3)
         lbl_block1 = ctk.CTkLabel(
-            nav, text='پروژه فعال',
+            nav, text=tr("sidebar_active_project"),
             font=(font, 11, 'bold'), text_color='#10B981',
             anchor='e' if i18n.direction() == 'rtl' else 'w'
         )
@@ -120,7 +120,7 @@ class PrecisionShell:
 
         # بلوک دوم: مرکز اعتبارسنجی اسناد (ایندکس 4 به بعد)
         lbl_block2 = ctk.CTkLabel(
-            nav, text='مرکز اعتبارسنجی اسناد',
+            nav, text=tr("sidebar_validation_center"),
             font=(font, 11, 'bold'), text_color='#38BDF8',
             anchor='e' if i18n.direction() == 'rtl' else 'w'
         )

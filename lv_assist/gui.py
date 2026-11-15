@@ -1877,11 +1877,8 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         _pv = ctk.CTkFrame(parent, fg_color="transparent", border_width=2,
                            border_color="#38BDF8", corner_radius=8)
         _pv.pack(fill="x", padx=12, pady=(4, 8))
-        ctk.CTkLabel(_pv, text="[PREVIEW ONLY / PR #13]",
-                     font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
-                     text_color="#38BDF8").pack(anchor="e" if i18n.direction() == "rtl" else "w", padx=10, pady=(8, 2))
         _rtl = i18n.direction() == "rtl"
-        ctk.CTkLabel(_pv, text="پیش‌نمایش ایزوله است و وارد محاسبات اصلی نمی‌شود.",
+        ctk.CTkLabel(_pv, text=tr("cat_preview_alert"),
                      font=ctk.CTkFont(family=i18n.font_family(), size=11),
                      text_color=("#475569", "#94A3B8"),
                      justify="right" if _rtl else "left"
@@ -1906,10 +1903,10 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         filter_bar.pack(fill="x", padx=12, pady=(4, 0))
         self._cat_filter_var = ctk.StringVar(value="all")
         _filters = [
-            ("all", "همه", "#334155"),
-            ("preview", "پیش‌نمایش", "#38BDF8"),
-            ("awaiting", "در انتظار", "#F59E0B"),
-            ("insufficient", "داده ناکافی", "#64748B"),
+            ("all", tr("cat_filter_all"), "#334155"),
+            ("preview", tr("cat_filter_preview"), "#38BDF8"),
+            ("awaiting", tr("cat_filter_awaiting"), "#F59E0B"),
+            ("insufficient", tr("cat_filter_insufficient"), "#64748B"),
         ]
         for val, txt, color in _filters:
             btn = ctk.CTkRadioButton(filter_bar, text=txt, variable=self._cat_filter_var, value=val,
@@ -2834,21 +2831,21 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
 
         ctk.CTkLabel(
             timeline_frame,
-            text='گاه‌شمار استعلام فنی تجهیز پیش‌نمایش',
+            text=tr("cat_inquiry_title"),
             font=(font, 13, 'bold'),
             text_color='#38BDF8',
             anchor='e',
         ).pack(fill='x', padx=12, pady=(10, 2))
 
-        # (شماره، عنوان گام، وضعیت، رنگ، آیا برجسته)
         steps = [
-            ('۱', 'استخراج نمودار و شناسایی ابهام', 'تکمیل‌شده', '#10B981', False),
-            ('۲', 'ارسال نامه استعلام به سازنده', 'تکمیل‌شده', '#10B981', False),
-            ('۳', 'دریافت پاسخ و جداول آزمون آزمایشگاهی', 'در انتظار پاسخ رسمی سازنده', '#F59E0B', True),
-            ('۴', 'ادغام در هسته محاسبات مهندسی', 'معلق تا تایید نهایی اسناد', '#64748B', False),
+            ('1', "cat_step1_title", "cat_step1_status", '#10B981', False),
+            ('2', "cat_step2_title", "cat_step2_status", '#10B981', False),
+            ('3', "cat_step3_title", "cat_step3_status", '#F59E0B', True),
+            ('4', "cat_step4_title", "cat_step4_status", '#64748B', False),
         ]
 
-        for num, title, status, color, highlight in steps:
+        localized_numbers = {"fa": ("۱", "۲", "۳", "۴")}
+        for index, (num, title, status, color, highlight) in enumerate(steps):
             card = ctk.CTkFrame(
                 timeline_frame,
                 fg_color=('#FEF3C7', '#1E293B') if highlight else ('#F1F5F9', '#0F172A'),
@@ -2859,14 +2856,19 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             card.pack(fill='x', padx=12, pady=4)
             ctk.CTkLabel(
                 card,
-                text=f'گام {num} \u2014 {status}',
+                text=tr(
+                    "cat_step_status_line",
+                    number=localized_numbers.get(i18n.get_language(), ())[index]
+                    if i18n.get_language() == "fa" else num,
+                    status=tr(status),
+                ),
                 font=(font, 11, 'bold'),
                 text_color=color,
                 anchor='e',
             ).pack(fill='x', padx=10, pady=(6, 0))
             ctk.CTkLabel(
                 card,
-                text=title,
+                text=tr(title),
                 font=(font, 13 if highlight else 12, 'bold' if highlight else 'normal'),
                 text_color=('#0F172A', '#F8FAFC'),
                 anchor='e',
