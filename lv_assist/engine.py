@@ -511,6 +511,12 @@ class EngineeringEngine:
                                ik_total_ka: Optional[float]):
         vals, assumptions = [], []
         cos_phi, eff = self._resolve_cos_phi_eff(f.load_type, f.cos_phi, f.efficiency)
+        motor_load = f.load_type in (
+            LoadType.MOTOR_DOL,
+            LoadType.MOTOR_STAR_DELTA,
+            LoadType.MOTOR_SOFT_STARTER,
+            LoadType.MOTOR_VFD,
+        )
 
         if f.load_type in (LoadType.MOTOR_DOL, LoadType.MOTOR_STAR_DELTA, LoadType.MOTOR_SOFT_STARTER, LoadType.MOTOR_VFD):
             if f.cos_phi is None or f.efficiency is None:
@@ -792,7 +798,13 @@ class EngineeringEngine:
         out = FeederCalcOutput(
             phases=f.phases, supply_phase=f.supply_phase,
             feeder_id=f.feeder_id, func_tag=f.func_tag, loc_tag=f.loc_tag, description=f.description, load_type=f.load_type,
-            power_kw=f.power_kw, active_power_demand_kw=round(p_elec_kw, 2), reactive_power_demand_kvar=round(q_elec_kvar, 2),
+            power_kw=f.power_kw,
+            cos_phi_resolved=cos_phi if motor_load else None,
+            cos_phi_source=("plate" if f.cos_phi is not None else "default") if motor_load else None,
+            efficiency_resolved=eff if motor_load else None,
+            efficiency_source=("plate" if f.efficiency is not None else "default") if motor_load else None,
+            kva_normal=round(f.power_kw / (cos_phi * eff), 2) if motor_load else None,
+            active_power_demand_kw=round(p_elec_kw, 2), reactive_power_demand_kvar=round(q_elec_kvar, 2),
             design_current_ib_a=round(ib_a, 2), delta_loop_current_a=i_delta_a, star_current_a=i_star_a,
             required_in_after_derating_a=round(ib_a / k_derate_ref, 2), cable_length_m=cable_len_m,
             selected_phase_mm2=s_ph, selected_pe_mm2=s_pe, cable_derated_iz_a=iz_derated, cable_Auto_sized=(f.cable_section_mm2 is None),

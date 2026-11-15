@@ -445,6 +445,11 @@ class FeederCalcOutput(BaseModel):
     description: str
     load_type: LoadType
     power_kw: float
+    cos_phi_resolved: Optional[float] = None
+    cos_phi_source: Optional[str] = None
+    efficiency_resolved: Optional[float] = None
+    efficiency_source: Optional[str] = None
+    kva_normal: Optional[float] = None
     active_power_demand_kw: float
     reactive_power_demand_kvar: float
     design_current_ib_a: float

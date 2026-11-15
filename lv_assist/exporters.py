@@ -54,6 +54,23 @@ def _prelim(value: str, is_preliminary: bool) -> str:
     return f"{value} (prelim.)" if is_preliminary else value
 
 
+def _motor_assumption_excel(value, source):
+    if value is None:
+        return "-"
+    if source == "default":
+        return f"{_prelim(f'{value:g}', True)} ({tr('badge_assumed')})"
+    return value
+
+
+def _motor_assumption_html(value, source):
+    if value is None:
+        return "-"
+    display = _h(_prelim(f"{value:g}", source == "default"))
+    if source == "default":
+        display += f' <span class="badge badge-assumed">{_h(tr("badge_assumed"))}</span>'
+    return display
+
+
 def _provenance_lines(summary) -> List[tuple]:
     """Return stable provenance rows for a generated report."""
     from datetime import timezone
@@ -157,7 +174,20 @@ class ExcelExporter:
             _append_safe(ws1, [label, value, "", ""])
 
         ws2 = wb.create_sheet("02_Feeder_Cable_Schedule")
-        _append_safe(ws2, [tr("rpt_c_id"), tr("rpt_c_func"), tr("rpt_c_loc"), tr("rpt_c_desc"), tr("rpt_c_type"), tr("rpt_c_kw"), tr("rpt_c_ib"), tr("rpt_c_idelta"), tr("rpt_c_cable"), tr("rpt_c_pe_basis"), tr("rpt_c_iz"), tr("rpt_c_k1"), tr("rpt_c_k2"), tr("rpt_c_ktot"), tr("rpt_c_method"), tr("rpt_c_len"), tr("rpt_c_vd"), tr("rpt_c_prot"), tr("rpt_c_icu"), tr("rpt_c_km"), tr("rpt_c_kd"), tr("rpt_c_ky"), tr("rpt_c_bim"), tr("rpt_c_vfd"), tr("bom_soft_starter"), tr("rpt_c_24v"), tr("rpt_c_sel"), tr("rpt_c_loss"), tr("bom_suggested")])
+        motor_outputs = [f for f in feeders if f.cos_phi_source is not None or f.efficiency_source is not None]
+        cos_sources = {f.cos_phi_source for f in motor_outputs if f.cos_phi_source}
+        efficiency_sources = {f.efficiency_source for f in motor_outputs if f.efficiency_source}
+        cos_header = tr("col_cos_phi_assumed") if cos_sources == {"default"} else tr("col_cos_phi")
+        efficiency_header = tr("col_efficiency_assumed") if efficiency_sources == {"default"} else tr("col_efficiency")
+        _append_safe(ws2, [
+            tr("rpt_c_id"), tr("rpt_c_func"), tr("rpt_c_loc"), tr("rpt_c_desc"), tr("rpt_c_type"),
+            tr("rpt_c_kw"), cos_header, efficiency_header, tr("col_kva_normal"), tr("col_kva_starting"),
+            tr("rpt_c_ib"), tr("rpt_c_idelta"), tr("rpt_c_cable"), tr("rpt_c_pe_basis"), tr("rpt_c_iz"),
+            tr("rpt_c_k1"), tr("rpt_c_k2"), tr("rpt_c_ktot"), tr("rpt_c_method"), tr("rpt_c_len"),
+            tr("rpt_c_vd"), tr("rpt_c_prot"), tr("rpt_c_icu"), tr("rpt_c_km"), tr("rpt_c_kd"),
+            tr("rpt_c_ky"), tr("rpt_c_bim"), tr("rpt_c_vfd"), tr("bom_soft_starter"), tr("rpt_c_24v"),
+            tr("rpt_c_sel"), tr("rpt_c_loss"), tr("bom_suggested"),
+        ])
         thermal_preliminary = "PRELIMINARY" in (summary.thermal_method or "").upper()
         for f in feeders:
             vfd_rcd = f.selected_vfd.part_number if f.selected_vfd else (f.selected_rcd.part_number if f.selected_rcd else "-")
@@ -178,7 +208,28 @@ class ExcelExporter:
                        if thermal_preliminary else f.cable_total_derating_k)
             pe_basis = (_prelim(f.pe_basis_str, True)
                         if f.clearing_time_s is not None else f.pe_basis_str)
-            _append_safe(ws2, [f.feeder_id, f.func_tag, f.loc_tag, f.description, f.load_type.value, f.power_kw, f.design_current_ib_a, f.delta_loop_current_a or "-", f.cable_designation_str, pe_basis, f.cable_derated_iz_a, k1, k2, k_total, f.cable_method_ref_str, f.cable_length_m, f.voltage_drop_percent, f.selected_protection.part_number if f.selected_protection else "NONE", icu_str, f.selected_contactor_main.part_number if f.selected_contactor_main else "-", f.selected_contactor_delta.part_number if f.selected_contactor_delta else "-", f.selected_contactor_star.part_number if f.selected_contactor_star else "-", f.selected_bimetal.part_number if f.selected_bimetal else "-", vfd_rcd, f.selected_soft_starter.part_number if f.selected_soft_starter else "-", f"{f.ctrl_24v_holding_w} / +{f.ctrl_24v_pull_in_surge_w}", f.selectivity_state.value, f.total_feeder_loss_w, f.suggested_spec_str or "-"])
+            cos_phi_cell = _motor_assumption_excel(f.cos_phi_resolved, f.cos_phi_source)
+            efficiency_cell = _motor_assumption_excel(f.efficiency_resolved, f.efficiency_source)
+            motor_assumed = f.cos_phi_source == "default" or f.efficiency_source == "default"
+            normal_kva_cell = _motor_assumption_excel(f.kva_normal, "default" if motor_assumed else "plate")
+            starting_kva_cell = _motor_assumption_excel(
+                f.starting_kva if f.cos_phi_source is not None else None,
+                "default" if motor_assumed else "plate",
+            )
+            _append_safe(ws2, [
+                f.feeder_id, f.func_tag, f.loc_tag, f.description, f.load_type.value, f.power_kw,
+                cos_phi_cell, efficiency_cell, normal_kva_cell, starting_kva_cell,
+                f.design_current_ib_a, f.delta_loop_current_a or "-", f.cable_designation_str, pe_basis,
+                f.cable_derated_iz_a, k1, k2, k_total, f.cable_method_ref_str, f.cable_length_m,
+                f.voltage_drop_percent, f.selected_protection.part_number if f.selected_protection else "NONE",
+                icu_str, f.selected_contactor_main.part_number if f.selected_contactor_main else "-",
+                f.selected_contactor_delta.part_number if f.selected_contactor_delta else "-",
+                f.selected_contactor_star.part_number if f.selected_contactor_star else "-",
+                f.selected_bimetal.part_number if f.selected_bimetal else "-", vfd_rcd,
+                f.selected_soft_starter.part_number if f.selected_soft_starter else "-",
+                f"{f.ctrl_24v_holding_w} / +{f.ctrl_24v_pull_in_surge_w}", f.selectivity_state.value,
+                f.total_feeder_loss_w, f.suggested_spec_str or "-",
+            ])
 
         ws3 = wb.create_sheet("03_Validation_Log")
         _append_safe(ws3, [tr("rpt_v_rule"), tr("rpt_v_target"), tr("rpt_v_std"), tr("rpt_v_status"), tr("rpt_v_desc"), tr("rpt_v_evidence"), tr("rpt_v_cons"), tr("rpt_v_action"), 'Rule category', 'Application scope'])
@@ -318,6 +369,11 @@ class PrintableReportExporter:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         lang = i18n.get_language()
         direction = i18n.direction()
+        motor_outputs = [f for f in feeders if f.cos_phi_source is not None or f.efficiency_source is not None]
+        cos_sources = {f.cos_phi_source for f in motor_outputs if f.cos_phi_source}
+        efficiency_sources = {f.efficiency_source for f in motor_outputs if f.efficiency_source}
+        cos_header = tr("col_cos_phi_assumed") if cos_sources == {"default"} else tr("col_cos_phi")
+        efficiency_header = tr("col_efficiency_assumed") if efficiency_sources == {"default"} else tr("col_efficiency")
         feeder_rows = ""
         thermal_preliminary = "PRELIMINARY" in (summary.thermal_method or "").upper()
         for f in feeders:
@@ -350,9 +406,21 @@ class PrintableReportExporter:
             k2 = _prelim(f"{f.cable_grouping_factor_k2:g}", thermal_preliminary)
             k_total = _prelim(f"{f.cable_total_derating_k:g}", thermal_preliminary)
             pe_basis = _prelim(f.pe_basis_str, f.clearing_time_s is not None)
+            motor_assumed = f.cos_phi_source == "default" or f.efficiency_source == "default"
+            cos_phi_cell = _motor_assumption_html(f.cos_phi_resolved, f.cos_phi_source)
+            efficiency_cell = _motor_assumption_html(f.efficiency_resolved, f.efficiency_source)
+            kva_source = "default" if motor_assumed else "plate"
+            normal_kva_cell = _motor_assumption_html(f.kva_normal, kva_source)
+            starting_kva_cell = _motor_assumption_html(
+                f.starting_kva if f.cos_phi_source is not None else None,
+                kva_source,
+            )
             feeder_rows += f"""<tr>
                 <td dir="auto"><b><bdi dir="ltr">{_h(f.feeder_id)}</bdi></b><br><small><bdi dir="ltr">{_h(f.func_tag)}{_h(f.loc_tag)}</bdi></small></td>
                 <td class="cell-wrap" dir="auto">{_h(f.description)}</td><td>{_h(f.load_type.value)}</td><td>{_h(f.power_kw)}</td>
+                <td dir="auto">{cos_phi_cell}</td><td dir="auto">{efficiency_cell}</td>
+                <td dir="auto">{normal_kva_cell}{' kVA' if f.kva_normal is not None else ''}</td>
+                <td dir="auto">{starting_kva_cell}{' kVA' if f.cos_phi_source is not None else ''}</td>
                 <td><b>{_h(f.design_current_ib_a)} A</b></td><td dir="auto"><bdi dir="ltr">{eq}</bdi>{suggestion}</td>
                 <td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(f.cable_designation_str)}</span></b><br><small><span class="ltr-isolate" dir="ltr">Iz={'?' if f.cable_derated_iz_a is None else _h(f.cable_derated_iz_a)}A | L={_h(f.cable_length_m)}m</span></small><br><small><span class="ltr-isolate" dir="ltr">k1={_h(k1)} | k2={_h(k2)} | kΣ={_h(k_total)}</span> | <span class="bidi-isolate" dir="auto">{_h(f.cable_method_ref_str)}</span></small><br><small dir="auto">{_h(pe_basis)}</small></td>
                 <td>{_h(f.voltage_drop_percent)}%</td><td><span class="badge {sel_cls}">{_h(f.selectivity_state.value)}</span></td><td>{_h(f.total_feeder_loss_w)} W</td>
@@ -555,6 +623,7 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 .badge-preliminary {{ background: #FEF9C3; color: #854D0E; border: 1px solid #FDE047; }}
 .badge-error {{ background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }}
 .badge-insufficient {{ background: #E5E7EB; color: #4B5563; border: 1px solid #D1D5DB; }}
+.badge-assumed {{ background: #FEF3C7; color: #78350F; border: 1px solid #FCD34D; }}
 .signature-block {{ margin: 10px 0 24px; }}
 .sign-block {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 0; }}
 .sign-cell {{ border-top: 1.5px solid #1F4E78; padding-top: 6px; font-size: 11px; min-height: 44px; }}
@@ -619,7 +688,7 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <tr><td>{_h(tr("rpt_spd"))}</td><td dir="auto"><b><span class="bidi-isolate" dir="auto">{_h(spd_txt)}</span></b></td></tr>
 </table></div></div>
 <h2>{_h(tr("html_s3"))}</h2><table class="feeder-table">
-<thead><tr><th>{_h(tr("html_f_id"))}</th><th>{_h(tr("html_f_desc"))}</th><th>{_h(tr("html_f_type"))}</th><th>{_h(tr("html_f_kw"))}</th><th>{_h(tr("html_f_ib"))}</th><th>{_h(tr("html_f_eq"))}</th><th>{_h(tr("html_f_cable"))}</th><th>{_h(tr("html_f_vd"))}</th><th>{_h(tr("html_f_sel"))}</th><th>{_h(tr("html_f_loss"))}</th></tr></thead>
+<thead><tr><th>{_h(tr("html_f_id"))}</th><th>{_h(tr("html_f_desc"))}</th><th>{_h(tr("html_f_type"))}</th><th>{_h(tr("html_f_kw"))}</th><th>{_h(cos_header)}</th><th>{_h(efficiency_header)}</th><th>{_h(tr("col_kva_normal"))}</th><th>{_h(tr("col_kva_starting"))}</th><th>{_h(tr("html_f_ib"))}</th><th>{_h(tr("html_f_eq"))}</th><th>{_h(tr("html_f_cable"))}</th><th>{_h(tr("html_f_vd"))}</th><th>{_h(tr("html_f_sel"))}</th><th>{_h(tr("html_f_loss"))}</th></tr></thead>
 <tbody>{feeder_rows}</tbody></table>
 <h2>{_h(tr("html_s4"))}</h2><table class="trace-table">
 <thead><tr><th>{_h(tr("html_f_id"))}</th><th>{_h(tr("html_trace_ib"))}</th><th>{_h(tr("html_trace_iz0"))}</th><th>{_h(tr("html_trace_k1"))}</th><th>{_h(tr("html_trace_k2"))}</th><th>{_h(tr("html_trace_ktot"))}</th><th>{_h(tr("html_trace_iz"))}</th><th>{_h(tr("html_trace_formula"))}</th><th>{_h(tr("html_trace_vd"))}</th></tr></thead>
