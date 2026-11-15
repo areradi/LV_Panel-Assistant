@@ -1574,11 +1574,24 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                      'STAR-DELTA': LoadType.MOTOR_STAR_DELTA, 'VFD': LoadType.MOTOR_VFD,
                      'SOFTSTARTER': LoadType.MOTOR_SOFT_STARTER, 'FEEDER': LoadType.SUB_FEEDER,
                      'RESISTIVE': LoadType.HEATER_RESISTIVE}
-            pending = [FeederInput(
-                feeder_id=row.feeder_tag, description=row.description, load_type=types[row.starter_type],
-                power_kw=row.power_kw, cable_length_m=row.length_m, cos_phi=row.cos_phi,
-                efficiency=row.efficiency, loc_tag=self.wiz_entries['wiz_panel_tag'].get(),
-                input_assumptions=row.assumed_fields) for row in result.valid_rows]
+            pending = []
+            optional_fields = (
+                "phases", "demand_factor_kd", "cable_section_mm2", "conductor_material",
+                "thdi_pct", "has_socket_outlets", "fire_resistant",
+            )
+            for row in result.valid_rows:
+                feeder_fields = {
+                    name: value for name in optional_fields
+                    if (value := getattr(row, name)) is not None
+                }
+                if "conductor_material" in feeder_fields:
+                    feeder_fields["conductor_material"] = ConductorMaterial(feeder_fields["conductor_material"])
+                pending.append(FeederInput(
+                    feeder_id=row.feeder_tag, description=row.description, load_type=types[row.starter_type],
+                    power_kw=row.power_kw, cable_length_m=row.length_m, cos_phi=row.cos_phi,
+                    efficiency=row.efficiency, loc_tag=self.wiz_entries['wiz_panel_tag'].get(),
+                    input_assumptions=row.assumed_fields, **feeder_fields,
+                ))
             ids = [f.feeder_id for f in (self.current_feeders or []) + pending]
             if len(ids) != len(set(ids)):
                 raise ValueError(tr('paste_duplicate'))
