@@ -137,6 +137,53 @@ def test_feeder_edit_dialog_builds_with_real_widgets(app):
         dialog.destroy()
 
 
+def test_main_window_minsize_fits_compact_work_area(app):
+    assert 1100 <= app._min_width <= max(1100, app.winfo_screenwidth() - 40)
+    assert 650 <= app._min_height <= max(650, app.winfo_screenheight() - 80)
+
+
+def test_initial_window_dimensions_fit_1366_by_768_screen():
+    assert gui._initial_window_dimensions(1366, 768) == (1326, 688)
+
+
+def test_main_window_minsize_uses_content_request_with_screen_caps(app):
+    assert gui._window_minsize_dimensions(1180, 700, 1366, 768) == (1220, 688)
+    assert gui._window_minsize_dimensions(1500, 900, 1366, 768) == (1326, 688)
+
+
+def test_project_entries_can_shrink_below_old_fixed_width(app):
+    form = app._project_form_frame
+    assert int(form.grid_columnconfigure(1)["weight"]) > 0
+    assert app.wiz_entries["wiz_project_name"].cget("width") < 210
+
+
+def test_project_action_buttons_remain_mapped_at_minsize(app):
+    app.deiconify()
+    try:
+        app.geometry(f"{app._min_width}x{app._min_height}")
+        app.update()
+        assert app._project_action_buttons
+        assert all(button.winfo_ismapped() for button in app._project_action_buttons)
+    finally:
+        app.withdraw()
+
+
+def test_feeder_save_cancel_buttons_stay_outside_scrollable_form(app):
+    dialog = gui.FeederEditDialog(app, app.current_feeders[0], lambda _feeder: None)
+    try:
+        buttons = [
+            child for parent in dialog.winfo_children()
+            for child in parent.winfo_children()
+            if isinstance(child, ctk.CTkButton)
+        ]
+        button_labels = {button.cget("text") for button in buttons}
+        assert gui.tr("dlg_save") in button_labels
+        assert gui.tr("dlg_cancel") in button_labels
+        assert all(button.master is not dialog._form_frame for button in buttons)
+    finally:
+        dialog.destroy()
+
+
 def test_blank_designer_name_maps_to_none(app):
     app.current_project, app.current_feeders = gui.build_demo_project()
     app._fill_project_form(app.current_project)

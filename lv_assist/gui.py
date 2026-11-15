@@ -76,6 +76,18 @@ from lv_assist.catalog import DB_PATH
 LANG_SEGMENT_TO_CODE = {"FA": "fa", "EN": "en", "DE": "de"}
 
 
+def _initial_window_dimensions(screen_width: int, screen_height: int) -> tuple[int, int]:
+    return min(1440, screen_width - 40), min(820, screen_height - 80)
+
+
+def _window_minsize_dimensions(
+    requested_width: int, requested_height: int, screen_width: int, screen_height: int,
+) -> tuple[int, int]:
+    width = max(1100, min(requested_width + 40, screen_width - 40))
+    height = max(650, min(requested_height + 80, screen_height - 80))
+    return width, height
+
+
 def _open_local_file(filepath: str) -> bool:
     """Open a local file in the default browser using a valid file URI."""
     try:
@@ -635,7 +647,7 @@ class FeederEditDialog(ctk.CTkToplevel):
         self._ins_menu.set(feeder.insulation.value)
         self._ins_menu.pack(side="right", padx=6)
 
-        btn_row = ctk.CTkFrame(self); btn_row.pack(fill="x", padx=14, pady=(16, 8))
+        btn_row = ctk.CTkFrame(self); btn_row.pack(side="bottom", fill="x", padx=14, pady=(8, 8))
         ctk.CTkButton(btn_row, text=tr("dlg_save"), fg_color="#1E8449", font=font,
                       command=self._save).pack(side="left", padx=8, expand=True)
         ctk.CTkButton(btn_row, text=tr("dlg_cancel"), fg_color="#566573", font=font,
@@ -1110,8 +1122,10 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
     def __init__(self):
         super().__init__()
         i18n.set_config_path(config_file_path())
-        self.geometry("1440x820")
-        self.minsize(1280, 740)
+        width, height = _initial_window_dimensions(
+            self.winfo_screenwidth(), self.winfo_screenheight(),
+        )
+        self.geometry(f"{width}x{height}")
         ctk.set_default_color_theme("blue")
         ctk.set_appearance_mode(i18n.get_theme())
         self.catalog = CatalogRepository.get_default_catalog()
@@ -1133,6 +1147,12 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         self.last_auto_results = None
         self._build_ui()
         self._load_default_demo()
+        self.update_idletasks()
+        min_width, min_height = _window_minsize_dimensions(
+            self.winfo_reqwidth(), self.winfo_reqheight(),
+            self.winfo_screenwidth(), self.winfo_screenheight(),
+        )
+        self.minsize(min_width, min_height)
 
     # ================================================================= ناوبری
     def _build_ui(self):
@@ -1236,7 +1256,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             lbl.grid(row=r, column=label_column, padx=(12, 8), pady=6, sticky="ew")
             if kind == "entry":
                 variable = ctk.StringVar(value=default)
-                ent = ctk.CTkEntry(form, width=210, height=40, font=font, textvariable=variable,
+                ent = ctk.CTkEntry(form, height=40, font=font, textvariable=variable,
                                    fg_color=('#F6F9FC', '#203246'), border_color=('#8198AE', '#4A6580'))
                 variable.trace_add("write", self._on_project_input_change)
                 ent.grid(row=r, column=input_column, padx=(8, 16), pady=6, sticky="ew")
@@ -1250,7 +1270,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 prefix = {"wiz_panel_type": "panel_", "wiz_scenario": "scenario_", "wiz_mounting": "mount_"}.get(key)
                 menu_class = LocalizedOptionMenu if prefix else DirectionalOptionMenu
                 localized = {"translation_prefix": prefix} if prefix else {}
-                menu = menu_class(form, values=default, width=210, height=40, font=font, dynamic_resizing=False,
+                menu = menu_class(form, values=default, height=40, font=font, dynamic_resizing=True,
                                   command=self._on_project_input_change, **localized)
                 menu.set(default[0])
                 menu.grid(row=r, column=input_column, padx=(8, 16), pady=6, sticky="ew")
@@ -1295,15 +1315,19 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         ToolTip(self.mfg_menu, tr("tip_mfg"))
 
         btn_bar = ctk.CTkFrame(parent, fg_color="transparent")
-        btn_bar.pack(fill="x", padx=14, pady=10)
-        ctk.CTkButton(btn_bar, text=tr("wiz_to_feeders"), fg_color="#1E8449", height=40, font=font,
-                      command=lambda: self._switch_view(1)).pack(side="left", padx=8)
-        ctk.CTkButton(btn_bar, text=tr("btn_import"), fg_color="#385723", font=font,
-                      command=self.action_import_excel).pack(side="left", padx=8)
-        ctk.CTkButton(btn_bar, text=tr("btn_template"), fg_color="#2E75B6", font=font,
-                      command=self.action_generate_template).pack(side="left", padx=8)
-        ctk.CTkButton(btn_bar, text=tr("btn_demo"), fg_color="#C55A11", font=font,
-                      command=self.action_load_demo).pack(side="left", padx=8)
+        btn_bar.pack(side="bottom", fill="x", padx=14, pady=(8, 8))
+        self._project_action_buttons = [
+            ctk.CTkButton(btn_bar, text=tr("wiz_to_feeders"), fg_color="#1E8449", height=40, font=font,
+                          command=lambda: self._switch_view(1)),
+            ctk.CTkButton(btn_bar, text=tr("btn_import"), fg_color="#385723", font=font,
+                          command=self.action_import_excel),
+            ctk.CTkButton(btn_bar, text=tr("btn_template"), fg_color="#2E75B6", font=font,
+                          command=self.action_generate_template),
+            ctk.CTkButton(btn_bar, text=tr("btn_demo"), fg_color="#C55A11", font=font,
+                          command=self.action_load_demo),
+        ]
+        for button in self._project_action_buttons:
+            button.pack(side="left", padx=8)
 
     def _toggle_advanced_fields(self, force=None):
         self._advanced_fields_visible = not self._advanced_fields_visible if force is None else force
