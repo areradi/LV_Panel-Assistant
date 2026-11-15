@@ -27,7 +27,7 @@ import webbrowser
 import zipfile
 import tempfile
 from datetime import datetime
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict
 import tkinter as tk
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -232,6 +232,95 @@ class ExcelImportError(Exception):
 
 
 class ExcelInputManager:
+    FEEDER_HEADER_PARSER_FIELDS = {
+        "feeder_id": "feeder_tag",
+        "description": "description",
+        "load_type": "starter_type",
+        "power_kw": "power_kw",
+        "phases": "phases",
+        "cos_phi": "cos_phi",
+        "efficiency": "efficiency",
+        "demand_factor_kd": "demand_factor_kd",
+        "cable_length_m": "length_m",
+        "cable_section_mm2": "cable_section_mm2",
+        "has_socket_outlets": "has_socket_outlets",
+        "conductor_material": "conductor_material",
+        "fire_resistant": "fire_resistant",
+        "thdi_pct": "thdi_pct",
+    }
+    FEEDER_HEADER_EXTRA_SYNONYMS = {
+        "feeder_id": ["fid", "abgangs id", "کد فیدر"],
+        "func_tag": ["function", "func tag", "=function", "=funktion", "تابع"],
+        "loc_tag": ["location", "loc tag", "+location", "محل", "مکان"],
+        "description": ["beschreibung", "شرح بار", "شرح"],
+        "load_type": ["load type", "lastart", "نوع بار"],
+        "power_kw": ["power kw", "leistung kw", "توان kw"],
+        "phases": ["phases", "phasen", "فاز"],
+        "cos_phi": ["cos φ", "cos phi", "ضریب توان"],
+        "efficiency": ["wirkungsgrad", "راندمان"],
+        "demand_factor_kd": ["demand kd", "gleichzeitigkeitsf", "ضریب تقاضا"],
+        "cable_length_m": ["length m", "länge m", "طول کابل m"],
+        "cable_section_mm2": ["section mm2", "querschnitt mm2", "مقطع mm2"],
+        "has_socket_outlets": ["sockets", "steckdosen", "پریز"],
+        "conductor_material": ["conductor", "leiterwerkstoff", "جنس هادی"],
+        "insulation": ["insulation", "isolierung", "عایق"],
+        "installation_method": ["install method", "installation method", "verlegeart", "روش نصب"],
+        "fire_resistant": ["fire res", "brandschutz", "مقاوم حریق"],
+        "thdi_pct": ["thdi", "thdi %"],
+        "fire_pump_service": ["fire pump", "feuerlöschpumpe", "پمپ آتش نشان"],
+        "locked_rotor_current_a": ["locked rotor current a", "locked rotor current"],
+    }
+
+    @staticmethod
+    def _normalize_excel_header(value: str) -> str:
+        normalized = str(value or "").strip().casefold().replace("_", " ").replace("²", "2")
+        normalized = normalized.replace("=", " ").replace("+", " ").replace("-", " ")
+        normalized = normalized.replace("(", " ").replace(")", " ").replace("?", " ")
+        return " ".join(normalized.split())
+
+    @classmethod
+    def _map_feeder_headers(cls, headers: List[str]) -> Dict[str, int]:
+        mapping: Dict[str, int] = {}
+        parser_synonyms = ExcelClipboardParser.HEADER_SYNONYMS
+        all_fields = set(cls.FEEDER_HEADER_PARSER_FIELDS) | set(cls.FEEDER_HEADER_EXTRA_SYNONYMS)
+
+        for column_index, header in enumerate(headers):
+            normalized_header = cls._normalize_excel_header(header)
+            if not normalized_header:
+                continue
+            exact_matches = []
+            partial_matches = []
+            for field_name in all_fields:
+                source_field = cls.FEEDER_HEADER_PARSER_FIELDS.get(field_name)
+                synonyms = [field_name, field_name.replace("_", " ")]
+                if source_field:
+                    synonyms.extend(parser_synonyms.get(source_field, []))
+                synonyms.extend(cls.FEEDER_HEADER_EXTRA_SYNONYMS.get(field_name, []))
+                normalized_synonyms = {
+                    cls._normalize_excel_header(synonym) for synonym in synonyms if synonym
+                }
+                if normalized_header in normalized_synonyms:
+                    exact_matches.append(field_name)
+                elif any(
+                    len(synonym) >= 4 and synonym in normalized_header
+                    for synonym in normalized_synonyms
+                ):
+                    partial_matches.append(field_name)
+
+            matches = exact_matches or partial_matches
+            if len(matches) > 1:
+                raise ExcelImportError(
+                    f"Feeders_List column '{header}' matches multiple fields: {', '.join(sorted(matches))}"
+                )
+            if matches:
+                field_name = matches[0]
+                if field_name in mapping:
+                    raise ExcelImportError(
+                        f"Feeders_List has multiple columns for '{field_name}'"
+                    )
+                mapping[field_name] = column_index
+        return mapping
+
     @staticmethod
     def create_input_template(filepath: str) -> None:
         wb = openpyxl.Workbook()
@@ -437,61 +526,95 @@ class ExcelInputManager:
 
             ws_feed = wb["Feeders_List"]
             headers = [str(c.value) if c.value else "" for c in ws_feed[1]]
+            feeder_columns = ExcelInputManager._map_feeder_headers(headers)
+            required_columns = {"feeder_id", "description", "load_type", "power_kw"}
+            missing_columns = sorted(required_columns - feeder_columns.keys())
+            if missing_columns:
+                raise ExcelImportError(
+                    "Feeders_List is missing required columns: " + ", ".join(missing_columns)
+                )
+
             feeders = []
             for row_no, row in enumerate(ws_feed.iter_rows(min_row=2, values_only=True), start=2):
-                if not row or row[0] is None: continue
-                row = list(row) + [None] * 19
+                row = list(row)
+                if not row or all(value in (None, "") for value in row):
+                    continue
 
-                def _cell(i, default=None):
-                    return row[i] if row[i] not in (None, "") else default
+                def _cell(field_name, default=None):
+                    column_index = feeder_columns.get(field_name)
+                    if column_index is None or column_index >= len(row):
+                        return default
+                    return row[column_index] if row[column_index] not in (None, "") else default
 
-                def _num(i, key_label="", default=None):
+                def _num(field_name, default=None):
                     """تبدیل عددی ایمن — مقدار خراب به‌جای کرش، خطای ردیفی دوستانه تولید می‌کند."""
-                    val = _cell(i)
+                    val = _cell(field_name)
                     if val is None:
                         return default
                     try:
                         return float(val)
                     except (TypeError, ValueError):
+                        column_index = feeder_columns[field_name]
                         errors.append(tr("err_excel_row_value", row=row_no,
-                                         col=headers[i] or f"Col{i + 1}", value=str(val)))
+                                         col=headers[column_index] or field_name, value=str(val)))
                         return default
 
-                def _cell_enum(cls, i, default):
+                def _cell_enum(cls, field_name, default):
                     # F-013: خطای Enum با آدرس دقیق سلول (شیت/سطر/ستون) ثبت می‌شود
-                    val = _cell(i, default.value)
-                    try: return cls(str(val).strip())
+                    val = _cell(field_name, default.value)
+                    normalized = str(val).strip()
+                    if cls is LoadType:
+                        normalized = {
+                            "DOL": LoadType.MOTOR_DOL.value,
+                            "YD": LoadType.MOTOR_STAR_DELTA.value,
+                            "STAR-DELTA": LoadType.MOTOR_STAR_DELTA.value,
+                            "SOFTSTARTER": LoadType.MOTOR_SOFT_STARTER.value,
+                            "VFD": LoadType.MOTOR_VFD.value,
+                            "FEEDER": LoadType.SUB_FEEDER.value,
+                            "RESISTIVE": LoadType.HEATER_RESISTIVE.value,
+                        }.get(normalized.upper(), normalized)
+                    try: return cls(normalized)
                     except Exception:
                         allowed = ", ".join(e.value for e in cls)
+                        column_index = feeder_columns[field_name]
                         errors.append(tr("err_enum_feed", sheet="Feeders_List", row=row_no,
-                                         col=headers[i] or f"Col{i + 1}", value=str(val), allowed=allowed))
+                                         col=headers[column_index] or field_name, value=str(val), allowed=allowed))
                         return default
 
-                power_kw = _num(5, "power_kw")
-                if not power_kw or power_kw <= 0:
-                    errors.append(tr("err_excel_row_power", row=row_no, id=str(row[0]).strip()))
+                feeder_id = str(_cell("feeder_id", "")).strip()
+                if not feeder_id:
+                    column_index = feeder_columns["feeder_id"]
+                    errors.append(tr("err_excel_row_value", row=row_no,
+                                     col=headers[column_index] or "feeder_id", value=""))
                     continue
 
-                cos_phi = _num(7)
-                eff = _num(8)
-                cable_len = _num(10)
-                cable_sec = _num(11)
-                thdi = _num(17)
+                power_kw = _num("power_kw")
+                if not power_kw or power_kw <= 0:
+                    errors.append(tr("err_excel_row_power", row=row_no, id=feeder_id))
+                    continue
+
+                cos_phi = _num("cos_phi")
+                eff = _num("efficiency")
+                cable_len = _num("cable_length_m")
+                cable_sec = _num("cable_section_mm2")
+                thdi = _num("thdi_pct")
 
                 feeders.append(FeederInput(
-                    feeder_id=str(row[0]).strip(), func_tag=str(_cell(1, "=PWR")), loc_tag=str(_cell(2, project.panel_tag)),
-                    description=str(_cell(3, "")), load_type=_cell_enum(LoadType, 4, LoadType.SUB_FEEDER), power_kw=float(power_kw),
-                    phases=_num(6, "phases", 3), cos_phi=cos_phi,
-                    efficiency=eff, demand_factor_kd=_num(9, "demand", 1.0),
+                    feeder_id=feeder_id, func_tag=str(_cell("func_tag", "=PWR")),
+                    loc_tag=str(_cell("loc_tag", project.panel_tag)),
+                    description=str(_cell("description", "")),
+                    load_type=_cell_enum(LoadType, "load_type", LoadType.SUB_FEEDER), power_kw=float(power_kw),
+                    phases=_num("phases", 3), cos_phi=cos_phi,
+                    efficiency=eff, demand_factor_kd=_num("demand_factor_kd", 1.0),
                     cable_length_m=cable_len, cable_section_mm2=cable_sec,
-                    has_socket_outlets=ExcelInputManager._parse_bool(_cell(12)),
-                    conductor_material=_cell_enum(ConductorMaterial, 13, ConductorMaterial.CU),
-                    insulation=_cell_enum(InsulationType, 14, InsulationType.PVC),
-                    installation_method=_cell_enum(InstallationMethod, 15, InstallationMethod.C),
-                    fire_resistant=ExcelInputManager._parse_bool(_cell(16)),
+                    has_socket_outlets=ExcelInputManager._parse_bool(_cell("has_socket_outlets")),
+                    conductor_material=_cell_enum(ConductorMaterial, "conductor_material", ConductorMaterial.CU),
+                    insulation=_cell_enum(InsulationType, "insulation", InsulationType.PVC),
+                    installation_method=_cell_enum(InstallationMethod, "installation_method", InstallationMethod.C),
+                    fire_resistant=ExcelInputManager._parse_bool(_cell("fire_resistant")),
                     thdi_pct=thdi,
-                    fire_pump_service=ExcelInputManager._parse_bool(_cell(18)),
-                    locked_rotor_current_a=_num(19, 'locked_rotor_current_a'),
+                    fire_pump_service=ExcelInputManager._parse_bool(_cell("fire_pump_service")),
+                    locked_rotor_current_a=_num("locked_rotor_current_a"),
                 ))
             if not feeders and not errors:
                 raise ExcelImportError(tr("err_excel_generic"))
