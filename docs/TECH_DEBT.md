@@ -12,7 +12,7 @@ Items from Print QA report (2026-11-14) still open.
 - **Q-09** Summary tiles without intermediate net cost
 - **Q-10** Page break protection for totals/footer blocks
 - **E-01** Wide tables in A4 portrait (8-column checks table)
-- **E-02** PANEL-DATACODE-PROVENANCE with 11 part numbers in one cell
+- ~~**E-02** PANEL-DATACODE-PROVENANCE with 11 part numbers in one cell~~ (fixed in PR-A via `cell-evidence` class)
 - **E-06** TCC chart legend overlap
 - **E-07** Header/body column count mismatch
 - **E-08** Disclaimer text glued to footer
@@ -24,7 +24,7 @@ Items from Print QA report (2026-11-14) still open.
 - **E-10** Reduce report volume (12 pages to 7-8)
 
 ### Remaining from final QA (2026-11-14)
-- [ ] Signature block in Design Verification still orphaned on own page
+- [x] Signature block in Design Verification (fixed in PR-A)
 - [ ] `file:///...` path in footer (check HTML vs Chrome)
 - [ ] Section 10.5 in Design Verification clipped at page bottom
 - [ ] ASSUMED_DEFAULT / "T2" / spd_class columns merging in Assumptions
