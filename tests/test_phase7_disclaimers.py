@@ -186,16 +186,17 @@ def test_bom_csv_preflights_locked_destination(tmp_path, monkeypatch):
     assert not path.exists()
 
 
-def test_all_svg_generators_include_general_disclaimer():
+def test_all_svg_generators_include_general_disclaimer(monkeypatch):
     import xml.etree.ElementTree as ET
 
     from lv_assist.control_circuits import ControlCircuitGenerator
     from lv_assist.gui_output_bridge import GuiOutputBridge
     from lv_assist.iec_sld_svg import IECSldSvgGenerator
-    from lv_assist.i18n import tr
+    from lv_assist.i18n import i18n, tr
     from lv_assist.layout import PanelLayoutGenerator
     from lv_assist.outputs import SldGenerator, TccGenerator
 
+    monkeypatch.setattr(i18n, "_language", "fa")
     project, feeders, outputs, summary, _ = _calculation()
     svgs = [
         SldGenerator.generate_svg(project, outputs, summary),
@@ -211,25 +212,36 @@ def test_all_svg_generators_include_general_disclaimer():
     parsed = [ET.fromstring(svg) for svg in svgs]
     disclaimer_nodes = []
     for root in parsed:
-        nodes = [node for node in root.findall(".//svg:text", ns) if node.text == disclaimer]
+        nodes = [node for node in root.findall(".//svg:text", ns)
+                 if "".join(node.itertext()) == disclaimer]
         assert len(nodes) == 1
         node = nodes[0]
         disclaimer_nodes.append(node)
         assert node.attrib["font-family"] == "sans-serif"
         assert node.attrib["fill"] == "#666"
+        assert node.attrib["direction"] == "rtl"
+        assert node.attrib["unicode-bidi"] == "embed"
+        first_line = node.find("svg:tspan", ns)
+        assert first_line is not None
+        ltr_runs = [span for span in node.findall(".//svg:tspan", ns)
+                    if span.attrib.get("direction") == "ltr"]
+        assert any("IEC 61439" in "".join(span.itertext()) for span in ltr_runs)
         bounds = root.attrib.get("viewBox")
         bottom = float(bounds.split()[3]) if bounds else float(root.attrib["height"].removesuffix("px"))
-        assert float(node.attrib["y"]) + float(node.attrib["font-size"]) <= bottom
+        lines = node.findall("svg:tspan", ns)
+        last_line_y = float(lines[-1].attrib["y"])
+        assert last_line_y + float(node.attrib["font-size"]) <= bottom
         stamp = next(
             text for text in root.findall(".//svg:text", ns)
             if text.text == "PRELIMINARY: engineering review required"
         )
-        assert float(node.attrib["y"]) - float(stamp.attrib["y"]) >= 15.0
+        assert float(first_line.attrib["y"]) - float(stamp.attrib["y"]) >= 15.0
 
     # Footer sits below Layout's final note.
     layout_texts = list(parsed[2].findall(".//svg:text", ns))
     layout_note = next(node for node in layout_texts if node.text == tr("lay_note"))
-    assert float(disclaimer_nodes[2].attrib["y"]) - float(layout_note.attrib["y"]) > 17.0
+    layout_footer_line = disclaimer_nodes[2].find("svg:tspan", ns)
+    assert float(layout_footer_line.attrib["y"]) - float(layout_note.attrib["y"]) > 17.0
 
     # It is below each SLD title-block rectangle, rather than inside it.
     for root, footer in ((parsed[0], disclaimer_nodes[0]), (parsed[4], disclaimer_nodes[4])):
@@ -242,7 +254,73 @@ def test_all_svg_generators_include_general_disclaimer():
             if node.text == "PRELIMINARY: engineering review required"
         )
         assert float(stamp.attrib["y"]) - float(stamp.attrib["font-size"]) >= title_bottom
-        assert float(footer.attrib["y"]) - float(footer.attrib["font-size"]) >= title_bottom
+        footer_line = footer.find("svg:tspan", ns)
+        assert float(footer_line.attrib["y"]) - float(footer.attrib["font-size"]) >= title_bottom
+
+
+@pytest.mark.parametrize(
+    ("language", "direction"), [("fa", "rtl"), ("en", "ltr"), ("de", "ltr")]
+)
+def test_svg_disclaimer_uses_language_direction_and_isolates_latin(monkeypatch, language, direction):
+    import xml.etree.ElementTree as ET
+
+    from lv_assist.drawing_status import preliminary_drawing
+    from lv_assist.i18n import i18n
+
+    monkeypatch.setattr(i18n, "_language", language)
+
+    @preliminary_drawing
+    def render():
+        return (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 100" height="100">'
+            '<rect x="0" y="0" width="10" height="10"/></svg>'
+        )
+
+    root = ET.fromstring(render())
+    disclaimer_node = next(
+        node for node in root.findall(
+            ".//svg:text", {"svg": "http://www.w3.org/2000/svg"}
+        )
+        if node.text != "PRELIMINARY: engineering review required"
+    )
+    assert disclaimer_node.attrib["direction"] == direction
+    assert disclaimer_node.attrib["unicode-bidi"] == "embed"
+    assert disclaimer_node.attrib["text-anchor"] == ("end" if language == "fa" else "start")
+    if language == "fa":
+        ltr_runs = [
+            span for span in disclaimer_node.findall(
+                ".//svg:tspan", {"svg": "http://www.w3.org/2000/svg"}
+            )
+            if span.attrib.get("direction") == "ltr"
+        ]
+        assert any("IEC 61439" in "".join(span.itertext()) for span in ltr_runs)
+    assert "".join(disclaimer_node.itertext()) == i18n._table(language)["disclaimer_general"]
+    assert "\u2068" not in "".join(disclaimer_node.itertext())
+    assert "\u2069" not in "".join(disclaimer_node.itertext())
+
+
+def test_render_bidi_text_wraps_and_preserves_ltr_runs():
+    import xml.etree.ElementTree as ET
+
+    from lv_assist.drawing_status import render_bidi_text
+
+    text = "گواهی انطباق IEC 61439 نیست و روی ریل DIN طبق استاندارد است"
+    svg_text = render_bidi_text(
+        text, x=190, y=10, lang="fa", font_size=6, max_width=100, max_lines=3,
+        **{"text-anchor": "end", "fill": "#666"},
+    )
+    root = ET.fromstring(
+        f'<svg xmlns="http://www.w3.org/2000/svg">{svg_text}</svg>'
+    )
+    text_node = root.find("svg:text", {"svg": "http://www.w3.org/2000/svg"})
+    lines = text_node.findall("svg:tspan", {"svg": "http://www.w3.org/2000/svg"})
+    assert 1 < len(lines) <= 3
+    assert "".join(text_node.itertext()) == text
+    ltr_runs = [span for span in text_node.findall(
+        ".//svg:tspan", {"svg": "http://www.w3.org/2000/svg"}
+    ) if span.attrib.get("direction") == "ltr"]
+    assert any("IEC 61439" in "".join(span.itertext()) for span in ltr_runs)
+    assert any("DIN" in "".join(span.itertext()) for span in ltr_runs)
 
 
 def test_eplan_placeholder_button_is_disabled_and_has_tooltip(monkeypatch):

@@ -51,3 +51,38 @@ Single source of truth for:
 1. Sprint 2 (P1): G-01, Q-04, Q-08, E-01, E-02, E-06, E-07
 2. Sprint 3 (P2): G-12, Q-09, Q-11, Q-12, E-10
 3. Final cleanup: Remaining QA items above
+## T-036-SVG-BiDi — SVG Persian text BiDi + Overflow (UNRESOLVED)
+
+**Status:** UNRESOLVED. WIP committed in wip(svg): tspan attempt (T-036-BiDi).
+
+### Symptoms (visual QA 2026-11-16)
+- IEC 61439 renders as C 61439 (IE dropped) in disclaimer FA
+- (typisch) and Im appear in wrong positions
+- Layout footer text overlaps with disclaimer
+- Disclaimer overflows and is cut at edges in Layout/SLD/TCC
+
+### Attempts made
+1. **FSI/PDI** (\u2068...\u2069) — first attempt in 223909c — failed: Chrome Headless does not render Unicode isolation controls in SVG
+2. **<tspan direction="ltr">** — WIP attempt — failed: still shows wrong order / cut
+
+### Root cause (hypothesis, needs investigation)
+- Chrome Headless SVG BiDi rendering may differ from browser rendering
+- Text anchor (	ext-anchor="start"/"end") interacts with direction="rtl" in ways that break rendering
+- Possibly PDF pipeline (--print-to-pdf) doesn't preserve SVG text BiDi attributes
+- iewBox math + font metrics estimation for wrap may be inaccurate
+
+### Investigation plan (for Sprint 3)
+1. Reproduce in browser first (open generated SVG directly in Chrome/Firefox) vs PDF
+2. If SVG is OK in browser but PDF is broken → it's the PDF pipeline, not SVG
+3. If SVG is broken in browser too → check 	ext-anchor + direction combination
+4. Consider alternative: use separate <text> elements per Latin/FA run with manual x positioning
+5. Consider: render FA text as raster/image (not vector) — loses selectability but guarantees visual
+6. Consider: use Vazirmatn font explicitly in SVG with ont-family="Vazirmatn"
+
+### Files touched (WIP)
+- lv_assist/drawing_status.py (render_bidi_text helper)
+- 	ests/test_phase7_disclaimers.py (29 tests — pass but don't cover visual correctness)
+
+### Not blocking
+- Phase 7 can proceed to T-034
+- T-036 (Disclaimer exists in SVG) technically complete, but visual rendering issue remains
