@@ -21,6 +21,7 @@ PLC → محاسبات و نتایج → نقشه‌ها → خروجی‌ها �
 """
 import os
 import math
+import re
 from pathlib import Path
 import sys
 import webbrowser
@@ -1265,6 +1266,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         self._last_calculation_feeders = []
         self._last_calc_time = None
         self._export_buttons: List = []
+        self._disabled_export_buttons: List = []
         self._status_lbl = None
         self.instruments_list: List[FieldInstrumentInput] = []
         self.last_auto_results = None
@@ -1951,6 +1953,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         out_frame = ctk.CTkFrame(parent, corner_radius=8)
         out_frame.pack(fill="x", padx=10, pady=(8, 4))
         self._export_buttons = []
+        self._disabled_export_buttons = []
 
         def _add_btn(parent_f, text, color, cmd, tip_key=None):
             b = ctk.CTkButton(parent_f, text=text, fg_color="#24415E", hover_color="#1763C0", font=font, height=36, command=cmd)
@@ -1969,9 +1972,19 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             ).pack(anchor="w", padx=6, pady=3)
             actions = ctk.CTkFrame(row, fg_color="transparent")
             actions.pack(fill="x", padx=4, pady=4)
-            for index, (text, color, cmd) in enumerate(buttons):
+            for index, button_spec in enumerate(buttons):
+                text, color, cmd = button_spec[:3]
+                enabled = button_spec[3] if len(button_spec) > 3 else True
+                tip_key = button_spec[4] if len(button_spec) > 4 else None
                 actions.grid_columnconfigure(index % 3, weight=1)
-                button = _add_btn(actions, text, color, cmd)
+                button = _add_btn(actions, text, color, cmd, tip_key)
+                if not enabled:
+                    button.configure(
+                        state="disabled", fg_color="gray", text_color="darkgray",
+                        hover_color="gray",
+                    )
+                    self._export_buttons.remove(button)
+                    self._disabled_export_buttons.append(button)
                 button.pack_forget()
                 button.grid(row=index // 3, column=index % 3, sticky="ew", padx=4, pady=4)
             if extra_right_btn:
@@ -1982,6 +1995,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         # گروه ۱: دفترچه محاسبات و مدارک
         _group("grp_docs", [
             (tr("btn_export"), "#C55A11", self.action_export_report),
+            (tr("btn_bom_csv"), "#566573", self.action_export_bom_csv),
             (tr("btn_report"), "#6C3483", self.action_open_printable_report),
             (tr("btn_pdf"), "#B03A2E", self.action_export_pdf),
             (tr("btn_dv"), "#1F618D", self.action_export_dv),
@@ -1994,6 +2008,8 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             [
                 (tr("btn_tcc"), "#7D3C98", self.action_export_tcc),
                 (tr("btn_layout"), "#8E44AD", self.action_export_layout),
+                (tr("btn_eplan"), "#64748B", self.action_export_eplan,
+                 False, "tip_eplan_coming_soon"),
             ],
             extra_right_btn=(tr("btn_export_all"), "#1E8449", self.action_export_all, "tip_export_all"),
         )
@@ -2459,7 +2475,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             self._status_lbl.configure(text=tr("lbl_up_to_date", a=self._last_calc_time or "-"), text_color=("#176333", "#65D6A0"))
         state = "disabled" if (self._stale or not self.last_results) else "normal"
         for b in self._export_buttons:
-            try: b.configure(state=state)
+            try: b.configure(state="disabled" if b in self._disabled_export_buttons else state)
             except Exception: pass
         self._refresh_precision_context()
 
@@ -2549,6 +2565,35 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             f_outs, summary, validations = self.last_results
             ExcelExporter.export_to_excel(path, self.current_project, f_outs, summary, validations)
             messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+
+    def action_export_bom_csv(self):
+        results = self._get_results()
+        if not results:
+            return
+        project_tag = re.sub(r"[^A-Za-z0-9_-]+", "_", self.current_project.panel_tag).strip("_")
+        project_tag = project_tag or "PANEL"
+        initial_filename = f"BOM_Export_{project_tag}_{datetime.now():%Y%m%d_%H%M}.csv"
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            initialfile=initial_filename,
+            filetypes=[(tr("btn_bom_csv"), "*.csv")],
+        )
+        if not filename:
+            return
+        filename = str(Path(filename).with_suffix(".csv"))
+        try:
+            from lv_assist.bom import build_bom, export_bom_csv
+
+            export_bom_csv(filename, build_bom(self.current_project, results[0], results[1]))
+            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+        except PermissionError:
+            messagebox.showerror(
+                tr("msg_error"), tr("err_csv_file_locked"), parent=self
+            )
+        except Exception as ex:
+            messagebox.showerror(
+                tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+            )
 
     def action_open_printable_report(self):
         if not self._get_results(): return
@@ -2643,48 +2688,25 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 )
         self._prompt_export_guardrail_dialog(_do_pdf)
 
+    def _show_eplan_coming_soon(self):
+        messagebox.showinfo(
+            tr("msg_warning"), tr("tip_eplan_coming_soon"), parent=self
+        )
+
     def action_export_eplan(self):
-        res = self._get_results()
-        if not res: return
-        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile="EPLAN_Parts_Import.csv", filetypes=[("CSV", "*.csv")])
-        if path:
-            EplanExporter.export_csv(path, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+        self._show_eplan_coming_soon()
 
     def action_export_eplan_script(self):
-        res = self._get_results()
-        if not res: return
-        path = filedialog.asksaveasfilename(defaultextension=".cs", initialfile="EPLAN_Generate_Pages.cs", filetypes=[("C# Script", "*.cs")])
-        if path:
-            EplanMacroExporter.export_file(path, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+        self._show_eplan_coming_soon()
 
     def action_export_eplan_macros(self):
-        res = self._get_results()
-        if not res: return
-        folder = filedialog.askdirectory(title=tr("btn_eplan_macros"))
-        if folder:
-            out_dir = os.path.join(folder, "EPLAN_Macros")
-            written = EplanMacroFileExporter.export_library(out_dir, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_macros_done", n=len(written)))
+        self._show_eplan_coming_soon()
 
     def action_export_eplan_page_macros(self):
-        res = self._get_results()
-        if not res: return
-        folder = filedialog.askdirectory(title=tr("btn_eplan_page_macros"))
-        if folder:
-            out_dir = os.path.join(folder, "EPLAN_Page_Macros")
-            written = EplanPageMacroExporter.export_library(out_dir, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_page_macros_done", n=len(written)))
+        self._show_eplan_coming_soon()
 
     def action_export_eplan_test_kit(self):
-        res = self._get_results()
-        if not res: return
-        folder = filedialog.askdirectory(title=tr("btn_eplan_test_kit"))
-        if folder:
-            out_dir = os.path.join(folder, "EPLAN_FieldTest")
-            written = EplanFieldTestKit.export_kit(out_dir, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_test_kit_done", n=len(written)))
+        self._show_eplan_coming_soon()
 
     def _on_mfg_change(self, display_value: str):
         if self.current_project is None: return
@@ -2726,10 +2748,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
     def action_export_connections(self):
         res = self._get_results()
         if not res: return
-        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile="Control_Connections_EPLAN.csv", filetypes=[("CSV", "*.csv")])
-        if path:
-            ControlCircuitGenerator.export_connections_csv(path, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+        self._show_eplan_coming_soon()
 
     def action_export_layout(self):
         res = self._get_results()
@@ -2749,12 +2768,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 )
 
     def action_export_parts(self):
-        res = self._get_results()
-        if not res: return
-        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile="EPLAN_Parts_Management.csv", filetypes=[("CSV", "*.csv")])
-        if path:
-            EplanPartsExporter.export_csv(path, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+        self._show_eplan_coming_soon()
 
     # --- پیش‌نمایش نقشه‌ها (IEC SVG bridge) ---
     def _build_schematics_preview_tab(self, parent):

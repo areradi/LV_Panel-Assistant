@@ -10,6 +10,7 @@
   "btn_template": "ساخت قالب اکسل",
   "btn_import": "بارگذاری از اکسل",
   "btn_export": "خروجی اکسل و صورت‌ریز قطعات",
+  "btn_bom_csv": "خروجی CSV فهرست تجهیزات",
   "btn_report": "دفترچه محاسبات قابل چاپ",
   "lbl_project": "پروژه: {name} | تابلو: {tag}",
   "lbl_theme": "تم",
@@ -1162,5 +1163,9 @@
   "tooltip_icu_unknown": "داده Ik یا Icu در دسترس نیست",
   "tooltip_icu_ok": "Icu={a} kA ≥ Ik={b} kA در نقطه نصب",
   "tcc_icu": "Icu",
-  "tcc_icu_estimated": "Icu (تخمینی)"
+  "tcc_icu_estimated": "Icu (تخمینی)",
+  "tip_eplan_coming_soon": "خروجی EPLAN/DXF در حال توسعه",
+  "disclaimer_general": "مقدماتی — تمام نتایج مهندسی نیازمند بازبینی توسط مهندس واجد شرایط است. گواهی انطباق IEC 61439 نیست.",
+  "disclaimer_short": "مقدماتی — نیازمند بازبینی",
+  "err_csv_file_locked": "فایل CSV در برنامهٔ دیگری باز است. آن را ببندید و دوباره تلاش کنید."
 }

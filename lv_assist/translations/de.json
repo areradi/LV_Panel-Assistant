@@ -10,6 +10,7 @@
   "btn_template": "Excel-Vorlage erstellen",
   "btn_import": "Aus Excel laden",
   "btn_export": "Excel / BOM exportieren",
+  "btn_bom_csv": "BOM als CSV exportieren",
   "btn_report": "Druckbares Berechnungsheft",
   "lbl_project": "Projekt: {name} ({tag})",
   "lbl_theme": "Design",
@@ -1162,5 +1163,9 @@
   "tooltip_icu_unknown": "Ik- oder Icu-Daten sind nicht verfügbar",
   "tooltip_icu_ok": "Icu={a} kA ≥ Ik={b} kA am Installationsort",
   "tcc_icu": "Icu",
-  "tcc_icu_estimated": "Icu (geschätzt)"
+  "tcc_icu_estimated": "Icu (geschätzt)",
+  "tip_eplan_coming_soon": "EPLAN/DXF-Export in Entwicklung",
+  "disclaimer_general": "VORLÄUFIG — Alle technischen Ergebnisse erfordern die Prüfung durch einen qualifizierten Ingenieur. Kein IEC 61439-Konformitätszertifikat.",
+  "disclaimer_short": "Vorläufig — Prüfung erforderlich",
+  "err_csv_file_locked": "Die CSV-Datei ist in einem anderen Programm geöffnet. Schließen Sie sie und versuchen Sie es erneut."
 }

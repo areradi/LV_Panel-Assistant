@@ -10,6 +10,7 @@
   "btn_template": "Create Excel Template",
   "btn_import": "Load from Excel",
   "btn_export": "Export Excel / BOM",
+  "btn_bom_csv": "Export BOM CSV",
   "btn_report": "Printable Calculation Booklet",
   "lbl_project": "Project: {name} ({tag})",
   "lbl_theme": "Theme",
@@ -1162,5 +1163,9 @@
   "tooltip_icu_unknown": "Ik or Icu data is unavailable",
   "tooltip_icu_ok": "Icu={a} kA ≥ Ik={b} kA at the point of installation",
   "tcc_icu": "Icu",
-  "tcc_icu_estimated": "Icu (est.)"
+  "tcc_icu_estimated": "Icu (est.)",
+  "tip_eplan_coming_soon": "EPLAN/DXF export in development",
+  "disclaimer_general": "PRELIMINARY — All engineering results require review by a qualified engineer. Not an IEC 61439 compliance certificate.",
+  "disclaimer_short": "Preliminary — review required",
+  "err_csv_file_locked": "The CSV file is open in another application. Close it and try again."
 }

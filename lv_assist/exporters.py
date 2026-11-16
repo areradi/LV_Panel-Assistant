@@ -358,6 +358,8 @@ class ExcelExporter:
             "Assumed_Defaults",
         }
         for ws in wb.worksheets:
+            # Keep every sheet covered without adding rows to schedule data.
+            ws.oddFooter.center.text = tr("disclaimer_general")
             if ws.title in footer_exclude_sheets:
                 continue
             footer_row = ws.max_row + 1
@@ -766,7 +768,7 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <div class="disclaimer">
   <strong>PRELIMINARY:</strong> All engineering results are preliminary and require review by a qualified engineer. Not an IEC 61439 compliance certificate.
 </div>
-<div class="page-footer">{_h(project.project_name)} | LV-PanelAssist | {_h(now_str)}</div>
+<div class="page-footer">{_h(project.project_name)} | LV-PanelAssist | {_h(now_str)} | {_h(tr('disclaimer_short'))}</div>
 </div></body></html>"""
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(html)
@@ -897,7 +899,7 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 </div>
 </div>
 </div>
-<div class="page-footer">{_h(project.project_name)} | {_h(tr("dv_title"))} | LV-PanelAssist | {_h(now_str)}</div>
+<div class="page-footer">{_h(project.project_name)} | {_h(tr("dv_title"))} | LV-PanelAssist | {_h(now_str)} | {_h(tr('disclaimer_short'))}</div>
 </div></body></html>"""
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(html)

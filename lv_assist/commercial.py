@@ -359,6 +359,7 @@ th {{ background: #EFF6FF; color: #1E3A8A; text-align: center; }}
   <tr><td dir="auto">مالیات بر ارزش افزوده (VAT / MwSt {q.vat_pct:g}%)</td><td dir="auto" style="text-align:right;"><span class="ltr-isolate" dir="ltr">{q.vat_amount:,.2f}</span></td></tr>
   <tr class="grand"><td dir="auto">مبلغ کل پیش‌فاکتور (Grand Total Incl. VAT)</td><td dir="auto" style="text-align:right;"><b><span class="ltr-isolate" dir="ltr">{q.grand_total_inc_vat:,.2f}</span></b></td></tr>
 </table>
+<p class="disclaimer" dir="auto" style="font-size:8pt;">{esc(tr("disclaimer_general"))}</p>
 <p style="font-size:10.5px; color:#64748B; margin-top:14px;">
 * قیمت‌های واحد از بانک اطلاعاتی SQLite پروژه (تب مدیریت کاتالوگ و قیمت‌ها) استخراج شده‌اند و قابل ویرایش توسط مهندس طراح/فروش هستند.
 </p>

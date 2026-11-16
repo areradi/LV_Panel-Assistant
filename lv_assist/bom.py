@@ -321,15 +321,32 @@ def to_rows(items: List[BomItem]) -> List[List[Any]]:
 
 
 def export_bom_csv(filepath: str, items: List[BomItem], provenance: Optional[dict] = None) -> str:
-    from lv_assist.exporters import _csv_safe
+    import io
+    from pathlib import Path
 
-    with open(filepath, "w", encoding="utf-8-sig", newline="") as fp:
-        writer = csv.writer(fp)
+    from lv_assist.exporters import _csv_safe
+    from lv_assist.i18n import i18n
+
+    path = Path(filepath)
+    content = io.StringIO(newline="")
+    writer = csv.writer(content)
+    try:
+        # Opening in append mode checks for common Windows sharing locks before
+        # replacing the file. It also creates the destination when it is new.
+        with path.open("a", encoding="utf-8-sig", newline=""):
+            pass
         writer.writerow(BOM_HEADERS)
-        data_writer = csv.writer(fp, quoting=csv.QUOTE_ALL)
+        data_writer = csv.writer(content, quoting=csv.QUOTE_ALL)
         data_writer.writerows([_csv_safe(cell) for cell in row] for row in to_rows(items))
+        for language in ("en", "fa", "de"):
+            language_disclaimer = i18n._table(language).get("disclaimer_general", "")
+            writer.writerow([f"# DISCLAIMER ({language.upper()})", language_disclaimer])
+        path.write_text(content.getvalue(), encoding="utf-8-sig", newline="")
+    except PermissionError as exc:
+        raise PermissionError(
+            f"CSV file is open in another application or is not writable: {path}"
+        ) from exc
     if provenance:
-        from pathlib import Path
         import json
 
         sidecar_path = Path(str(filepath) + ".provenance.json")
