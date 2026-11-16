@@ -2,6 +2,7 @@
 from lv_assist.calculation_state import require_current_calculation
 import html
 import json
+import logging
 from datetime import datetime
 from typing import List
 import openpyxl
@@ -17,6 +18,8 @@ from lv_assist.control_circuits import ControlCircuitGenerator
 from lv_assist.engine import build_design_verification
 from lv_assist.i18n import tr, i18n
 
+logger = logging.getLogger(__name__)
+
 
 def _h(val) -> str:
     """F-009: خنثی‌سازی HTML برای هر رشته درج‌شده در گزارش."""
@@ -24,14 +27,64 @@ def _h(val) -> str:
 
 
 def _xl_safe(val):
-    """F-011: جلوگیری از Formula Injection در سلول‌های Excel."""
-    if isinstance(val, str) and val and val[0] in "=+-@":
+    """Prevent formula injection in XLSX text cells."""
+    if not isinstance(val, str) or not val:
+        return val
+    stripped = val.lstrip("\t\r\n ")
+    if stripped and stripped[0] in "=+-@":
         return "'" + val
+    return val
+
+
+def _csv_safe(val):
+    """Prefix formula-like values; CSV exporters must quote the resulting field."""
+    if not isinstance(val, str) or not val:
+        return val
+    stripped = val.lstrip("\t\r\n ")
+    if stripped and stripped[0] in "=+-@":
+        return "\t" + val
     return val
 
 
 def _append_safe(ws, row):
     ws.append([_xl_safe(v) for v in row])
+
+
+def _prelim(value: str, is_preliminary: bool) -> str:
+    return f"{value} (prelim.)" if is_preliminary else value
+
+
+def _motor_assumption_excel(value, source):
+    if value is None:
+        return "-"
+    if source == "default":
+        return f"{_prelim(f'{value:g}', True)} ({tr('badge_assumed')})"
+    return value
+
+
+def _motor_assumption_html(value, source):
+    if value is None:
+        return "-"
+    display = _h(_prelim(f"{value:g}", source == "default"))
+    if source == "default":
+        display += f' <span class="badge badge-assumed">{_h(tr("badge_assumed"))}</span>'
+    return display
+
+
+def _provenance_lines(summary) -> List[tuple]:
+    """Return stable provenance rows for a generated report."""
+    from datetime import timezone
+
+    report_at = datetime.now(timezone.utc).isoformat()
+    return [
+        ("Input Hash", summary.verified_input_hash or "not recorded"),
+        ("Engine Version", summary.engine_version or "not recorded"),
+        ("Catalog Revision", summary.catalog_revision or "not recorded"),
+        ("Rules Revision", summary.rules_revision or "not recorded"),
+        ("Calculated At", summary.calculated_at or "not recorded"),
+        ("Report Generated At", report_at),
+    ]
+
 
 class ExcelExporter:
     @staticmethod
@@ -54,7 +107,11 @@ class ExcelExporter:
             (tr("rpt_s_name"), project.project_name, "-", project.standard_ref),
             (tr("rpt_s_tag"), project.panel_tag, "-", tr("rpt_ref_form", form=project.internal_separation_form)),
             (tr("rpt_s_voltage"), f"{project.nominal_voltage_v} V / {project.earthing_system.value}", "V / Hz", f"{project.frequency_hz} Hz"),
-            (tr("rpt_ik"), summary.ik_used_ka if summary.ik_used_ka is not None else "-", "kA", summary.ik_source_str),
+            (tr("rpt_ik"),
+             _prelim(f"{summary.ik_used_ka:g}", True)
+             if summary.ik_used_ka is not None and project.prospective_ik_ka is None
+             else summary.ik_used_ka if summary.ik_used_ka is not None else "-",
+             "kA", summary.ik_source_str),
             (tr("rpt_scenario"), f"{project.panel_type.value} / {project.special_scenario.value}", "-", "-"),
             (tr('wiz_mounting'), tr('mount_' + project.enclosure_mounting.value), '-', 'IEC 62208 / IEC 61439-1'),
             (tr("rpt_dip"), f"{summary.max_motor_starting_dip_pct}%" if summary.max_motor_starting_dip_pct is not None else "-", "%", summary.max_starting_dip_motor),
@@ -65,13 +122,20 @@ class ExcelExporter:
              tr("rpt_ref_in", a=summary.main_breaker.rated_current_in_a if summary.main_breaker else 0) if summary.main_breaker else summary.suggested_main_breaker_str),
             (tr("rpt_s_incoming"), summary.recommended_incoming_cable_str, "-", tr("rpt_ref_iec52")),
             (tr("rpt_s_busbar"), summary.recommended_busbar_spec, "-", tr("rpt_ref_din")),
-            (tr("rpt_bus_icw"), f"Icw(1s)={summary.busbar_icw_1s_ka} kA | Ipk={summary.busbar_ipk_ka} kA", "kA",
+            (tr("rpt_bus_icw"),
+             f"Icw(1s)={_prelim(f'{summary.busbar_icw_1s_ka:g}', True)} kA | "
+             f"Ipk={_prelim(f'{summary.busbar_ipk_ka:g}', True)} kA", "kA",
              tr("rpt_ref_iec61439") + (f" | {tr('rpt_bus_req')}={summary.busbar_required_ipk_ka} kA" if summary.busbar_required_ipk_ka is not None else "")),
+            ("Busbar temperature factor", _prelim(f"{summary.busbar_temperature_factor:g}", True), "-",
+             "PRELIMINARY; based on estimated internal temperature"),
             (tr("rpt_bus_support"), f"{summary.busbar_required_supports} × {summary.busbar_max_support_spacing_mm:.0f} mm" if summary.busbar_max_support_spacing_mm else str(summary.busbar_required_supports), "-", tr("rpt_ref_iec61439")),
             (tr("rpt_bus_du"), f"{summary.busbar_du_v} V ({summary.busbar_du_pct}%)", "V / %",
              tr("rpt_ref_iec61439") + f" | {tr('rpt_du_total')}={summary.max_total_du_pct}%"),
             (tr("rpt_motor_ik"),
-             f"I''kM={summary.motor_contribution_ka} kA → Ik,total={summary.ik_bus_total_ka} kA (ip={summary.ip_bus_total_ka} kA)" if summary.motor_contribution_ka is not None else "-",
+             f"I''kM={_prelim(f'{summary.motor_contribution_ka:g}', True)} kA → "
+             f"Ik,total={_prelim(str(summary.ik_bus_total_ka), True)} kA "
+             f"(ip={_prelim(str(summary.ip_bus_total_ka), True)} kA)"
+             if summary.motor_contribution_ka is not None else "-",
              "kA", tr("rpt_ref_iec60909")),
             (tr("rpt_s_pe"), summary.recommended_pe_busbar_spec, "-", tr("rpt_ref_iec54")),
             (tr("rpt_s_24v"), f"{summary.ctrl_24v_total_continuous_w} W ({summary.ctrl_24v_design_current_with_spare_a} A)", "W / A", tr("rpt_ref_peak", a=summary.ctrl_24v_peak_inrush_current_a)),
@@ -105,13 +169,92 @@ class ExcelExporter:
             summary_rows.append((phase, current, 'A', 'Design current by phase'))
         summary_rows.append(('Neutral (fundamental)', summary.neutral_current_a, 'A', 'Harmonic currents require separate verification'))
         for r in summary_rows: _append_safe(ws1, r)
+        main_icu_is_preliminary = (
+            summary.main_breaker_icu_source == "estimated"
+            or (summary.main_breaker is not None
+                and summary.main_breaker.data_quality != DataQuality.REAL_VERIFIED)
+        )
+        main_icu_value = (
+            _prelim(f"{summary.main_breaker_icu_value:g}", main_icu_is_preliminary)
+            if summary.main_breaker_icu_value is not None else "-"
+        )
+        main_status_key = {
+            "OK": "status_ok", "FAIL": "status_fail", "UNKNOWN": "status_unknown",
+        }.get(summary.main_breaker_icu_status, "status_unknown")
+        main_icu_status_text = tr(main_status_key)
+        if main_icu_is_preliminary:
+            main_icu_status_text += f" ({tr('status_estimated')})"
+        _append_safe(ws1, [
+            tr("main_breaker_part_number"), tr("main_breaker_in"),
+            tr("col_icu_main_breaker"), tr("main_breaker_icu_status"),
+        ])
+        _append_safe(ws1, [
+            summary.main_breaker.part_number if summary.main_breaker else "N/A",
+            f"{summary.main_breaker.rated_current_in_a:g} A" if summary.main_breaker else "-",
+            f"{main_icu_value} kA @ {project.nominal_voltage_v:g}V" if main_icu_value != "-" else "-",
+            main_icu_status_text,
+        ])
+        _append_safe(ws1, ["Provenance", "", "", ""])
+        for label, value in _provenance_lines(summary):
+            _append_safe(ws1, [label, value, "", ""])
 
         ws2 = wb.create_sheet("02_Feeder_Cable_Schedule")
-        _append_safe(ws2, [tr("rpt_c_id"), tr("rpt_c_func"), tr("rpt_c_loc"), tr("rpt_c_desc"), tr("rpt_c_type"), tr("rpt_c_kw"), tr("rpt_c_ib"), tr("rpt_c_idelta"), tr("rpt_c_cable"), tr("rpt_c_pe_basis"), tr("rpt_c_iz"), tr("rpt_c_k1"), tr("rpt_c_k2"), tr("rpt_c_ktot"), tr("rpt_c_method"), tr("rpt_c_len"), tr("rpt_c_vd"), tr("rpt_c_prot"), tr("rpt_c_icu"), tr("rpt_c_km"), tr("rpt_c_kd"), tr("rpt_c_ky"), tr("rpt_c_bim"), tr("rpt_c_vfd"), tr("bom_soft_starter"), tr("rpt_c_24v"), tr("rpt_c_sel"), tr("rpt_c_loss"), tr("bom_suggested")])
+        motor_outputs = [f for f in feeders if f.cos_phi_source is not None or f.efficiency_source is not None]
+        cos_sources = {f.cos_phi_source for f in motor_outputs if f.cos_phi_source}
+        efficiency_sources = {f.efficiency_source for f in motor_outputs if f.efficiency_source}
+        cos_header = tr("col_cos_phi_assumed") if cos_sources == {"default"} else tr("col_cos_phi")
+        efficiency_header = tr("col_efficiency_assumed") if efficiency_sources == {"default"} else tr("col_efficiency")
+        _append_safe(ws2, [
+            tr("rpt_c_id"), tr("rpt_c_func"), tr("rpt_c_loc"), tr("rpt_c_desc"), tr("rpt_c_type"),
+            tr("rpt_c_kw"), cos_header, efficiency_header, tr("col_kva_normal"), tr("col_kva_starting"),
+            tr("rpt_c_ib"), tr("rpt_c_idelta"), tr("rpt_c_cable"), tr("rpt_c_pe_basis"), tr("rpt_c_iz"),
+            tr("rpt_c_k1"), tr("rpt_c_k2"), tr("rpt_c_ktot"), tr("rpt_c_method"), tr("rpt_c_len"),
+            tr("rpt_c_vd"), tr("rpt_c_prot"), tr("rpt_c_icu"), tr("rpt_c_km"), tr("rpt_c_kd"),
+            tr("rpt_c_ky"), tr("rpt_c_bim"), tr("rpt_c_vfd"), tr("bom_soft_starter"), tr("rpt_c_24v"),
+            tr("rpt_c_sel"), tr("rpt_c_loss"), tr("bom_suggested"),
+        ])
+        thermal_preliminary = "PRELIMINARY" in (summary.thermal_method or "").upper()
         for f in feeders:
             vfd_rcd = f.selected_vfd.part_number if f.selected_vfd else (f.selected_rcd.part_number if f.selected_rcd else "-")
-            icu_str = f"{f.protection_icu_ka} kA @ {project.nominal_voltage_v:g}V" if f.protection_icu_ka is not None else "-"
-            _append_safe(ws2, [f.feeder_id, f.func_tag, f.loc_tag, f.description, f.load_type.value, f.power_kw, f.design_current_ib_a, f.delta_loop_current_a or "-", f.cable_designation_str, f.pe_basis_str, f.cable_derated_iz_a, f.cable_temp_factor_k1, f.cable_grouping_factor_k2, f.cable_total_derating_k, f.cable_method_ref_str, f.cable_length_m, f.voltage_drop_percent, f.selected_protection.part_number if f.selected_protection else "NONE", icu_str, f.selected_contactor_main.part_number if f.selected_contactor_main else "-", f.selected_contactor_delta.part_number if f.selected_contactor_delta else "-", f.selected_contactor_star.part_number if f.selected_contactor_star else "-", f.selected_bimetal.part_number if f.selected_bimetal else "-", vfd_rcd, f.selected_soft_starter.part_number if f.selected_soft_starter else "-", f"{f.ctrl_24v_holding_w} / +{f.ctrl_24v_pull_in_surge_w}", f.selectivity_state.value, f.total_feeder_loss_w, f.suggested_spec_str or "-"])
+            if f.protection_icu_ka is not None:
+                icu_preliminary = (f.selected_protection is None
+                                   or f.selected_protection.data_quality != DataQuality.REAL_VERIFIED)
+                icu_str = _prelim(
+                    f"{f.protection_icu_ka:g} kA @ {project.nominal_voltage_v:g}V",
+                    icu_preliminary,
+                )
+            else:
+                icu_str = "-"
+            k1 = (_prelim(f"{f.cable_temp_factor_k1:g}", True)
+                  if thermal_preliminary else f.cable_temp_factor_k1)
+            k2 = (_prelim(f"{f.cable_grouping_factor_k2:g}", True)
+                  if thermal_preliminary else f.cable_grouping_factor_k2)
+            k_total = (_prelim(f"{f.cable_total_derating_k:g}", True)
+                       if thermal_preliminary else f.cable_total_derating_k)
+            pe_basis = (_prelim(f.pe_basis_str, True)
+                        if f.clearing_time_s is not None else f.pe_basis_str)
+            cos_phi_cell = _motor_assumption_excel(f.cos_phi_resolved, f.cos_phi_source)
+            efficiency_cell = _motor_assumption_excel(f.efficiency_resolved, f.efficiency_source)
+            motor_assumed = f.cos_phi_source == "default" or f.efficiency_source == "default"
+            normal_kva_cell = _motor_assumption_excel(f.kva_normal, "default" if motor_assumed else "plate")
+            starting_kva_cell = _motor_assumption_excel(
+                f.starting_kva if f.cos_phi_source is not None else None,
+                "default" if motor_assumed else "plate",
+            )
+            _append_safe(ws2, [
+                f.feeder_id, f.func_tag, f.loc_tag, f.description, f.load_type.value, f.power_kw,
+                cos_phi_cell, efficiency_cell, normal_kva_cell, starting_kva_cell,
+                f.design_current_ib_a, f.delta_loop_current_a or "-", f.cable_designation_str, pe_basis,
+                f.cable_derated_iz_a, k1, k2, k_total, f.cable_method_ref_str, f.cable_length_m,
+                f.voltage_drop_percent, f.selected_protection.part_number if f.selected_protection else "NONE",
+                icu_str, f.selected_contactor_main.part_number if f.selected_contactor_main else "-",
+                f.selected_contactor_delta.part_number if f.selected_contactor_delta else "-",
+                f.selected_contactor_star.part_number if f.selected_contactor_star else "-",
+                f.selected_bimetal.part_number if f.selected_bimetal else "-", vfd_rcd,
+                f.selected_soft_starter.part_number if f.selected_soft_starter else "-",
+                f"{f.ctrl_24v_holding_w} / +{f.ctrl_24v_pull_in_surge_w}", f.selectivity_state.value,
+                f.total_feeder_loss_w, f.suggested_spec_str or "-",
+            ])
 
         ws3 = wb.create_sheet("03_Validation_Log")
         _append_safe(ws3, [tr("rpt_v_rule"), tr("rpt_v_target"), tr("rpt_v_std"), tr("rpt_v_status"), tr("rpt_v_desc"), tr("rpt_v_evidence"), tr("rpt_v_cons"), tr("rpt_v_action"), 'Rule category', 'Application scope'])
@@ -203,6 +346,32 @@ class ExcelExporter:
             for col in ws.columns:
                 max_len = max(len(str(c.value or "")) for c in col)
                 ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 4, 13), 48)
+        footer_text = (
+            "PRELIMINARY: All engineering results are preliminary and require review by a "
+            "qualified engineer. Not an IEC 61439 compliance certificate."
+        )
+        # Schedule sheets feed downstream filters and ETL, so keep their row counts stable.
+        footer_exclude_sheets = {
+            "Routine_Verification",
+            "Terminal_Schedule",
+            "Wire_Schedule",
+            "Assumed_Defaults",
+        }
+        for ws in wb.worksheets:
+            # Keep every sheet covered without adding rows to schedule data.
+            ws.oddFooter.center.text = tr("disclaimer_general")
+            if ws.title in footer_exclude_sheets:
+                continue
+            footer_row = ws.max_row + 1
+            ws.cell(row=footer_row, column=1, value=footer_text)
+            if ws.max_column > 1:
+                ws.merge_cells(start_row=footer_row, start_column=1,
+                               end_row=footer_row, end_column=ws.max_column)
+            footer_cell = ws.cell(row=footer_row, column=1)
+            footer_cell.font = Font(name="Calibri", size=9, italic=True, color="7F6000")
+            footer_cell.fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+            footer_cell.alignment = Alignment(wrap_text=True, vertical="center")
+            ws.row_dimensions[footer_row].height = 30
         wb.save(filename)
 
 class PrintableReportExporter:
@@ -218,15 +387,22 @@ class PrintableReportExporter:
     def generate_html_report(filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput, validations: List[ValidationResult]):
         require_current_calculation(project, summary, feeders)
         assumption_rows = ''.join(
-            f'<tr><td dir="ltr">{_h(target)}</td><td dir="ltr">{_h(name)}</td>'
-            f'<td dir="ltr">{_h(json.dumps(value, ensure_ascii=False))}</td><td>ASSUMED_DEFAULT</td></tr>'
+            f'<tr><td dir="auto"><span class="ltr-isolate" dir="ltr">{_h(target)}</span></td><td dir="auto"><span class="ltr-isolate" dir="ltr">{_h(name)}</span></td>'
+            f'<td class="assumption-json" dir="auto"><span class="bidi-isolate" dir="auto">{_h(json.dumps(value, ensure_ascii=False))}</span></td>'
+            f'<td dir="auto"><span class="ltr-isolate" dir="ltr">ASSUMED_DEFAULT</span></td></tr>'
             for target, fields in summary.assumptions.items() for name, value in fields.items() if value != [])
-        assumptions_html = (f'<h2>{_h(tr("audit_assumptions"))}</h2><table><tbody>{assumption_rows}</tbody></table>'
+        assumptions_html = (f'<h2>{_h(tr("audit_assumptions"))}</h2><table class="assumptions-table"><tbody>{assumption_rows}</tbody></table>'
                             f'<p>{_h(summary.thermal_method)}</p>')
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         lang = i18n.get_language()
         direction = i18n.direction()
+        motor_outputs = [f for f in feeders if f.cos_phi_source is not None or f.efficiency_source is not None]
+        cos_sources = {f.cos_phi_source for f in motor_outputs if f.cos_phi_source}
+        efficiency_sources = {f.efficiency_source for f in motor_outputs if f.efficiency_source}
+        cos_header = tr("col_cos_phi_assumed") if cos_sources == {"default"} else tr("col_cos_phi")
+        efficiency_header = tr("col_efficiency_assumed") if efficiency_sources == {"default"} else tr("col_efficiency")
         feeder_rows = ""
+        thermal_preliminary = "PRELIMINARY" in (summary.thermal_method or "").upper()
         for f in feeders:
             eq = _h(f.selected_protection.part_number if f.selected_protection else "-")
             if f.load_type == LoadType.MOTOR_STAR_DELTA:
@@ -240,16 +416,40 @@ class PrintableReportExporter:
             if f.starting_dip_pct is not None:
                 eq += f"<br><small>ΔU<sub>start</sub>: {_h(f.starting_dip_pct)}%</small>"
             if f.protection_icu_ka is not None:
-                eq += f"<br><small>Icu: {_h(f.protection_icu_ka)} kA @ {_h(project.nominal_voltage_v)}V</small>"
+                icu_is_preliminary = (f.selected_protection is None
+                                      or f.selected_protection.data_quality != DataQuality.REAL_VERIFIED)
+                icu_display = _prelim(
+                    f"Icu: {f.protection_icu_ka} kA @ {project.nominal_voltage_v}V",
+                    icu_is_preliminary,
+                )
+                eq += f"<br><small>{_h(icu_display)}</small>"
             if f.suggested_spec_str:
-                eq += f"<br><small style='color:#B7950B;'>{_h(tr('bom_suggested'))}: {_h(f.suggested_spec_str)}</small>"
+                suggestion = f"<br><small dir='auto' style='color:#B7950B;'>{_h(tr('bom_suggested'))}: {_h(f.suggested_spec_str)}</small>"
+            else:
+                suggestion = ""
 
             sel_cls = PrintableReportExporter.SEL_BADGE.get(f.selectivity_state, "badge-insufficient")
+            k1 = _prelim(f"{f.cable_temp_factor_k1:g}", thermal_preliminary)
+            k2 = _prelim(f"{f.cable_grouping_factor_k2:g}", thermal_preliminary)
+            k_total = _prelim(f"{f.cable_total_derating_k:g}", thermal_preliminary)
+            pe_basis = _prelim(f.pe_basis_str, f.clearing_time_s is not None)
+            motor_assumed = f.cos_phi_source == "default" or f.efficiency_source == "default"
+            cos_phi_cell = _motor_assumption_html(f.cos_phi_resolved, f.cos_phi_source)
+            efficiency_cell = _motor_assumption_html(f.efficiency_resolved, f.efficiency_source)
+            kva_source = "default" if motor_assumed else "plate"
+            normal_kva_cell = _motor_assumption_html(f.kva_normal, kva_source)
+            starting_kva_cell = _motor_assumption_html(
+                f.starting_kva if f.cos_phi_source is not None else None,
+                kva_source,
+            )
             feeder_rows += f"""<tr>
-                <td><b>{_h(f.feeder_id)}</b><br><small>{_h(f.func_tag)}{_h(f.loc_tag)}</small></td>
-                <td>{_h(f.description)}</td><td>{_h(f.load_type.value)}</td><td>{_h(f.power_kw)}</td>
-                <td><b>{_h(f.design_current_ib_a)} A</b></td><td dir="ltr">{eq}</td>
-                <td dir="ltr"><b>{_h(f.cable_designation_str)}</b><br><small>Iz={'?' if f.cable_derated_iz_a is None else _h(f.cable_derated_iz_a)}A | L={_h(f.cable_length_m)}m</small><br><small>k1={_h(f.cable_temp_factor_k1)} | k2={_h(f.cable_grouping_factor_k2)} | kΣ={_h(f.cable_total_derating_k)} | {_h(f.cable_method_ref_str)}</small><br><small>{_h(f.pe_basis_str)}</small></td>
+                <td dir="auto"><b><bdi dir="ltr">{_h(f.feeder_id)}</bdi></b><br><small><bdi dir="ltr">{_h(f.func_tag)}{_h(f.loc_tag)}</bdi></small></td>
+                <td class="cell-wrap" dir="auto">{_h(f.description)}</td><td>{_h(f.load_type.value)}</td><td>{_h(f.power_kw)}</td>
+                <td dir="auto">{cos_phi_cell}</td><td dir="auto">{efficiency_cell}</td>
+                <td dir="auto">{normal_kva_cell}{' kVA' if f.kva_normal is not None else ''}</td>
+                <td dir="auto">{starting_kva_cell}{' kVA' if f.cos_phi_source is not None else ''}</td>
+                <td><b>{_h(f.design_current_ib_a)} A</b></td><td dir="auto"><bdi dir="ltr">{eq}</bdi>{suggestion}</td>
+                <td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(f.cable_designation_str)}</span></b><br><small><span class="ltr-isolate" dir="ltr">Iz={'?' if f.cable_derated_iz_a is None else _h(f.cable_derated_iz_a)}A | L={_h(f.cable_length_m)}m</span></small><br><small><span class="ltr-isolate" dir="ltr">k1={_h(k1)} | k2={_h(k2)} | kΣ={_h(k_total)}</span> | <span class="bidi-isolate" dir="auto">{_h(f.cable_method_ref_str)}</span></small><br><small dir="auto">{_h(pe_basis)}</small></td>
                 <td>{_h(f.voltage_drop_percent)}%</td><td><span class="badge {sel_cls}">{_h(f.selectivity_state.value)}</span></td><td>{_h(f.total_feeder_loss_w)} W</td>
             </tr>"""
 
@@ -268,9 +468,9 @@ class PrintableReportExporter:
             cls, label = val_badge[v.status]
             val_rows += f"""<tr>
                 <td style="text-align:center;"><span class="badge {cls}">{_h(label)}</span></td>
-                <td dir="ltr"><b>{_h(v.rule_id)}</b><br><small>{_h(v.feeder_id)}</small></td>
-                <td dir="ltr">{_h(v.standard_ref)}<br><small>{_h(v.rule_category)} / {_h(v.application_scope)}</small></td><td>{_h(v.description)}</td>
-                <td dir="ltr"><small>{_h(v.supporting_evidence)}</small></td><td>{_h(v.recommended_action)}</td>
+                <td dir="auto"><bdi dir="ltr"><b>{_h(v.rule_id)}</b></bdi><br><small><bdi dir="ltr">{_h(v.feeder_id)}</bdi></small></td>
+                <td dir="auto"><bdi dir="ltr">{_h(v.standard_ref)}</bdi><br><small dir="auto">{_h(v.rule_category)} / {_h(v.application_scope)}</small></td><td class="cell-wrap" dir="auto">{_h(v.description)}</td>
+                <td class="cell-wrap" dir="auto"><small>{_h(v.supporting_evidence)}</small></td><td class="cell-wrap" dir="auto">{_h(v.recommended_action)}</td>
             </tr>"""
 
         ref_ids = sorted({v.standard_ref for v in validations if v.standard_ref})
@@ -281,7 +481,9 @@ class PrintableReportExporter:
             if title == std_id and not scope: continue
             ref_rows += f"<tr><td dir='ltr'><b>{_h(std_id)}</b><br><small>{_h(title)}</small></td><td>{_h(scope)}</td></tr>"
 
-        ik_cell = f"{summary.ik_used_ka} kA" if summary.ik_used_ka is not None else "-"
+        ik_is_preliminary = summary.ik_used_ka is not None and project.prospective_ik_ka is None
+        ik_cell = (_prelim(f"{summary.ik_used_ka} kA", ik_is_preliminary)
+                   if summary.ik_used_ka is not None else "-")
         ik_note = summary.ik_source_str
         dip_cell = f"{summary.max_motor_starting_dip_pct}%" if summary.max_motor_starting_dip_pct is not None else "-"
         thdi_cell = f"{summary.panel_thdi_pct}%" if summary.panel_thdi_pct is not None else "-"
@@ -299,7 +501,8 @@ class PrintableReportExporter:
         else:
             spd_txt = summary.spd_suggested_str or tr("rpt_cap_none")
 
-        tint_cell = f"{summary.estimated_internal_temp_c}°C" if summary.estimated_internal_temp_c is not None else "-"
+        tint_cell = (_prelim(f"{summary.estimated_internal_temp_c}°C", True)
+                     if summary.estimated_internal_temp_c is not None else "-")
         tint_warn = ""
         if summary.estimated_internal_temp_c is not None and summary.estimated_internal_temp_c > 50.0:
             tint_warn = f" <b style='color:#C0392B;'>{_h(tr('kpi_tint_50_warn'))}</b>"
@@ -310,18 +513,56 @@ class PrintableReportExporter:
         main_brk = summary.main_breaker
         if main_brk:
             main_sub = f"{_h(main_brk.part_number)} | In={_h(main_brk.rated_current_in_a)}A"
+            if summary.main_breaker_icu_value is not None:
+                main_icu_text = _prelim(
+                    f"{summary.main_breaker_icu_value:g}",
+                    (summary.main_breaker_icu_source == "estimated"
+                     or main_brk.data_quality != DataQuality.REAL_VERIFIED),
+                )
+                main_sub += (f" | Icu={_h(main_icu_text)} kA"
+                             f" @ {_h(project.nominal_voltage_v)}V")
             if summary.ik_used_ka is not None:
-                main_sub += f" | Ik={_h(summary.ik_used_ka)} kA"
+                main_sub += f" | Ik={_h(_prelim(str(summary.ik_used_ka), ik_is_preliminary))} kA"
                 if summary.ik_bus_total_ka is not None and summary.ik_bus_total_ka != summary.ik_used_ka:
-                    main_sub += f" (Σ={_h(summary.ik_bus_total_ka)})"
+                    main_sub += f" (Σ={_h(_prelim(str(summary.ik_bus_total_ka), summary.motor_contribution_ka is not None))})"
         else:
             main_sub = _h(summary.suggested_main_breaker_str)
 
+        main_icu_status_key = {
+            "OK": "status_ok", "FAIL": "status_fail", "UNKNOWN": "status_unknown",
+        }.get(summary.main_breaker_icu_status, "status_unknown")
+        main_icu_badge_class = {
+            "OK": "badge-verified", "FAIL": "badge-error", "UNKNOWN": "badge-insufficient",
+        }.get(summary.main_breaker_icu_status, "badge-insufficient")
+        main_icu_status_label = tr(main_icu_status_key)
+        main_icu_tooltip = tr("tooltip_icu_unknown")
+        if summary.main_breaker_icu_status == "FAIL":
+            main_icu_tooltip = tr("tooltip_icu_fail")
+        elif (summary.main_breaker_icu_status == "OK"
+              and summary.main_breaker_icu_value is not None
+              and summary.main_breaker_ik is not None):
+            main_icu_tooltip = tr(
+                "tooltip_icu_ok",
+                a=f"{summary.main_breaker_icu_value:g}",
+                b=f"{summary.main_breaker_ik:g}",
+            )
+        if (summary.main_breaker_icu_source == "estimated"
+                or (main_brk is not None and main_brk.data_quality != DataQuality.REAL_VERIFIED)):
+            main_icu_status_label += f" · {tr('status_estimated')}"
+        main_icu_badge_html = (
+            f'<br><span class="badge {main_icu_badge_class}" title="{_h(main_icu_tooltip)}">'
+            f'{_h(tr("main_breaker_icu_status"))}: {_h(main_icu_status_label)}</span>'
+        )
+
         bus_sub = f"Ik: {_h(ik_cell)}"
         if summary.busbar_icw_1s_ka is not None:
-            bus_sub += f" | Icw(1s)={_h(summary.busbar_icw_1s_ka)} kA"
+            bus_sub += f" | Icw(1s)={_h(_prelim(f'{summary.busbar_icw_1s_ka:g}', True))} kA"
+        if summary.busbar_ipk_ka is not None:
+            bus_sub += f" | Ipk={_h(_prelim(f'{summary.busbar_ipk_ka:g}', True))} kA"
         if summary.motor_contribution_ka is not None and summary.ik_bus_total_ka is not None:
-            bus_sub += f"<br>{_h(tr('rpt_motor_ik'))}: {_h(summary.motor_contribution_ka)} kA → Ik,Σ={_h(summary.ik_bus_total_ka)} kA"
+            bus_sub += (f"<br>{_h(tr('rpt_motor_ik'))}: "
+                        f"{_h(_prelim(f'{summary.motor_contribution_ka:g}', True))} kA → "
+                        f"Ik,Σ={_h(_prelim(str(summary.ik_bus_total_ka), True))} kA")
         bus_sub += f"<br>ΔU: {_h(summary.busbar_du_v)} V ({_h(summary.busbar_du_pct)}%)"
         bus_sub += f"<br>PE: {_h(summary.recommended_pe_busbar_spec)}"
 
@@ -332,58 +573,88 @@ class PrintableReportExporter:
         therm_sub += f"<br>IP: {_h(summary.effective_ip_str or project.target_ip)}"
 
         kpi_html = f"""
+<div class="summary-box">
 <div class="kpi-strip">
   <div class="kpi-card"><div class="kpi-title">{_h(tr("kpi_main_current"))}</div>
-    <div class="kpi-value" dir="ltr">{_h(summary.design_main_current_a)} A</div>
-    <div class="kpi-sub" dir="ltr">{main_sub}</div></div>
+    <div class="kpi-value" dir="auto"><span class="ltr-isolate" dir="ltr">{_h(summary.design_main_current_a)} A</span></div>
+    <div class="kpi-sub" dir="auto"><span class="bidi-isolate" dir="auto">{main_sub}</span>{main_icu_badge_html}</div></div>
   <div class="kpi-card"><div class="kpi-title">{_h(tr("kpi_busbar"))}</div>
-    <div class="kpi-value" dir="ltr">{_h(summary.recommended_busbar_spec)}</div>
-    <div class="kpi-sub" dir="ltr">{bus_sub}</div></div>
+    <div class="kpi-value" dir="auto"><span class="bidi-isolate" dir="auto">{_h(summary.recommended_busbar_spec)}</span></div>
+    <div class="kpi-sub" dir="auto"><span class="bidi-isolate" dir="auto">{bus_sub}</span></div></div>
   <div class="kpi-card"><div class="kpi-title">{_h(tr("kpi_thermal"))}</div>
-    <div class="kpi-value" dir="ltr">{_h(summary.total_power_loss_w)} W</div>
-    <div class="kpi-sub" dir="ltr">{therm_sub}</div></div>
+    <div class="kpi-value" dir="auto"><span class="ltr-isolate" dir="ltr">{_h(summary.total_power_loss_w)} W</span></div>
+    <div class="kpi-sub" dir="auto"><span class="bidi-isolate" dir="auto">{therm_sub}</span></div></div>
   <div class="kpi-card"><div class="kpi-title">{_h(tr("kpi_val_summary"))}</div>
-    <div class="kpi-value" dir="ltr"><span class="badge badge-error">{n_err} {_h(tr("html_kpi_err"))}</span> <span class="badge badge-preliminary">{n_warn} {_h(tr("html_kpi_warn"))}</span></div>
-    <div class="kpi-sub" dir="ltr"><span class="badge badge-verified">{n_ok} {_h(tr("html_kpi_ok"))}</span> <span class="badge badge-insufficient">{n_ins} {_h(tr("html_kpi_ins"))}</span></div></div>
+    <div class="kpi-value" dir="auto"><span class="badge badge-error"><span class="ltr-isolate" dir="ltr">{n_err}</span> {_h(tr("html_kpi_err"))}</span> <span class="badge badge-preliminary"><span class="ltr-isolate" dir="ltr">{n_warn}</span> {_h(tr("html_kpi_warn"))}</span></div>
+    <div class="kpi-sub" dir="auto"><span class="badge badge-verified"><span class="ltr-isolate" dir="ltr">{n_ok}</span> {_h(tr("html_kpi_ok"))}</span> <span class="badge badge-insufficient"><span class="ltr-isolate" dir="ltr">{n_ins}</span> {_h(tr("html_kpi_ins"))}</span></div></div>
+</div>
 </div>"""
 
         trace_rows = ""
         for f in feeders:
+            k1 = _prelim(f"{f.cable_temp_factor_k1:g}", thermal_preliminary)
+            k2 = _prelim(f"{f.cable_grouping_factor_k2:g}", thermal_preliminary)
+            k_total = _prelim(f"{f.cable_total_derating_k:g}", thermal_preliminary)
             iz = f.cable_derated_iz_a
             if iz is not None and f.cable_total_derating_k:
                 iz0 = round(iz / f.cable_total_derating_k, 1)
-                k1, k2 = f.cable_temp_factor_k1, f.cable_grouping_factor_k2
-                k_other = round(f.cable_total_derating_k / (k1 * k2), 3) if (k1 and k2) else 1.0
+                k1_raw, k2_raw = f.cable_temp_factor_k1, f.cable_grouping_factor_k2
+                k_other = round(f.cable_total_derating_k / (k1_raw * k2_raw), 3) if (k1_raw and k2_raw) else 1.0
                 iz0_str, iz_str, ktot_str = str(iz0), str(iz), str(f.cable_total_derating_k)
-                formula = f"Iz = {iz0_str} × {k1} × {k2} × {k_other:g} = {iz_str} A"
+                formula = f"Iz = {iz0_str} × {k1_raw:g} × {k2_raw:g} × {k_other:g} = {iz_str} A"
             else:
                 iz0_str = iz_str = ktot_str = formula = "?"
                 formula = "-"
             trace_rows += f"""<tr>
-                <td><b>{_h(f.feeder_id)}</b></td>
-                <td dir="ltr">{_h(f.design_current_ib_a)}</td>
-                <td dir="ltr">{iz0_str}</td>
-                <td dir="ltr">{_h(f.cable_temp_factor_k1)}</td>
-                <td dir="ltr">{_h(f.cable_grouping_factor_k2)}</td>
-                <td dir="ltr">{ktot_str}</td>
-                <td dir="ltr"><b>{iz_str}</b></td>
-                <td dir="ltr"><small>{formula}</small></td>
-                <td dir="ltr">{_h(f.voltage_drop_percent)}%</td>
+                <td dir="auto"><b><bdi dir="ltr">{_h(f.feeder_id)}</bdi></b></td>
+                <td dir="auto"><bdi dir="ltr">{_h(f.design_current_ib_a)}</bdi></td>
+                <td dir="auto"><bdi dir="ltr">{iz0_str}</bdi></td>
+                <td dir="auto"><bdi dir="ltr">{_h(k1)}</bdi></td>
+                <td dir="auto"><bdi dir="ltr">{_h(k2)}</bdi></td>
+                <td dir="auto"><bdi dir="ltr">{_h(k_total)}</bdi></td>
+                <td dir="auto"><b><bdi dir="ltr">{iz_str}</bdi></b></td>
+                <td dir="auto"><small><bdi dir="ltr">{_h(formula)}</bdi></small></td>
+                <td dir="auto"><bdi dir="ltr">{_h(f.voltage_drop_percent)}%</bdi></td>
             </tr>"""
 
         try:
             tcc_svg_inline = TccGenerator.generate_svg(project, feeders, summary)
         except Exception:
-            tcc_svg_inline = ""
-        tcc_svg_inline = tcc_svg_inline.replace("<svg ", '<svg style="max-width:100%;height:auto;" ', 1)
+            logger.exception("Failed to generate the TCC chart for the HTML report")
+            tcc_svg_inline = (
+                '<div class="tcc-error" role="alert" '
+                'style="border:1px solid #C0392B;color:#922B21;padding:10px;">'
+                f'{_h(tr("msg_error"))}: TCC chart could not be generated; '
+                'see the application log.</div>'
+            )
+        tcc_svg_inline = tcc_svg_inline.replace(
+            'width="1180" height="720"',
+            'width="1180" height="720" viewBox="0 0 1180 720" preserveAspectRatio="xMidYMid meet"',
+            1,
+        )
 
         sign_block = f"""
+<div class="signature-block">
 <h2>{_h(tr("html_sign_title"))}</h2>
 <div class="sign-block">
   <div class="sign-cell"><b>{_h(tr("html_sign_designer"))}</b><span>{_h(project.designer_name or "-")}</span></div>
   <div class="sign-cell"><b>{_h(tr("html_sign_reviewer"))}</b><span>-</span></div>
   <div class="sign-cell"><b>{_h(tr("html_sign_approver"))}</b><span>-</span></div>
-  <div class="sign-cell"><b>{_h(tr("html_sign_date"))}</b><span dir="ltr">{_h(now_str)}</span></div>
+  <div class="sign-cell" dir="auto"><b>{_h(tr("html_sign_date"))}</b><span><span class="ltr-isolate" dir="ltr">{_h(now_str)}</span></span></div>
+</div>
+</div>"""
+
+        provenance_rows = "".join(
+            f'<tr><td style="padding: 2px 12px 2px 0; color: #566573;">{_h(label)}:</td>'
+            f'<td style="padding: 2px 0;">{_h(value)}</td></tr>'
+            for label, value in _provenance_lines(summary)
+        )
+        provenance_block = f"""
+<div class="provenance" style="margin-top: 24px; padding: 12px; background: #F8F9F9; border-left: 4px solid #7F8C8D; font-size: 9pt; font-family: monospace;">
+  <strong>Provenance</strong>
+  <table style="border-collapse: collapse; margin-top: 8px; font-size: 9pt;">
+    {provenance_rows}
+  </table>
 </div>"""
 
         html = f"""<!DOCTYPE html>
@@ -399,7 +670,10 @@ h2 {{ font-size: 14px; background: #1F4E78; color: white; padding: 6px 12px; bor
 table {{ width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 11px; }}
 th, td {{ border: 1px solid #BDC3C7; padding: 6px 8px; vertical-align: middle; }}
 th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
-.grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }}
+.ltr-isolate {{ direction: ltr; unicode-bidi: isolate; }}
+.bidi-isolate {{ unicode-bidi: isolate; }}
+.grid-2 {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }}
+.tcc-chart > svg {{ display: block; width: 100%; height: auto; }}
 .kpi-strip {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }}
 .kpi-card {{ border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px; background: #F8FAFC; break-inside: avoid; }}
 .kpi-title {{ font-size: 10px; color: #1F4E78; font-weight: bold; margin-bottom: 4px; }}
@@ -410,20 +684,41 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 .badge-preliminary {{ background: #FEF9C3; color: #854D0E; border: 1px solid #FDE047; }}
 .badge-error {{ background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }}
 .badge-insufficient {{ background: #E5E7EB; color: #4B5563; border: 1px solid #D1D5DB; }}
-.sign-block {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 10px 0 24px; }}
+.badge-assumed {{ background: #FEF3C7; color: #78350F; border: 1px solid #FCD34D; }}
+.signature-block {{ margin: 10px 0 24px; }}
+.sign-block {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 0; }}
 .sign-cell {{ border-top: 1.5px solid #1F4E78; padding-top: 6px; font-size: 11px; min-height: 44px; }}
 .sign-cell b {{ display: block; font-size: 10px; color: #566573; margin-bottom: 10px; }}
+.disclaimer {{ margin: 24px 0 0; padding: 12px; background: #FFF8E1; border-left: 4px solid #FFA000; font-size: 10pt; font-style: italic; color: #5D4037; }}
 .page-footer {{ display: none; }}
 @media print {{
   body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9pt; background: #FFF; margin: 0; }}
-  table {{ page-break-inside: auto; width: 100%; border-collapse: collapse; }}
-  tr {{ page-break-inside: avoid; page-break-after: auto; }}
-  thead {{ display: table-header-group; }}
+  table {{ page-break-inside: auto; width: 100%; max-width: 100%; border-collapse: collapse; orphans: 3; widows: 3; }}
+  td, th {{ word-break: normal; overflow-wrap: break-word; break-inside: avoid; page-break-inside: avoid; }}
+  tr {{ break-inside: auto; page-break-inside: auto; page-break-after: auto; }}
+  p, blockquote {{ orphans: 2; widows: 2; }}
+  th {{ background-color: #e0e0e0 !important; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+  .cell-wrap {{ overflow-wrap: anywhere; }}
+  .assumptions-table {{ width: 100%; max-width: 100%; table-layout: fixed; }}
+  .assumptions-table td {{ white-space: normal; word-break: normal; overflow-wrap: break-word; }}
+  .assumptions-table td:first-child {{ width: 16%; min-width: 0; }}
+  .assumptions-table td:nth-child(2) {{ width: 24%; min-width: 0; }}
+  .assumptions-table .assumption-json {{ width: 46%; max-width: 46%; min-width: 0; font-size: 6pt; overflow-wrap: anywhere; word-break: break-all; white-space: normal; }}
+  .assumptions-table td:last-child {{ width: 14%; min-width: 0; }}
+  .grid-2 td:first-child {{ width: 32%; }}
+  .tcc-chart {{ break-inside: avoid; page-break-inside: avoid; width: 100%; overflow: hidden; }}
+  h2 {{ break-inside: avoid; break-after: avoid; page-break-after: avoid; }}
+  td .badge {{ white-space: normal; }}
+  tr {{ break-inside: auto; page-break-inside: auto; page-break-after: auto; }}
+  .feeder-table thead, .trace-table thead, .validation-table thead, .reference-table thead {{ display: table-header-group; }}
   .section-card {{ break-inside: avoid; box-shadow: none !important; border: 1px solid #CBD5E1; }}
   .no-print {{ display: none !important; }}
   .container {{ border: none; padding: 0; }}
-  .kpi-card, .sign-block {{ break-inside: avoid; }}
-  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; border-top: 1px solid #BDC3C7; padding: 4px 0; text-align: center; background: #FFF; }}
+  .signature-block {{ break-before: auto; page-break-before: auto; break-inside: auto; page-break-inside: auto; margin-top: 0; }}
+  .summary-box {{ break-inside: avoid; page-break-inside: avoid; margin-top: 0; }}
+  .disclaimer {{ break-inside: avoid; page-break-inside: avoid; margin-top: 0; }}
+  .kpi-card {{ break-inside: avoid; page-break-inside: avoid; }}
+  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; padding: 4px 0; text-align: center; background: #FFF; }}
 }}
 </style></head>
 <body><div class="container">
@@ -434,42 +729,46 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <div class="grid-2">
 <div><h2>{tr("html_s1")}</h2><table>
 <tr><th>{tr("html_param")}</th><th>{tr("html_value")}</th></tr>
-<tr><td>{_h(tr("html_voltage"))}</td><td dir="ltr"><b>{_h(project.nominal_voltage_v)}V / {_h(project.earthing_system.value)}</b></td></tr>
-<tr><td>{_h(tr("rpt_ik"))}</td><td dir="ltr"><b>{_h(ik_cell)}</b><br><small>{_h(ik_note)}</small></td></tr>
+<tr><td>{_h(tr("html_voltage"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(project.nominal_voltage_v)}V / {_h(project.earthing_system.value)}</span></b></td></tr>
+<tr><td>{_h(tr("rpt_ik"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(ik_cell)}</span></b><br><small dir="auto">{_h(ik_note)}</small></td></tr>
 <tr><td>{_h(tr("rpt_scenario"))}</td><td><b>{_h(tr('panel_' + project.panel_type.value))} / {_h(tr('scenario_' + project.special_scenario.value))}</b></td></tr>
 <tr><td>{_h(tr('wiz_mounting'))}</td><td>{_h(tr('mount_' + project.enclosure_mounting.value))}</td></tr>
-<tr><td>{_h(tr("rpt_dip"))}</td><td dir="ltr"><b>{_h(dip_cell)}</b> <small>{_h(summary.max_starting_dip_motor)}</small></td></tr>
-<tr><td>{_h(tr("html_budget"))}</td><td dir="ltr"><b>{_h(summary.ctrl_24v_total_continuous_w)} W ({_h(summary.ctrl_24v_design_current_with_spare_a)} A)</b></td></tr>
-<tr><td>{_h(tr("html_psu"))}</td><td dir="ltr"><b>{_h(summary.selected_psu_24v.part_number if summary.selected_psu_24v else summary.suggested_psu_str)}</b></td></tr>
+<tr><td>{_h(tr("rpt_dip"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(dip_cell)}</span></b> <small dir="auto">{_h(summary.max_starting_dip_motor)}</small></td></tr>
+<tr><td>{_h(tr("html_budget"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.ctrl_24v_total_continuous_w)} W ({_h(summary.ctrl_24v_design_current_with_spare_a)} A)</span></b></td></tr>
+<tr><td>{_h(tr("html_psu"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.selected_psu_24v.part_number if summary.selected_psu_24v else summary.suggested_psu_str)}</span></b></td></tr>
 </table></div>
 <div><h2>{_h(tr("html_s2"))}</h2><table>
 <tr><th>{_h(tr("html_param"))}</th><th>{_h(tr("html_value"))}</th></tr>
-<tr><td>{_h(tr("html_imain"))}</td><td dir="ltr"><b>{_h(summary.design_main_current_a)} A</b> (Main: {_h(summary.main_breaker.part_number if summary.main_breaker else summary.suggested_main_breaker_str)})</td></tr>
-<tr><td>{_h(tr("html_busbar"))}</td><td dir="ltr"><b>{_h(summary.recommended_busbar_spec)} | PE: {_h(summary.recommended_pe_busbar_spec)}</b></td></tr>
-<tr><td>{_h(tr("html_loss"))}</td><td dir="ltr"><b>{_h(summary.total_power_loss_w)} W / {_h(summary.enclosure_natural_dissipation_w)} W</b></td></tr>
-<tr><td>{_h(tr("html_tint"))}</td><td dir="ltr"><b>{_h(tint_cell)}</b>{tint_warn}</td></tr>
-<tr><td>{_h(tr("html_enclosure"))}</td><td dir="ltr"><b>{_h(summary.selected_enclosure.part_number if summary.selected_enclosure else '-')}</b>{ip_note}</td></tr>
-<tr><td>{_h(tr("rpt_thdi"))}</td><td dir="ltr"><b>{_h(thdi_cell)}</b></td></tr>
-<tr><td>{_h(tr("rpt_cap_bank"))}</td><td dir="ltr"><b>{_h(cap_txt)}</b></td></tr>
-<tr><td>{_h(tr("rpt_spd"))}</td><td dir="ltr"><b>{_h(spd_txt)}</b></td></tr>
+<tr><td>{_h(tr("html_imain"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.design_main_current_a)} A</span></b> <span dir="auto">(Main: <span class="ltr-isolate" dir="ltr">{_h(summary.main_breaker.part_number if summary.main_breaker else summary.suggested_main_breaker_str)}</span>)</span></td></tr>
+<tr><td>{_h(tr("html_busbar"))}</td><td dir="auto"><b><span class="bidi-isolate" dir="auto">{_h(summary.recommended_busbar_spec)} | PE: {_h(summary.recommended_pe_busbar_spec)}</span></b></td></tr>
+<tr><td>{_h(tr("html_loss"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.total_power_loss_w)} W / {_h(summary.enclosure_natural_dissipation_w)} W</span></b></td></tr>
+<tr><td>{_h(tr("html_tint"))}</td><td dir="auto"><span class="bidi-isolate" dir="auto">{_h(tint_cell)}</span>{tint_warn}</td></tr>
+<tr><td>{_h(tr("html_enclosure"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.selected_enclosure.part_number if summary.selected_enclosure else '-')}</span></b>{ip_note}</td></tr>
+<tr><td>{_h(tr("rpt_thdi"))}</td><td dir="auto"><b><span class="bidi-isolate" dir="auto">{_h(thdi_cell)}</span></b></td></tr>
+<tr><td>{_h(tr("rpt_cap_bank"))}</td><td dir="auto"><b><span class="bidi-isolate" dir="auto">{_h(cap_txt)}</span></b></td></tr>
+<tr><td>{_h(tr("rpt_spd"))}</td><td dir="auto"><b><span class="bidi-isolate" dir="auto">{_h(spd_txt)}</span></b></td></tr>
 </table></div></div>
-<h2>{_h(tr("html_s3"))}</h2><table>
-<thead><tr><th>{_h(tr("html_f_id"))}</th><th>{_h(tr("html_f_desc"))}</th><th>{_h(tr("html_f_type"))}</th><th>{_h(tr("html_f_kw"))}</th><th>{_h(tr("html_f_ib"))}</th><th>{_h(tr("html_f_eq"))}</th><th>{_h(tr("html_f_cable"))}</th><th>{_h(tr("html_f_vd"))}</th><th>{_h(tr("html_f_sel"))}</th><th>{_h(tr("html_f_loss"))}</th></tr></thead>
+<h2>{_h(tr("html_s3"))}</h2><table class="feeder-table">
+<thead><tr><th>{_h(tr("html_f_id"))}</th><th>{_h(tr("html_f_desc"))}</th><th>{_h(tr("html_f_type"))}</th><th>{_h(tr("html_f_kw"))}</th><th>{_h(cos_header)}</th><th>{_h(efficiency_header)}</th><th>{_h(tr("col_kva_normal"))}</th><th>{_h(tr("col_kva_starting"))}</th><th>{_h(tr("html_f_ib"))}</th><th>{_h(tr("html_f_eq"))}</th><th>{_h(tr("html_f_cable"))}</th><th>{_h(tr("html_f_vd"))}</th><th>{_h(tr("html_f_sel"))}</th><th>{_h(tr("html_f_loss"))}</th></tr></thead>
 <tbody>{feeder_rows}</tbody></table>
-<h2>{_h(tr("html_s4"))}</h2><table>
+<h2>{_h(tr("html_s4"))}</h2><table class="trace-table">
 <thead><tr><th>{_h(tr("html_f_id"))}</th><th>{_h(tr("html_trace_ib"))}</th><th>{_h(tr("html_trace_iz0"))}</th><th>{_h(tr("html_trace_k1"))}</th><th>{_h(tr("html_trace_k2"))}</th><th>{_h(tr("html_trace_ktot"))}</th><th>{_h(tr("html_trace_iz"))}</th><th>{_h(tr("html_trace_formula"))}</th><th>{_h(tr("html_trace_vd"))}</th></tr></thead>
 <tbody>{trace_rows}</tbody></table>
-<h2>{_h(tr("html_s5"))}</h2><table>
+<h2>{_h(tr("html_s5"))}</h2><table class="validation-table">
 <thead><tr><th>{_h(tr("html_v_status"))}</th><th>{_h(tr("html_v_code"))}</th><th>{_h(tr("html_v_std"))}</th><th>{_h(tr("html_v_desc"))}</th><th>{_h(tr("html_v_evidence"))}</th><th>{_h(tr("html_v_action"))}</th></tr></thead>
 <tbody>{val_rows}</tbody></table>
 <h2>{_h(tr("html_tcc_section"))}</h2>
-<div dir="ltr" style="break-inside:avoid;">{tcc_svg_inline}</div>
+<div class="tcc-chart" dir="ltr">{tcc_svg_inline}</div>
 <p style="font-size:11px;color:#566573;">{_h(tr("html_tcc_note"))}</p>
-<h2>{_h(tr("rpt_refs"))}</h2><table>
+<h2>{_h(tr("rpt_refs"))}</h2><table class="reference-table">
 <thead><tr><th>{_h(tr("rpt_ref_std"))}</th><th>{_h(tr("rpt_ref_scope"))}</th></tr></thead>
 <tbody>{ref_rows}</tbody></table>
 {sign_block}
-<div class="page-footer">{_h(project.project_name)} | LV-PanelAssist | {_h(now_str)}</div>
+{provenance_block}
+<div class="disclaimer">
+  <strong>PRELIMINARY:</strong> All engineering results are preliminary and require review by a qualified engineer. Not an IEC 61439 compliance certificate.
+</div>
+<div class="page-footer">{_h(project.project_name)} | LV-PanelAssist | {_h(now_str)} | {_h(tr('disclaimer_short'))}</div>
 </div></body></html>"""
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(html)
@@ -498,12 +797,12 @@ class DesignVerificationExporter:
             method = tr(f"dv_method_{it.method.value.lower()}")
             rules = ", ".join(it.rule_ids) if it.rule_ids else "-"
             rows += f"""<tr>
-                <td dir="ltr" style="text-align:center;"><b>{_h(it.clause_ref)}</b></td>
-                <td><b>{_h(it.title)}</b><br><small>{_h(it.requirement)}</small></td>
-                <td style="text-align:center;">{_h(method)}</td>
-                <td dir="ltr"><b>{_h(it.computed_value)}</b></td>
-                <td dir="ltr"><small>{_h(it.evidence)}</small></td>
-                <td dir="ltr"><small>{_h(rules)}</small></td>
+                <td dir="auto" style="text-align:center;"><b><bdi dir="ltr">{_h(it.clause_ref)}</bdi></b></td>
+                <td dir="auto"><span class="bidi-isolate" dir="auto"><b>{_h(it.title)}</b><br><small>{_h(it.requirement)}</small></span></td>
+                <td dir="auto" style="text-align:center;"><span class="bidi-isolate" dir="auto">{_h(method)}</span></td>
+                <td dir="auto"><b><bdi dir="ltr">{_h(it.computed_value)}</bdi></b></td>
+                <td class="cell-evidence" dir="auto"><small><span class="bidi-isolate" dir="auto">{_h(it.evidence)}</span></small></td>
+                <td dir="auto"><small><bdi dir="ltr">{_h(rules)}</bdi></small></td>
                 <td style="text-align:center;"><span class="badge {cls}">{_h(label)}</span></td>
             </tr>"""
 
@@ -524,6 +823,8 @@ h2 {{ font-size: 14px; background: #1F4E78; color: white; padding: 6px 12px; bor
 table {{ width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 11px; }}
 th, td {{ border: 1px solid #BDC3C7; padding: 6px 8px; vertical-align: middle; }}
 th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
+.ltr-isolate {{ direction: ltr; unicode-bidi: isolate; }}
+.bidi-isolate {{ unicode-bidi: isolate; }}
 .badge {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; white-space: nowrap; }}
 .badge-verified {{ background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }}
 .badge-preliminary {{ background: #FEF9C3; color: #854D0E; border: 1px solid #FDE047; }}
@@ -531,37 +832,47 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 .badge-insufficient {{ background: #E5E7EB; color: #4B5563; border: 1px solid #D1D5DB; }}
 .meta-table td {{ background: #F8FAFC; }}
 .conclusion-box {{ border: 2px solid #1F4E78; border-radius: 8px; padding: 14px 18px; margin: 12px 0; background: #F8FAFC; }}
-.sign-block {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 10px 0 24px; }}
+.signature-block {{ margin: 10px 0 24px; }}
+.sign-block {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 0; }}
 .sign-cell {{ border-top: 1.5px solid #1F4E78; padding-top: 6px; font-size: 11px; min-height: 44px; }}
 .sign-cell b {{ display: block; font-size: 10px; color: #566573; margin-bottom: 10px; }}
 .page-footer {{ display: none; }}
 @media print {{
   body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9pt; background: #FFF; margin: 0; }}
-  tr {{ page-break-inside: avoid; }}
+  th {{ background-color: #e0e0e0 !important; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+  table {{ orphans: 3; widows: 3; }}
+  td, th {{ break-inside: avoid; page-break-inside: avoid; }}
+  tr {{ break-inside: auto; page-break-inside: auto; }}
+  td.cell-evidence {{ overflow-wrap: anywhere; word-break: break-word; font-size: 0.85em; }}
+  p, blockquote {{ orphans: 2; widows: 2; }}
   thead {{ display: table-header-group; }}
   .no-print {{ display: none !important; }}
   .container {{ border: none; padding: 0; }}
-  .sign-block, .conclusion-box {{ break-inside: avoid; }}
-  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; border-top: 1px solid #BDC3C7; padding: 4px 0; text-align: center; background: #FFF; }}
+  .signature-block {{ break-before: auto; page-break-before: auto; break-inside: auto; page-break-inside: auto; margin-top: 8px; margin-bottom: 8px; }}
+  .signature-wrapper {{ break-inside: avoid; page-break-inside: avoid; break-before: avoid; page-break-before: avoid; }}
+  .summary-box, .conclusion-box {{ break-inside: avoid; page-break-inside: avoid; margin-top: 0; }}
+  .signature-block h2 {{ margin-top: 0; }}
+  h2 {{ break-inside: avoid; break-after: avoid; page-break-after: avoid; }}
+  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; padding: 4px 0; text-align: center; background: #FFF; }}
 }}
 </style></head>
 <body><div class="container">
 <div class="header-box"><div><h1>{_h(tr("dv_title"))}</h1>
-<p>{_h(tr("dv_subtitle"))} — {_h(report.standard_ref)} / {_h(report.clause_ref)} | {_h(tr("html_date"))} {_h(now_str)}</p></div>
+<p dir="auto">{_h(tr("dv_subtitle"))} — <span class="ltr-isolate" dir="ltr">{_h(report.standard_ref)} / {_h(report.clause_ref)}</span> | <span class="ltr-isolate" dir="ltr">{_h(tr("html_date"))} {_h(now_str)}</span></p></div>
 <div class="no-print"><button class="print-btn" onclick="window.print()">{_h(tr("html_print"))}</button></div></div>
 
 <h2>{_h(tr("dv_h_proj"))}</h2>
 <table class="meta-table">
 <tr><th>{_h(tr("rpt_h_param"))}</th><th>{_h(tr("rpt_h_value"))}</th>
 <th>{_h(tr("rpt_h_param"))}</th><th>{_h(tr("rpt_h_value"))}</th></tr>
-<tr><td>{_h(tr("rpt_s_name"))}</td><td><b>{_h(project.project_name)}</b></td>
-<td>{_h(tr("rpt_s_tag"))}</td><td dir="ltr"><b>{_h(project.panel_tag)}</b></td></tr>
-<tr><td>{_h(tr("html_voltage"))}</td><td dir="ltr"><b>{_h(project.nominal_voltage_v)}V / {_h(project.earthing_system.value)}</b></td>
-<td>{_h(tr("rpt_s_temp"))}</td><td dir="ltr"><b>{_h(project.ambient_temp_c)} / {_h(project.max_internal_temp_c)}°C</b></td></tr>
-<tr><td>{_h(tr("rpt_ik"))}</td><td dir="ltr"><b>{_h(ik_line)}</b><br><small>{_h(summary.ik_source_str)}</small></td>
-<td>{_h(tr("kpi_main_current"))}</td><td dir="ltr"><b>{_h(summary.design_main_current_a)} A</b></td></tr>
-<tr><td>{_h(tr("html_sign_designer"))}</td><td>{_h(project.designer_name or "-")}</td>
-<td>{_h(tr("dv_gen_by"))}</td><td dir="ltr">{_h(report.generated_by)}</td></tr>
+<tr><td>{_h(tr("rpt_s_name"))}</td><td dir="auto"><span class="bidi-isolate" dir="auto"><b>{_h(project.project_name)}</b></span></td>
+<td>{_h(tr("rpt_s_tag"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(project.panel_tag)}</span></b></td></tr>
+<tr><td>{_h(tr("html_voltage"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(project.nominal_voltage_v)}V / {_h(project.earthing_system.value)}</span></b></td>
+<td>{_h(tr("rpt_s_temp"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(project.ambient_temp_c)} / {_h(project.max_internal_temp_c)}°C</span></b></td></tr>
+<tr><td>{_h(tr("rpt_ik"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(ik_line)}</span></b><br><small dir="auto">{_h(summary.ik_source_str)}</small></td>
+<td>{_h(tr("kpi_main_current"))}</td><td dir="auto"><b><span class="ltr-isolate" dir="ltr">{_h(summary.design_main_current_a)} A</span></b></td></tr>
+<tr><td>{_h(tr("html_sign_designer"))}</td><td dir="auto"><span class="bidi-isolate" dir="auto">{_h(project.designer_name or "-")}</span></td>
+<td>{_h(tr("dv_gen_by"))}</td><td dir="auto"><span class="ltr-isolate" dir="ltr">{_h(report.generated_by)}</span></td></tr>
 </table>
 
 <h2>{_h(tr("dv_h_items"))}</h2>
@@ -571,135 +882,24 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <th>{_h(tr("dv_h_rules"))}</th><th>{_h(tr("dv_h_status"))}</th></tr></thead>
 <tbody>{rows}</tbody></table>
 
-<div class="conclusion-box">
+<div class="conclusion-box summary-box">
 <b>{_h(tr("dv_conclusion_title"))}:</b> <span class="badge {concl_cls}">{_h(concl_label)}</span>
 <p style="margin:8px 0 0;">{_h(report.conclusion_text)}</p>
 <p style="margin:8px 0 0; font-size:10px; color:#566573;">{_h(tr("dv_note_scope"))}</p>
 </div>
 
+<div class="signature-wrapper">
+<div class="signature-block">
 <h2>{_h(tr("html_sign_title"))}</h2>
 <div class="sign-block">
   <div class="sign-cell"><b>{_h(tr("html_sign_designer"))}</b><span>{_h(project.designer_name or "-")}</span></div>
   <div class="sign-cell"><b>{_h(tr("html_sign_reviewer"))}</b><span>-</span></div>
   <div class="sign-cell"><b>{_h(tr("html_sign_approver"))}</b><span>-</span></div>
-  <div class="sign-cell"><b>{_h(tr("html_sign_date"))}</b><span dir="ltr">{_h(now_str)}</span></div>
+  <div class="sign-cell" dir="auto"><b>{_h(tr("html_sign_date"))}</b><span><span class="ltr-isolate" dir="ltr">{_h(now_str)}</span></span></div>
 </div>
-<div class="page-footer">{_h(project.project_name)} | {_h(tr("dv_title"))} | LV-PanelAssist | {_h(now_str)}</div>
-</div></body></html>"""
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(html)
-
-
-class DesignVerificationExporter:
-    """فاز ۱۲: سند رسمی گزارش تأیید طراحی مطابق IEC 61439-1 بند ۱۰ — قابل تحویل به مشتری/بازرس."""
-    BADGE = {
-        VerificationStatus.PASS: "badge-verified",
-        VerificationStatus.WARNING: "badge-preliminary",
-        VerificationStatus.FAIL: "badge-error",
-        VerificationStatus.NOT_VERIFIED: "badge-insufficient",
-    }
-
-    @staticmethod
-    def generate_html(filepath: str, project: ProjectSpec, summary: PanelSummaryOutput,
-                      report: DesignVerificationReport):
-        require_current_calculation(project, summary)
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        lang = i18n.get_language()
-        direction = i18n.direction()
-        rows = ""
-        for it in report.items:
-            cls = DesignVerificationExporter.BADGE[it.status]
-            label = tr(f"dv_status_{it.status.value.lower()}")
-            method = tr(f"dv_method_{it.method.value.lower()}")
-            rules = ", ".join(it.rule_ids) if it.rule_ids else "-"
-            rows += f"""<tr>
-                <td dir="ltr" style="text-align:center;"><b>{_h(it.clause_ref)}</b></td>
-                <td><b>{_h(it.title)}</b><br><small>{_h(it.requirement)}</small></td>
-                <td style="text-align:center;">{_h(method)}</td>
-                <td dir="ltr"><b>{_h(it.computed_value)}</b></td>
-                <td dir="ltr"><small>{_h(it.evidence)}</small></td>
-                <td dir="ltr"><small>{_h(rules)}</small></td>
-                <td style="text-align:center;"><span class="badge {cls}">{_h(label)}</span></td>
-            </tr>"""
-
-        concl_cls = DesignVerificationExporter.BADGE[report.conclusion_status]
-        concl_label = tr(f"dv_status_{report.conclusion_status.value.lower()}")
-        ik_line = f"{summary.ik_bus_total_ka if summary.ik_bus_total_ka is not None else (summary.ik_used_ka if summary.ik_used_ka is not None else '-')} kA"
-
-        html = f"""<!DOCTYPE html>
-<html lang="{_h(lang)}" dir="{_h(direction)}">
-<head><meta charset="UTF-8"><title>{_h(tr("dv_title"))} - {_h(project.project_name)}</title>
-<style>
-@page {{ size: A4 landscape; margin: 12mm 10mm 15mm 10mm; }}
-body {{ font-family: Tahoma, sans-serif; font-size: 12px; color: #1C2833; background: #F8F9F9; margin: 20px; }}
-.container {{ background: #FFFFFF; padding: 20px; border: 1px solid #BDC3C7; }}
-.header-box {{ display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #1F4E78; padding-bottom: 12px; margin-bottom: 16px; }}
-.print-btn {{ background: #1F4E78; color: white; border: none; padding: 10px 18px; border-radius: 5px; cursor: pointer; font-weight: bold; }}
-h2 {{ font-size: 14px; background: #1F4E78; color: white; padding: 6px 12px; border-radius: 4px; margin-top: 18px; }}
-table {{ width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 11px; }}
-th, td {{ border: 1px solid #BDC3C7; padding: 6px 8px; vertical-align: middle; }}
-th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
-.badge {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; white-space: nowrap; }}
-.badge-verified {{ background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }}
-.badge-preliminary {{ background: #FEF9C3; color: #854D0E; border: 1px solid #FDE047; }}
-.badge-error {{ background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }}
-.badge-insufficient {{ background: #E5E7EB; color: #4B5563; border: 1px solid #D1D5DB; }}
-.meta-table td {{ background: #F8FAFC; }}
-.conclusion-box {{ border: 2px solid #1F4E78; border-radius: 8px; padding: 14px 18px; margin: 12px 0; background: #F8FAFC; }}
-.sign-block {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 10px 0 24px; }}
-.sign-cell {{ border-top: 1.5px solid #1F4E78; padding-top: 6px; font-size: 11px; min-height: 44px; }}
-.sign-cell b {{ display: block; font-size: 10px; color: #566573; margin-bottom: 10px; }}
-.page-footer {{ display: none; }}
-@media print {{
-  body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9pt; background: #FFF; margin: 0; }}
-  tr {{ page-break-inside: avoid; }}
-  thead {{ display: table-header-group; }}
-  .no-print {{ display: none !important; }}
-  .container {{ border: none; padding: 0; }}
-  .sign-block, .conclusion-box {{ break-inside: avoid; }}
-  .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; border-top: 1px solid #BDC3C7; padding: 4px 0; text-align: center; background: #FFF; }}
-}}
-</style></head>
-<body><div class="container">
-<div class="header-box"><div><h1>{_h(tr("dv_title"))}</h1>
-<p>{_h(tr("dv_subtitle"))} — {_h(report.standard_ref)} / {_h(report.clause_ref)} | {_h(tr("html_date"))} {_h(now_str)}</p></div>
-<div class="no-print"><button class="print-btn" onclick="window.print()">{_h(tr("html_print"))}</button></div></div>
-
-<h2>{_h(tr("dv_h_proj"))}</h2>
-<table class="meta-table">
-<tr><th>{_h(tr("rpt_h_param"))}</th><th>{_h(tr("rpt_h_value"))}</th>
-<th>{_h(tr("rpt_h_param"))}</th><th>{_h(tr("rpt_h_value"))}</th></tr>
-<tr><td>{_h(tr("rpt_s_name"))}</td><td><b>{_h(project.project_name)}</b></td>
-<td>{_h(tr("rpt_s_tag"))}</td><td dir="ltr"><b>{_h(project.panel_tag)}</b></td></tr>
-<tr><td>{_h(tr("html_voltage"))}</td><td dir="ltr"><b>{_h(project.nominal_voltage_v)}V / {_h(project.earthing_system.value)}</b></td>
-<td>{_h(tr("rpt_s_temp"))}</td><td dir="ltr"><b>{_h(project.ambient_temp_c)} / {_h(project.max_internal_temp_c)}°C</b></td></tr>
-<tr><td>{_h(tr("rpt_ik"))}</td><td dir="ltr"><b>{_h(ik_line)}</b><br><small>{_h(summary.ik_source_str)}</small></td>
-<td>{_h(tr("kpi_main_current"))}</td><td dir="ltr"><b>{_h(summary.design_main_current_a)} A</b></td></tr>
-<tr><td>{_h(tr("html_sign_designer"))}</td><td>{_h(project.designer_name or "-")}</td>
-<td>{_h(tr("dv_gen_by"))}</td><td dir="ltr">{_h(report.generated_by)}</td></tr>
-</table>
-
-<h2>{_h(tr("dv_h_items"))}</h2>
-<table>
-<thead><tr><th>{_h(tr("dv_h_clause"))}</th><th>{_h(tr("dv_h_item"))} / {_h(tr("dv_h_req"))}</th>
-<th>{_h(tr("dv_h_method"))}</th><th>{_h(tr("dv_h_value"))}</th><th>{_h(tr("dv_h_evidence"))}</th>
-<th>{_h(tr("dv_h_rules"))}</th><th>{_h(tr("dv_h_status"))}</th></tr></thead>
-<tbody>{rows}</tbody></table>
-
-<div class="conclusion-box">
-<b>{_h(tr("dv_conclusion_title"))}:</b> <span class="badge {concl_cls}">{_h(concl_label)}</span>
-<p style="margin:8px 0 0;">{_h(report.conclusion_text)}</p>
-<p style="margin:8px 0 0; font-size:10px; color:#566573;">{_h(tr("dv_note_scope"))}</p>
 </div>
-
-<h2>{_h(tr("html_sign_title"))}</h2>
-<div class="sign-block">
-  <div class="sign-cell"><b>{_h(tr("html_sign_designer"))}</b><span>{_h(project.designer_name or "-")}</span></div>
-  <div class="sign-cell"><b>{_h(tr("html_sign_reviewer"))}</b><span>-</span></div>
-  <div class="sign-cell"><b>{_h(tr("html_sign_approver"))}</b><span>-</span></div>
-  <div class="sign-cell"><b>{_h(tr("html_sign_date"))}</b><span dir="ltr">{_h(now_str)}</span></div>
 </div>
-<div class="page-footer">{_h(project.project_name)} | {_h(tr("dv_title"))} | LV-PanelAssist | {_h(now_str)}</div>
+<div class="page-footer">{_h(project.project_name)} | {_h(tr("dv_title"))} | LV-PanelAssist | {_h(now_str)} | {_h(tr('disclaimer_short'))}</div>
 </div></body></html>"""
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(html)

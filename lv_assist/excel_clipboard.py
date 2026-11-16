@@ -14,6 +14,13 @@ class ParsedFeederRow:
     cos_phi: float = 0.85
     efficiency: float = 0.90
     assumed_fields: Dict[str, float] = field(default_factory=dict)
+    phases: Optional[int] = None
+    demand_factor_kd: Optional[float] = None
+    cable_section_mm2: Optional[float] = None
+    conductor_material: Optional[str] = None
+    thdi_pct: Optional[float] = None
+    has_socket_outlets: Optional[bool] = None
+    fire_resistant: Optional[bool] = None
 
 
 @dataclass
@@ -44,6 +51,13 @@ class ExcelClipboardParser:
         "starter_type": ["starter", "type", "drive", "راه انداز", "نوع راه انداز", "راه‌انداز", "شروع"],
         "cos_phi": ["cosphi", "cos_phi", "cos phi", "pf", "ضریب توان"],
         "efficiency": ["eff", "efficiency", "eta", "راندمان", "بازده"],
+        "phases": ["phases", "phase", "phase_count", "number of phases", "phasen", "anzahl phasen", "فاز", "تعداد فاز", "تعداد فازها"],
+        "demand_factor_kd": ["demand_factor_kd", "demand factor", "demand", "kd", "ضریب تقاضا", "ضریب بار", "bedarfsfaktor"],
+        "cable_section_mm2": ["cable_section_mm2", "cable section", "cross section", "section", "querschnitt", "مقطع", "سطح مقطع", "مقطع کابل", "mm2", "mm²"],
+        "conductor_material": ["conductor_material", "conductor material", "conductor", "material", "leiterwerkstoff", "leitermaterial", "جنس هادی", "جنس کابل", "هادی", "رسانا"],
+        "thdi_pct": ["thdi_pct", "thdi", "thd-i", "harmonic distortion", "oberschwingungsgehalt", "اعوجاج هارمونیکی", "اعوجاج هارمونیک", "هارمونیک"],
+        "has_socket_outlets": ["has_socket_outlets", "socket outlets", "socket", "steckdosen", "steckdose", "پریز", "سوکت"],
+        "fire_resistant": ["fire_resistant", "fire resistant", "fire resistance", "feuerbeständig", "brandschutz", "مقاوم در برابر حریق", "مقاوم حریق", "ضد حریق"],
     }
 
     VALID_STARTERS = {"DOL", "YD", "STAR-DELTA", "VFD", "SOFTSTARTER", "FEEDER", "RESISTIVE"}
@@ -168,6 +182,83 @@ class ExcelClipboardParser:
                     )
                     continue
 
+            row_error_count = len(result.errors)
+
+            def optional_number(field_key: str, valid, message: str) -> Optional[float]:
+                raw_value = get_cell(field_key, "").replace(",", ".")
+                if not raw_value:
+                    return None
+                try:
+                    value = float(raw_value)
+                except ValueError:
+                    result.errors.append(RowValidationError(
+                        human_row, field_key, raw_value, f"مقدار {field_key} نامعتبر است."
+                    ))
+                    return None
+                if not math.isfinite(value) or not valid(value):
+                    result.errors.append(RowValidationError(
+                        human_row, field_key, raw_value, message
+                    ))
+                    return None
+                return value
+
+            phases_value = optional_number(
+                "phases", lambda value: value in (1, 3), "تعداد فاز باید 1 یا 3 باشد."
+            )
+            if phases_value is not None and not phases_value.is_integer():
+                result.errors.append(RowValidationError(
+                    human_row, "phases", get_cell("phases"), "تعداد فاز باید عدد صحیح 1 یا 3 باشد."
+                ))
+                phases_value = None
+            phases = int(phases_value) if phases_value is not None else None
+
+            demand_factor_kd = optional_number(
+                "demand_factor_kd", lambda value: 0 < value <= 1,
+                "ضریب تقاضا باید بزرگ‌تر از 0 و حداکثر 1 باشد."
+            )
+            cable_section_mm2 = optional_number(
+                "cable_section_mm2", lambda value: value > 0,
+                "مقطع کابل باید عددی مثبت باشد."
+            )
+            thdi_pct = optional_number(
+                "thdi_pct", lambda value: 0 <= value <= 200,
+                "THDi باید بین 0 و 200 درصد باشد."
+            )
+
+            raw_material = get_cell("conductor_material", "").strip()
+            conductor_material = None
+            if raw_material:
+                material_aliases = {
+                    "cu": "CU", "copper": "CU", "kupfer": "CU", "مس": "CU", "مسی": "CU",
+                    "al": "AL", "aluminium": "AL", "aluminum": "AL", "آلومینیوم": "AL",
+                    "آلومينيوم": "AL", "آلومینیم": "AL", "آلومينييم": "AL",
+                }
+                conductor_material = material_aliases.get(raw_material.casefold())
+                if conductor_material is None:
+                    result.errors.append(RowValidationError(
+                        human_row, "conductor_material", raw_material,
+                        "جنس هادی باید CU/مس یا AL/آلومینیوم باشد."
+                    ))
+
+            def optional_bool(field_key: str) -> Optional[bool]:
+                raw_value = get_cell(field_key, "").strip().casefold()
+                if not raw_value:
+                    return None
+                if raw_value in {"true", "yes", "y", "1", "بله", "آری", "اره", "ja"}:
+                    return True
+                if raw_value in {"false", "no", "n", "0", "خیر", "نه", "nein"}:
+                    return False
+                result.errors.append(RowValidationError(
+                    human_row, field_key, get_cell(field_key),
+                    "مقدار بولی باید true/false، yes/no، بله/خیر یا 1/0 باشد."
+                ))
+                return None
+
+            has_socket_outlets = optional_bool("has_socket_outlets")
+            fire_resistant = optional_bool("fire_resistant")
+            if len(result.errors) > row_error_count:
+                continue
+
             result.valid_rows.append(
                 ParsedFeederRow(
                     row_index=human_row,
@@ -181,6 +272,13 @@ class ExcelClipboardParser:
                     assumed_fields={key: value for key, value, raw in
                                     (("cos_phi", cos_phi, raw_cos), ("efficiency", efficiency, raw_eff))
                                     if not raw},
+                    phases=phases,
+                    demand_factor_kd=demand_factor_kd,
+                    cable_section_mm2=cable_section_mm2,
+                    conductor_material=conductor_material,
+                    thdi_pct=thdi_pct,
+                    has_socket_outlets=has_socket_outlets,
+                    fire_resistant=fire_resistant,
                 )
             )
 

@@ -116,7 +116,12 @@ def test_imported_project_survives_form_and_recalculation(app, tmp_path):
     }.items():
         ws.append(list(item))
     ws = wb.create_sheet("Feeders_List")
-    ws.append([f"column_{i}" for i in range(19)])
+    ws.append([
+        "feeder_id", "func_tag", "loc_tag", "description", "load_type", "power_kw",
+        "phases", "cos_phi", "efficiency", "demand_factor_kd", "cable_length_m",
+        "cable_section_mm2", "has_socket_outlets", "conductor_material", "insulation",
+        "installation_method", "fire_resistant", "thdi_pct", "fire_pump_service",
+    ])
     ws.append(["F01", "=PWR", "+MCC1", "Test load", "MOTOR_DOL", 11, 3])
     wb.save(path)
     project, _, errors = ExcelInputManager.load_from_excel(str(path))

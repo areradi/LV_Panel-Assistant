@@ -21,13 +21,14 @@ PLC → محاسبات و نتایج → نقشه‌ها → خروجی‌ها �
 """
 import os
 import math
+import re
 from pathlib import Path
 import sys
 import webbrowser
 import zipfile
 import tempfile
 from datetime import datetime
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict
 import tkinter as tk
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -36,6 +37,7 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox, ttk, simpledialog
 
 from lv_assist.paths import get_app_working_dir, config_file_path, get_output_dir
+from lv_assist.calculation_state import StaleCalculationStateError
 from lv_assist.models import (
     ProjectSpec, FeederInput, EarthingSystem, LoadType, ValidationStatus,
     PanelType, SpecialScenario, ConductorMaterial, InsulationType, InstallationMethod, SpdClass,
@@ -73,6 +75,37 @@ from lv_assist.catalog_smart_search import open_smart_search
 from lv_assist.catalog import DB_PATH
 
 LANG_SEGMENT_TO_CODE = {"FA": "fa", "EN": "en", "DE": "de"}
+
+
+def _initial_window_dimensions(screen_width: int, screen_height: int) -> tuple[int, int]:
+    return min(1440, screen_width - 40), min(820, screen_height - 80)
+
+
+def _window_minsize_dimensions(
+    requested_width: int, requested_height: int, screen_width: int, screen_height: int,
+) -> tuple[int, int]:
+    width = max(1100, min(requested_width + 40, screen_width - 40))
+    height = max(650, min(requested_height + 80, screen_height - 80))
+    return width, height
+
+
+def _open_local_file(filepath: str) -> bool:
+    """Open a local file in the default browser using a valid file URI."""
+    try:
+        uri = Path(filepath).resolve().as_uri()
+        return webbrowser.open(uri)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Failed to open file in browser: %s (%s)", filepath, exc
+        )
+        return False
+
+
+def _prelim_gui(value: str, is_preliminary: bool) -> str:
+    """Append a preliminary marker to an engineering value when needed."""
+    return f"{value} (prelim.)" if is_preliminary else value
 
 
 class LocalizedOptionMenu(DirectionalOptionMenu):
@@ -131,6 +164,9 @@ GUIDE_PROJECT_ROWS = [
      "Nennleistung des speisenden Transformators (kVA)", "kVA", "1600"),
     ("transformer_uk_pct", "ولتاژ اتصال کوتاه ترانس (%)", "Transformer short-circuit voltage (%)",
      "Kurzschlussspannung des Transformators (%)", "% (1-20)", "6"),
+    ("cable_grouping_factor_k2", "ضریب گروه‌بندی کابل", "Cable grouping factor",
+     "Kabel-Gruppierungsfaktor", "0.3 - 1.0", "0.8"),
+    ("designer_name", "نام طراح", "Designer name", "Name des Planers", "Text", ""),
     ("ambient_temp_c", "دمای محیط (°C)", "Ambient temperature (°C)", "Umgebungstemperatur (°C)", "°C", "40"),
     ("max_internal_temp_c", "حداکثر دمای مجاز داخل تابلو (°C)", "Max. allowed temperature inside the panel (°C)",
      "Max. zulässige Innentemperatur (°C)", "°C (35-70)", "50"),
@@ -197,6 +233,95 @@ class ExcelImportError(Exception):
 
 
 class ExcelInputManager:
+    FEEDER_HEADER_PARSER_FIELDS = {
+        "feeder_id": "feeder_tag",
+        "description": "description",
+        "load_type": "starter_type",
+        "power_kw": "power_kw",
+        "phases": "phases",
+        "cos_phi": "cos_phi",
+        "efficiency": "efficiency",
+        "demand_factor_kd": "demand_factor_kd",
+        "cable_length_m": "length_m",
+        "cable_section_mm2": "cable_section_mm2",
+        "has_socket_outlets": "has_socket_outlets",
+        "conductor_material": "conductor_material",
+        "fire_resistant": "fire_resistant",
+        "thdi_pct": "thdi_pct",
+    }
+    FEEDER_HEADER_EXTRA_SYNONYMS = {
+        "feeder_id": ["fid", "abgangs id", "کد فیدر"],
+        "func_tag": ["function", "func tag", "=function", "=funktion", "تابع"],
+        "loc_tag": ["location", "loc tag", "+location", "محل", "مکان"],
+        "description": ["beschreibung", "شرح بار", "شرح"],
+        "load_type": ["load type", "lastart", "نوع بار"],
+        "power_kw": ["power kw", "leistung kw", "توان kw"],
+        "phases": ["phases", "phasen", "فاز"],
+        "cos_phi": ["cos φ", "cos phi", "ضریب توان"],
+        "efficiency": ["wirkungsgrad", "راندمان"],
+        "demand_factor_kd": ["demand kd", "gleichzeitigkeitsf", "ضریب تقاضا"],
+        "cable_length_m": ["length m", "länge m", "طول کابل m"],
+        "cable_section_mm2": ["section mm2", "querschnitt mm2", "مقطع mm2"],
+        "has_socket_outlets": ["sockets", "steckdosen", "پریز"],
+        "conductor_material": ["conductor", "leiterwerkstoff", "جنس هادی"],
+        "insulation": ["insulation", "isolierung", "عایق"],
+        "installation_method": ["install method", "installation method", "verlegeart", "روش نصب"],
+        "fire_resistant": ["fire res", "brandschutz", "مقاوم حریق"],
+        "thdi_pct": ["thdi", "thdi %"],
+        "fire_pump_service": ["fire pump", "feuerlöschpumpe", "پمپ آتش نشان"],
+        "locked_rotor_current_a": ["locked rotor current a", "locked rotor current"],
+    }
+
+    @staticmethod
+    def _normalize_excel_header(value: str) -> str:
+        normalized = str(value or "").strip().casefold().replace("_", " ").replace("²", "2")
+        normalized = normalized.replace("=", " ").replace("+", " ").replace("-", " ")
+        normalized = normalized.replace("(", " ").replace(")", " ").replace("?", " ")
+        return " ".join(normalized.split())
+
+    @classmethod
+    def _map_feeder_headers(cls, headers: List[str]) -> Dict[str, int]:
+        mapping: Dict[str, int] = {}
+        parser_synonyms = ExcelClipboardParser.HEADER_SYNONYMS
+        all_fields = set(cls.FEEDER_HEADER_PARSER_FIELDS) | set(cls.FEEDER_HEADER_EXTRA_SYNONYMS)
+
+        for column_index, header in enumerate(headers):
+            normalized_header = cls._normalize_excel_header(header)
+            if not normalized_header:
+                continue
+            exact_matches = []
+            partial_matches = []
+            for field_name in all_fields:
+                source_field = cls.FEEDER_HEADER_PARSER_FIELDS.get(field_name)
+                synonyms = [field_name, field_name.replace("_", " ")]
+                if source_field:
+                    synonyms.extend(parser_synonyms.get(source_field, []))
+                synonyms.extend(cls.FEEDER_HEADER_EXTRA_SYNONYMS.get(field_name, []))
+                normalized_synonyms = {
+                    cls._normalize_excel_header(synonym) for synonym in synonyms if synonym
+                }
+                if normalized_header in normalized_synonyms:
+                    exact_matches.append(field_name)
+                elif any(
+                    len(synonym) >= 4 and synonym in normalized_header
+                    for synonym in normalized_synonyms
+                ):
+                    partial_matches.append(field_name)
+
+            matches = exact_matches or partial_matches
+            if len(matches) > 1:
+                raise ExcelImportError(
+                    f"Feeders_List column '{header}' matches multiple fields: {', '.join(sorted(matches))}"
+                )
+            if matches:
+                field_name = matches[0]
+                if field_name in mapping:
+                    raise ExcelImportError(
+                        f"Feeders_List has multiple columns for '{field_name}'"
+                    )
+                mapping[field_name] = column_index
+        return mapping
+
     @staticmethod
     def create_input_template(filepath: str) -> None:
         wb = openpyxl.Workbook()
@@ -219,6 +344,8 @@ class ExcelInputManager:
             ("prospective_ik_ka", 22.0, tr("xl_g_ik")),
             ("transformer_kva", 1600.0, tr("xl_g_trafo")),
             ("transformer_uk_pct", 6.0, tr("xl_g_uk_pct")),
+            ("cable_grouping_factor_k2", 0.8, tr("xl_g_k2_new")),
+            ("designer_name", None, tr("xl_g_designer_gui")),
             ("ambient_temp_c", 40.0, tr("xl_g_ambient")),
             ("max_internal_temp_c", 50.0, tr("xl_g_internal")),
             ("altitude_m", 1000.0, tr("xl_g_altitude")),
@@ -375,6 +502,8 @@ class ExcelInputManager:
                 special_scenario=_enum(SpecialScenario, "special_scenario", SpecialScenario.NONE),
                 prospective_ik_ka=_f_opt("prospective_ik_ka"),
                 source_r_x=_f_opt('source_r_x'),
+                cable_grouping_factor_k2=_f("cable_grouping_factor_k2", 0.80),
+                designer_name=(str(proj_dict.get("designer_name", "")).strip() or None),
                 voltage_factor_c_max=_f('voltage_factor_c_max', 1.1),
                 voltage_factor_c_min=_f('voltage_factor_c_min', .95),
                 busbar_phase_spacing_mm=_f('busbar_phase_spacing_mm', 60),
@@ -398,61 +527,95 @@ class ExcelInputManager:
 
             ws_feed = wb["Feeders_List"]
             headers = [str(c.value) if c.value else "" for c in ws_feed[1]]
+            feeder_columns = ExcelInputManager._map_feeder_headers(headers)
+            required_columns = {"feeder_id", "description", "load_type", "power_kw"}
+            missing_columns = sorted(required_columns - feeder_columns.keys())
+            if missing_columns:
+                raise ExcelImportError(
+                    "Feeders_List is missing required columns: " + ", ".join(missing_columns)
+                )
+
             feeders = []
             for row_no, row in enumerate(ws_feed.iter_rows(min_row=2, values_only=True), start=2):
-                if not row or row[0] is None: continue
-                row = list(row) + [None] * 19
+                row = list(row)
+                if not row or all(value in (None, "") for value in row):
+                    continue
 
-                def _cell(i, default=None):
-                    return row[i] if row[i] not in (None, "") else default
+                def _cell(field_name, default=None):
+                    column_index = feeder_columns.get(field_name)
+                    if column_index is None or column_index >= len(row):
+                        return default
+                    return row[column_index] if row[column_index] not in (None, "") else default
 
-                def _num(i, key_label="", default=None):
+                def _num(field_name, default=None):
                     """تبدیل عددی ایمن — مقدار خراب به‌جای کرش، خطای ردیفی دوستانه تولید می‌کند."""
-                    val = _cell(i)
+                    val = _cell(field_name)
                     if val is None:
                         return default
                     try:
                         return float(val)
                     except (TypeError, ValueError):
+                        column_index = feeder_columns[field_name]
                         errors.append(tr("err_excel_row_value", row=row_no,
-                                         col=headers[i] or f"Col{i + 1}", value=str(val)))
+                                         col=headers[column_index] or field_name, value=str(val)))
                         return default
 
-                def _cell_enum(cls, i, default):
+                def _cell_enum(cls, field_name, default):
                     # F-013: خطای Enum با آدرس دقیق سلول (شیت/سطر/ستون) ثبت می‌شود
-                    val = _cell(i, default.value)
-                    try: return cls(str(val).strip())
+                    val = _cell(field_name, default.value)
+                    normalized = str(val).strip()
+                    if cls is LoadType:
+                        normalized = {
+                            "DOL": LoadType.MOTOR_DOL.value,
+                            "YD": LoadType.MOTOR_STAR_DELTA.value,
+                            "STAR-DELTA": LoadType.MOTOR_STAR_DELTA.value,
+                            "SOFTSTARTER": LoadType.MOTOR_SOFT_STARTER.value,
+                            "VFD": LoadType.MOTOR_VFD.value,
+                            "FEEDER": LoadType.SUB_FEEDER.value,
+                            "RESISTIVE": LoadType.HEATER_RESISTIVE.value,
+                        }.get(normalized.upper(), normalized)
+                    try: return cls(normalized)
                     except Exception:
                         allowed = ", ".join(e.value for e in cls)
+                        column_index = feeder_columns[field_name]
                         errors.append(tr("err_enum_feed", sheet="Feeders_List", row=row_no,
-                                         col=headers[i] or f"Col{i + 1}", value=str(val), allowed=allowed))
+                                         col=headers[column_index] or field_name, value=str(val), allowed=allowed))
                         return default
 
-                power_kw = _num(5, "power_kw")
-                if not power_kw or power_kw <= 0:
-                    errors.append(tr("err_excel_row_power", row=row_no, id=str(row[0]).strip()))
+                feeder_id = str(_cell("feeder_id", "")).strip()
+                if not feeder_id:
+                    column_index = feeder_columns["feeder_id"]
+                    errors.append(tr("err_excel_row_value", row=row_no,
+                                     col=headers[column_index] or "feeder_id", value=""))
                     continue
 
-                cos_phi = _num(7)
-                eff = _num(8)
-                cable_len = _num(10)
-                cable_sec = _num(11)
-                thdi = _num(17)
+                power_kw = _num("power_kw")
+                if not power_kw or power_kw <= 0:
+                    errors.append(tr("err_excel_row_power", row=row_no, id=feeder_id))
+                    continue
+
+                cos_phi = _num("cos_phi")
+                eff = _num("efficiency")
+                cable_len = _num("cable_length_m")
+                cable_sec = _num("cable_section_mm2")
+                thdi = _num("thdi_pct")
 
                 feeders.append(FeederInput(
-                    feeder_id=str(row[0]).strip(), func_tag=str(_cell(1, "=PWR")), loc_tag=str(_cell(2, project.panel_tag)),
-                    description=str(_cell(3, "")), load_type=_cell_enum(LoadType, 4, LoadType.SUB_FEEDER), power_kw=float(power_kw),
-                    phases=_num(6, "phases", 3), cos_phi=cos_phi,
-                    efficiency=eff, demand_factor_kd=_num(9, "demand", 1.0),
+                    feeder_id=feeder_id, func_tag=str(_cell("func_tag", "=PWR")),
+                    loc_tag=str(_cell("loc_tag", project.panel_tag)),
+                    description=str(_cell("description", "")),
+                    load_type=_cell_enum(LoadType, "load_type", LoadType.SUB_FEEDER), power_kw=float(power_kw),
+                    phases=_num("phases", 3), cos_phi=cos_phi,
+                    efficiency=eff, demand_factor_kd=_num("demand_factor_kd", 1.0),
                     cable_length_m=cable_len, cable_section_mm2=cable_sec,
-                    has_socket_outlets=ExcelInputManager._parse_bool(_cell(12)),
-                    conductor_material=_cell_enum(ConductorMaterial, 13, ConductorMaterial.CU),
-                    insulation=_cell_enum(InsulationType, 14, InsulationType.PVC),
-                    installation_method=_cell_enum(InstallationMethod, 15, InstallationMethod.C),
-                    fire_resistant=ExcelInputManager._parse_bool(_cell(16)),
+                    has_socket_outlets=ExcelInputManager._parse_bool(_cell("has_socket_outlets")),
+                    conductor_material=_cell_enum(ConductorMaterial, "conductor_material", ConductorMaterial.CU),
+                    insulation=_cell_enum(InsulationType, "insulation", InsulationType.PVC),
+                    installation_method=_cell_enum(InstallationMethod, "installation_method", InstallationMethod.C),
+                    fire_resistant=ExcelInputManager._parse_bool(_cell("fire_resistant")),
                     thdi_pct=thdi,
-                    fire_pump_service=ExcelInputManager._parse_bool(_cell(18)),
-                    locked_rotor_current_a=_num(19, 'locked_rotor_current_a'),
+                    fire_pump_service=ExcelInputManager._parse_bool(_cell("fire_pump_service")),
+                    locked_rotor_current_a=_num("locked_rotor_current_a"),
                 ))
             if not feeders and not errors:
                 raise ExcelImportError(tr("err_excel_generic"))
@@ -534,6 +697,7 @@ class FeederEditDialog(ctk.CTkToplevel):
         font = ctk.CTkFont(family=i18n.font_family(), size=12)
         self._entries = {}
         form = ctk.CTkScrollableFrame(self)
+        self._form_frame = form
         form.pack(fill='both', expand=True, padx=8, pady=8)
 
         def row(key, attr, caster):
@@ -554,12 +718,36 @@ class FeederEditDialog(ctk.CTkToplevel):
         row("edt_eff", "efficiency", _opt_float)
         row("edt_kd", "demand_factor_kd", float)
         row("edt_length", "cable_length_m", _opt_float)
+        cable_row = ctk.CTkFrame(form)
+        cable_row.pack(fill="x", padx=14, pady=5)
+        ctk.CTkLabel(cable_row, text=tr("xl_h_sec"), width=85, anchor="w", font=font).pack(side="left", padx=4)
+        cable_section_entry = ctk.CTkEntry(cable_row, width=70, font=font)
+        cable_section_entry.insert(0, str(feeder.cable_section_mm2 if feeder.cable_section_mm2 is not None else ""))
+        cable_section_entry.pack(side="left", padx=3)
+        self._entries["cable_section_mm2"] = (cable_section_entry, _opt_float)
+        ctk.CTkLabel(cable_row, text=tr("xl_h_conductor"), width=78, anchor="w", font=font).pack(side="left", padx=3)
+        self._conductor_menu = DirectionalOptionMenu(
+            cable_row, values=[material.value for material in ConductorMaterial], width=100, font=font,
+        )
+        self._conductor_menu.set(feeder.conductor_material.value)
+        self._conductor_menu.pack(side="left", padx=3)
+        row("xl_h_thdi", "thdi_pct", _opt_float)
         row("edt_lrc", "locked_rotor_current_a", _opt_float)
         row('audit_load_phases', 'phases', int)
         row('audit_load_phase', 'supply_phase', lambda v: v.strip().upper() or None)
         row('audit_rcd_type', 'rcd_type', lambda v: v.strip().upper() or None)
         row('audit_rcd_delta', 'rcd_sensitivity_ma', _opt_float)
         row('audit_earth_res', 'earth_resistance_ohm', _opt_float)
+        self._socket_outlets_var = ctk.BooleanVar(value=feeder.has_socket_outlets)
+        self._socket_outlets_checkbox = ctk.CTkCheckBox(
+            form, text=tr("xl_h_socket"), variable=self._socket_outlets_var, font=font,
+        )
+        self._socket_outlets_checkbox.pack(fill="x", padx=20, pady=6)
+        self._fire_resistant_var = ctk.BooleanVar(value=feeder.fire_resistant)
+        self._fire_resistant_checkbox = ctk.CTkCheckBox(
+            form, text=tr("xl_h_fr"), variable=self._fire_resistant_var, font=font,
+        )
+        self._fire_resistant_checkbox.pack(fill="x", padx=20, pady=6)
         self._fire_pump = ctk.BooleanVar(value=feeder.fire_pump_service)
         ctk.CTkCheckBox(form, text=tr('edt_fire_pump'), variable=self._fire_pump, font=font).pack(fill='x', padx=20, pady=6)
 
@@ -583,7 +771,7 @@ class FeederEditDialog(ctk.CTkToplevel):
         self._ins_menu.set(feeder.insulation.value)
         self._ins_menu.pack(side="right", padx=6)
 
-        btn_row = ctk.CTkFrame(self); btn_row.pack(fill="x", padx=14, pady=(16, 8))
+        btn_row = ctk.CTkFrame(self); btn_row.pack(side="bottom", fill="x", padx=14, pady=(8, 8))
         ctk.CTkButton(btn_row, text=tr("dlg_save"), fg_color="#1E8449", font=font,
                       command=self._save).pack(side="left", padx=8, expand=True)
         ctk.CTkButton(btn_row, text=tr("dlg_cancel"), fg_color="#566573", font=font,
@@ -607,10 +795,14 @@ class FeederEditDialog(ctk.CTkToplevel):
                 efficiency=self._entries["efficiency"][1](self._entries["efficiency"][0].get()),
                 demand_factor_kd=self._entries["demand_factor_kd"][1](self._entries["demand_factor_kd"][0].get()),
                 cable_length_m=self._entries["cable_length_m"][1](self._entries["cable_length_m"][0].get()),
-                cable_section_mm2=f.cable_section_mm2, has_socket_outlets=f.has_socket_outlets,
-                conductor_material=f.conductor_material, insulation=InsulationType(self._ins_menu.get()),
-                installation_method=InstallationMethod(self._method_menu.get()), fire_resistant=f.fire_resistant,
-                thdi_pct=f.thdi_pct, fire_pump_service=self._fire_pump.get(),
+                cable_section_mm2=self._entries["cable_section_mm2"][1](self._entries["cable_section_mm2"][0].get()),
+                has_socket_outlets=self._socket_outlets_var.get(),
+                conductor_material=ConductorMaterial(self._conductor_menu.get()),
+                insulation=InsulationType(self._ins_menu.get()),
+                installation_method=InstallationMethod(self._method_menu.get()),
+                fire_resistant=self._fire_resistant_var.get(),
+                thdi_pct=self._entries["thdi_pct"][1](self._entries["thdi_pct"][0].get()),
+                fire_pump_service=self._fire_pump.get(),
                 locked_rotor_current_a=self._entries['locked_rotor_current_a'][1](self._entries['locked_rotor_current_a'][0].get()),
                 rcd_type=self._entries['rcd_type'][1](self._entries['rcd_type'][0].get()),
                 rcd_sensitivity_ma=self._entries['rcd_sensitivity_ma'][1](self._entries['rcd_sensitivity_ma'][0].get()),
@@ -1054,8 +1246,10 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
     def __init__(self):
         super().__init__()
         i18n.set_config_path(config_file_path())
-        self.geometry("1440x820")
-        self.minsize(1280, 740)
+        width, height = _initial_window_dimensions(
+            self.winfo_screenwidth(), self.winfo_screenheight(),
+        )
+        self.geometry(f"{width}x{height}")
         ctk.set_default_color_theme("blue")
         ctk.set_appearance_mode(i18n.get_theme())
         self.catalog = CatalogRepository.get_default_catalog()
@@ -1072,11 +1266,18 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         self._last_calculation_feeders = []
         self._last_calc_time = None
         self._export_buttons: List = []
+        self._disabled_export_buttons: List = []
         self._status_lbl = None
         self.instruments_list: List[FieldInstrumentInput] = []
         self.last_auto_results = None
         self._build_ui()
         self._load_default_demo()
+        self.update_idletasks()
+        min_width, min_height = _window_minsize_dimensions(
+            self.winfo_reqwidth(), self.winfo_reqheight(),
+            self.winfo_screenwidth(), self.winfo_screenheight(),
+        )
+        self.minsize(min_width, min_height)
 
     # ================================================================= ناوبری
     def _build_ui(self):
@@ -1116,6 +1317,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         ctk.CTkButton(parent, text=tr('scenario_settings'), height=34,
                       command=self.action_scenario_settings).pack(anchor='e', padx=14, pady=4)
         form = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        self._project_form_frame = form
         form.pack(fill="both", expand=True, padx=14, pady=6)
         self.wiz_entries = {}
         fields = [
@@ -1128,6 +1330,9 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             ("wiz_trafo", "entry", "1600"),
             ("wiz_ik", "entry", "22"),
             ("wiz_ambient", "entry", "40"),
+            ("transformer_uk_pct", "entry", "6"),
+            ("cable_grouping_factor_k2", "entry", "0.8"),
+            ("spd_connection_length_m", "entry", "0.5"),
             ("wiz_internal", "entry", "50"),
             ("wiz_earthing", "combo", ["TN-S", "TN-C-S", "TT", "IT"]),
             ("wiz_panel_type", "combo", [t.value for t in PanelType]),
@@ -1146,31 +1351,51 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             ("wiz_bus_spacing", "entry", "60"),
             ("wiz_bus_span", "entry", ""),
             ("wiz_bus_stress", "entry", "120"),
+            ("altitude_m", "entry", "1000"),
+            ("internal_separation_form", "combo", ["Form 1", "Form 2b", "Form 3b", "Form 4b"]),
+            ("designer_name", "entry", ""),
         ]
-        primary = {"wiz_project_name", "wiz_voltage", "wiz_ks", "wiz_ambient", "wiz_internal", "wiz_mounting", "wiz_scenario"}
+        primary = {
+            "wiz_project_name", "wiz_voltage", "wiz_ks", "wiz_ambient", "wiz_internal",
+            "wiz_mounting", "wiz_scenario", "transformer_uk_pct",
+            "cable_grouping_factor_k2", "spd_connection_length_m",
+        }
+        label_keys = {
+            "transformer_uk_pct": "lbl_transformer_uk",
+            "cable_grouping_factor_k2": "lbl_cable_k2",
+            "spd_connection_length_m": "lbl_spd_length",
+            "altitude_m": "lbl_altitude",
+            "internal_separation_form": "lbl_internal_sep",
+            "designer_name": "lbl_designer",
+        }
         fields.sort(key=lambda field: field[0] not in primary)
         self._advanced_widgets = []
+        self._advanced_field_keys = {key for key, _kind, _default in fields if key not in primary}
         self._advanced_fields_visible = False
+        input_column = 1
+        self._assumed_indicator_column = 0 if rtl else 2
         for i, (key, kind, default) in enumerate(fields):
-            r, c = i, 0
-            label_column = c * 2 + (1 if rtl else 0)
-            input_column = c * 2 + (0 if rtl else 1)
-            lbl = ctk.CTkLabel(form, text=tr(key), font=font, anchor="e" if rtl else "w")
+            r = i
+            label_column = 2 if rtl else 0
+            lbl = ctk.CTkLabel(form, text=tr(label_keys.get(key, key)), font=font, anchor="e" if rtl else "w")
             lbl.grid(row=r, column=label_column, padx=(12, 8), pady=6, sticky="ew")
             if kind == "entry":
                 variable = ctk.StringVar(value=default)
-                ent = ctk.CTkEntry(form, width=210, height=40, font=font, textvariable=variable,
+                ent = ctk.CTkEntry(form, height=40, font=font, textvariable=variable,
                                    fg_color=('#F6F9FC', '#203246'), border_color=('#8198AE', '#4A6580'))
                 variable.trace_add("write", self._on_project_input_change)
                 ent.grid(row=r, column=input_column, padx=(8, 16), pady=6, sticky="ew")
                 self.wiz_entries[key] = ent
                 # UI-08: نشانگر نقطه‌ای برای فیلد فرضی
-                self.after_idle(lambda w=ent, k=key: self._attach_assumed_field_indicator(form, k, w))
+                self.after_idle(
+                    lambda w=ent, k=key, row=r:
+                    self._attach_assumed_field_indicator(form, k, w, row)
+                )
             else:
                 prefix = {"wiz_panel_type": "panel_", "wiz_scenario": "scenario_", "wiz_mounting": "mount_"}.get(key)
                 menu_class = LocalizedOptionMenu if prefix else DirectionalOptionMenu
                 localized = {"translation_prefix": prefix} if prefix else {}
-                menu = menu_class(form, values=default, width=210, height=40, font=font, dynamic_resizing=False,
+                menu = menu_class(form, values=default, height=40, font=font, dynamic_resizing=True,
                                   command=self._on_project_input_change, **localized)
                 menu.set(default[0])
                 menu.grid(row=r, column=input_column, padx=(8, 16), pady=6, sticky="ew")
@@ -1179,13 +1404,12 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 self._advanced_widgets.extend((lbl, self.wiz_entries[key]))
                 lbl.grid_remove()
                 self.wiz_entries[key].grid_remove()
-        for cidx in range(2):
-            is_input = cidx % 2 == (0 if rtl else 1)
-            form.grid_columnconfigure(cidx, weight=1 if is_input else 0,
-                                      uniform="project_inputs" if is_input else "project_labels")
+        form.grid_columnconfigure(input_column, weight=1, uniform="project_inputs")
+        for cidx in (0, 2):
+            form.grid_columnconfigure(cidx, weight=0)
 
         spd_row = ctk.CTkFrame(form, fg_color="transparent")
-        spd_row.grid(row=len(fields), column=0, columnspan=2, pady=8, sticky="ew")
+        spd_row.grid(row=len(fields), column=0, columnspan=3, pady=8, sticky="ew")
         self.spd_values = [c.value for c in SpdClass]
         self.spd_display = [tr("gui_spd_" + v.lower()) for v in self.spd_values]
         self.spd_menu = DirectionalOptionMenu(spd_row, values=self.spd_display, width=130, font=font,
@@ -1204,7 +1428,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         ToolTip(self.lps_menu, tr("tip_lps"))
 
         row2 = ctk.CTkFrame(form, fg_color="transparent")
-        row2.grid(row=len(fields) + 1, column=0, columnspan=2, pady=8, sticky="ew")
+        row2.grid(row=len(fields) + 1, column=0, columnspan=3, pady=8, sticky="ew")
         self._advanced_widgets.append(row2)
         row2.grid_remove()
         self.mfg_values = ["ANY"] + sorted({d.manufacturer for d in self.catalog})
@@ -1216,22 +1440,26 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         ToolTip(self.mfg_menu, tr("tip_mfg"))
 
         btn_bar = ctk.CTkFrame(parent, fg_color="transparent")
-        btn_bar.pack(fill="x", padx=14, pady=10)
-        ctk.CTkButton(btn_bar, text=tr("wiz_to_feeders"), fg_color="#1E8449", height=40, font=font,
-                      command=lambda: self._switch_view(1)).pack(side="left", padx=8)
-        ctk.CTkButton(btn_bar, text=tr("btn_import"), fg_color="#385723", font=font,
-                      command=self.action_import_excel).pack(side="left", padx=8)
-        ctk.CTkButton(btn_bar, text=tr("btn_template"), fg_color="#2E75B6", font=font,
-                      command=self.action_generate_template).pack(side="left", padx=8)
-        ctk.CTkButton(btn_bar, text=tr("btn_demo"), fg_color="#C55A11", font=font,
-                      command=self.action_load_demo).pack(side="left", padx=8)
+        btn_bar.pack(side="bottom", fill="x", padx=14, pady=(8, 8))
+        self._project_action_buttons = [
+            ctk.CTkButton(btn_bar, text=tr("wiz_to_feeders"), fg_color="#1E8449", height=40, font=font,
+                          command=lambda: self._switch_view(1)),
+            ctk.CTkButton(btn_bar, text=tr("btn_import"), fg_color="#385723", font=font,
+                          command=self.action_import_excel),
+            ctk.CTkButton(btn_bar, text=tr("btn_template"), fg_color="#2E75B6", font=font,
+                          command=self.action_generate_template),
+            ctk.CTkButton(btn_bar, text=tr("btn_demo"), fg_color="#C55A11", font=font,
+                          command=self.action_load_demo),
+        ]
+        for button in self._project_action_buttons:
+            button.pack(side="left", padx=8)
 
     def _toggle_advanced_fields(self, force=None):
         self._advanced_fields_visible = not self._advanced_fields_visible if force is None else force
         for widget in self._advanced_widgets:
             widget.grid() if self._advanced_fields_visible else widget.grid_remove()
 
-    def _attach_assumed_field_indicator(self, parent_row, field_name: str, widget):
+    def _attach_assumed_field_indicator(self, parent_row, field_name: str, widget, row: int):
         """UI-08: نشانگر نقطه‌ای آبی برای فیلدهای با مقدار فرضی (assumed_fields).
         اگر کاربر مقداری دستی وارد کند، نشانگر پاک می‌شود.
         """
@@ -1245,7 +1473,17 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             text_color='#38BDF8',
             width=16,
         )
-        dot.pack(side='right', padx=2)
+        dot.grid(
+            row=row,
+            column=self._assumed_indicator_column,
+            padx=2,
+            pady=6,
+            sticky='w' if i18n.direction() == 'rtl' else 'e',
+        )
+        if field_name in self._advanced_field_keys:
+            self._advanced_widgets.append(dot)
+            if not self._advanced_fields_visible:
+                dot.grid_remove()
 
         def _clear_assumed(_event=None):
             cur_spec = getattr(self, 'current_project', None) or getattr(self, 'project_spec', None)
@@ -1289,7 +1527,13 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             "wiz_trafo": "" if project.transformer_kva is None else str(project.transformer_kva),
             "wiz_ik": "" if project.prospective_ik_ka is None else str(project.prospective_ik_ka),
             "wiz_ambient": f"{project.ambient_temp_c:g}",
+            "transformer_uk_pct": f"{project.transformer_uk_pct:g}",
+            "cable_grouping_factor_k2": f"{project.cable_grouping_factor_k2:g}",
+            "spd_connection_length_m": f"{project.spd_connection_length_m:g}",
+            "altitude_m": f"{project.altitude_m:g}",
             "wiz_internal": f"{project.max_internal_temp_c:g}",
+            "internal_separation_form": project.internal_separation_form,
+            "designer_name": project.designer_name or "",
             "wiz_ip": project.target_ip,
             "wiz_spare": f"{project.spare_factor:g}",
             "wiz_ks": f"{project.simultaneity_factor_ks:g}",
@@ -1354,6 +1598,10 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             "wiz_source_rx": "source_r_x", "wiz_bus_spacing": "busbar_phase_spacing_mm",
             "wiz_cmax": "voltage_factor_c_max", "wiz_cmin": "voltage_factor_c_min",
             "wiz_bus_span": "busbar_support_span_mm", "wiz_bus_stress": "busbar_allowable_stress_mpa",
+            "transformer_uk_pct": "transformer_uk_pct",
+            "cable_grouping_factor_k2": "cable_grouping_factor_k2",
+            "spd_connection_length_m": "spd_connection_length_m",
+            "altitude_m": "altitude_m",
         }
         text_fields = {
             "wiz_project_name": "project_name", "wiz_std_regime": "standard_ref",
@@ -1361,6 +1609,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             "wiz_panel_type": "panel_type", "wiz_scenario": "special_scenario",
             "wiz_mounting": "enclosure_mounting",
             "wiz_ip": "target_ip",
+            "internal_separation_form": "internal_separation_form",
         }
         for key, field in numeric_fields.items():
             value = _f(key, optional=key in ("wiz_ik", "wiz_trafo", "wiz_enc_width", "wiz_enc_height", "wiz_enc_depth", "wiz_source_rx", "wiz_bus_span"))
@@ -1371,6 +1620,10 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             if (not self.current_project
                     or self.wiz_entries[key].get() != self._project_form_values.get(key)):
                 data[field] = self.wiz_entries[key].get().strip()
+        designer_name = self.wiz_entries["designer_name"].get().strip()
+        if (not self.current_project
+                or designer_name != self._project_form_values.get("designer_name")):
+            data["designer_name"] = designer_name or None
         data["preferred_manufacturer"] = self.mfg_values[self.mfg_display.index(self.mfg_menu.get())]
         data["spd_class"] = self.spd_values[self.spd_display.index(self.spd_menu.get())]
         lps_choice = self.lps_menu.get()
@@ -1446,11 +1699,24 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                      'STAR-DELTA': LoadType.MOTOR_STAR_DELTA, 'VFD': LoadType.MOTOR_VFD,
                      'SOFTSTARTER': LoadType.MOTOR_SOFT_STARTER, 'FEEDER': LoadType.SUB_FEEDER,
                      'RESISTIVE': LoadType.HEATER_RESISTIVE}
-            pending = [FeederInput(
-                feeder_id=row.feeder_tag, description=row.description, load_type=types[row.starter_type],
-                power_kw=row.power_kw, cable_length_m=row.length_m, cos_phi=row.cos_phi,
-                efficiency=row.efficiency, loc_tag=self.wiz_entries['wiz_panel_tag'].get(),
-                input_assumptions=row.assumed_fields) for row in result.valid_rows]
+            pending = []
+            optional_fields = (
+                "phases", "demand_factor_kd", "cable_section_mm2", "conductor_material",
+                "thdi_pct", "has_socket_outlets", "fire_resistant",
+            )
+            for row in result.valid_rows:
+                feeder_fields = {
+                    name: value for name in optional_fields
+                    if (value := getattr(row, name)) is not None
+                }
+                if "conductor_material" in feeder_fields:
+                    feeder_fields["conductor_material"] = ConductorMaterial(feeder_fields["conductor_material"])
+                pending.append(FeederInput(
+                    feeder_id=row.feeder_tag, description=row.description, load_type=types[row.starter_type],
+                    power_kw=row.power_kw, cable_length_m=row.length_m, cos_phi=row.cos_phi,
+                    efficiency=row.efficiency, loc_tag=self.wiz_entries['wiz_panel_tag'].get(),
+                    input_assumptions=row.assumed_fields, **feeder_fields,
+                ))
             ids = [f.feeder_id for f in (self.current_feeders or []) + pending]
             if len(ids) != len(set(ids)):
                 raise ValueError(tr('paste_duplicate'))
@@ -1687,6 +1953,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         out_frame = ctk.CTkFrame(parent, corner_radius=8)
         out_frame.pack(fill="x", padx=10, pady=(8, 4))
         self._export_buttons = []
+        self._disabled_export_buttons = []
 
         def _add_btn(parent_f, text, color, cmd, tip_key=None):
             b = ctk.CTkButton(parent_f, text=text, fg_color="#24415E", hover_color="#1763C0", font=font, height=36, command=cmd)
@@ -1705,9 +1972,19 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             ).pack(anchor="w", padx=6, pady=3)
             actions = ctk.CTkFrame(row, fg_color="transparent")
             actions.pack(fill="x", padx=4, pady=4)
-            for index, (text, color, cmd) in enumerate(buttons):
+            for index, button_spec in enumerate(buttons):
+                text, color, cmd = button_spec[:3]
+                enabled = button_spec[3] if len(button_spec) > 3 else True
+                tip_key = button_spec[4] if len(button_spec) > 4 else None
                 actions.grid_columnconfigure(index % 3, weight=1)
-                button = _add_btn(actions, text, color, cmd)
+                button = _add_btn(actions, text, color, cmd, tip_key)
+                if not enabled:
+                    button.configure(
+                        state="disabled", fg_color="gray", text_color="darkgray",
+                        hover_color="gray",
+                    )
+                    self._export_buttons.remove(button)
+                    self._disabled_export_buttons.append(button)
                 button.pack_forget()
                 button.grid(row=index // 3, column=index % 3, sticky="ew", padx=4, pady=4)
             if extra_right_btn:
@@ -1718,6 +1995,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         # گروه ۱: دفترچه محاسبات و مدارک
         _group("grp_docs", [
             (tr("btn_export"), "#C55A11", self.action_export_report),
+            (tr("btn_bom_csv"), "#566573", self.action_export_bom_csv),
             (tr("btn_report"), "#6C3483", self.action_open_printable_report),
             (tr("btn_pdf"), "#B03A2E", self.action_export_pdf),
             (tr("btn_dv"), "#1F618D", self.action_export_dv),
@@ -1730,6 +2008,8 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             [
                 (tr("btn_tcc"), "#7D3C98", self.action_export_tcc),
                 (tr("btn_layout"), "#8E44AD", self.action_export_layout),
+                (tr("btn_eplan"), "#64748B", self.action_export_eplan,
+                 False, "tip_eplan_coming_soon"),
             ],
             extra_right_btn=(tr("btn_export_all"), "#1E8449", self.action_export_all, "tip_export_all"),
         )
@@ -1749,11 +2029,8 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         _pv = ctk.CTkFrame(parent, fg_color="transparent", border_width=2,
                            border_color="#38BDF8", corner_radius=8)
         _pv.pack(fill="x", padx=12, pady=(4, 8))
-        ctk.CTkLabel(_pv, text="[PREVIEW ONLY / PR #13]",
-                     font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
-                     text_color="#38BDF8").pack(anchor="e" if i18n.direction() == "rtl" else "w", padx=10, pady=(8, 2))
         _rtl = i18n.direction() == "rtl"
-        ctk.CTkLabel(_pv, text="پیش‌نمایش ایزوله است و وارد محاسبات اصلی نمی‌شود.",
+        ctk.CTkLabel(_pv, text=tr("cat_preview_alert"),
                      font=ctk.CTkFont(family=i18n.font_family(), size=11),
                      text_color=("#475569", "#94A3B8"),
                      justify="right" if _rtl else "left"
@@ -1778,10 +2055,10 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         filter_bar.pack(fill="x", padx=12, pady=(4, 0))
         self._cat_filter_var = ctk.StringVar(value="all")
         _filters = [
-            ("all", "همه", "#334155"),
-            ("preview", "پیش‌نمایش", "#38BDF8"),
-            ("awaiting", "در انتظار", "#F59E0B"),
-            ("insufficient", "داده ناکافی", "#64748B"),
+            ("all", tr("cat_filter_all"), "#334155"),
+            ("preview", tr("cat_filter_preview"), "#38BDF8"),
+            ("awaiting", tr("cat_filter_awaiting"), "#F59E0B"),
+            ("insufficient", tr("cat_filter_insufficient"), "#64748B"),
         ]
         for val, txt, color in _filters:
             btn = ctk.CTkRadioButton(filter_bar, text=txt, variable=self._cat_filter_var, value=val,
@@ -2073,11 +2350,11 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             (('شینه فاز / نول', 'Phase / neutral busbar', 'Phasen-/Neutralleiterschiene'), summary.recommended_busbar_spec),
             (('ظرفیت جریان شینه', 'Busbar current rating', 'Schienen-Strombelastbarkeit'), f'{summary.busbar_rating_a:g} A'),
             (('شینه PE', 'PE busbar', 'PE-Schiene'), summary.recommended_pe_busbar_spec),
-            (('تحمل Icw یک‌ثانیه', '1 s Icw withstand', 'Icw für 1 s'), f'{summary.busbar_icw_1s_ka:g} kA'),
-            (('تحمل پیک Ipk', 'Ipk withstand', 'Ipk-Festigkeit'), f'{summary.busbar_ipk_ka:g} kA'),
+            (('تحمل Icw یک‌ثانیه', '1 s Icw withstand', 'Icw für 1 s'), f'{_prelim_gui(f"{summary.busbar_icw_1s_ka:g}", True)} kA'),
+            (('تحمل پیک Ipk', 'Ipk withstand', 'Ipk-Festigkeit'), f'{_prelim_gui(f"{summary.busbar_ipk_ka:g}", True)} kA'),
             (('پیک موردنیاز', 'Required peak current', 'Erforderlicher Scheitelstrom'), '—' if summary.busbar_required_ipk_ka is None else f'{summary.busbar_required_ipk_ka:g} kA'),
             (('تنش خمشی مقدماتی', 'Preliminary bending stress', 'Vorläufige Biegespannung'), '—' if summary.busbar_bending_stress_mpa is None else f'{summary.busbar_bending_stress_mpa:.2f} MPa'),
-            (('ضریب دمای شینه (برآورد)', 'Busbar temperature factor (estimate)', 'Schienentemperaturfaktor (Schätzung)'), f'{summary.busbar_temperature_factor:.3f}'),
+            (('ضریب دمای شینه (برآورد)', 'Busbar temperature factor (estimate)', 'Schienentemperaturfaktor (Schätzung)'), _prelim_gui(f'{summary.busbar_temperature_factor:.3f}', True)),
             (('جریان طراحی هر فاز', 'Design current by phase', 'Bemessungsstrom je Phase'), ' | '.join(f'{phase}: {current:g} A' for phase, current in summary.phase_design_currents_a.items())),
             (('جریان نول در مؤلفه اصلی', 'Fundamental neutral current', 'Grundschwingungs-Neutralleiterstrom'), f'{summary.neutral_current_a:g} A' if summary.neutral_current_a is not None else '—'),
             (('فاصله حداکثر ساپورت', 'Maximum support spacing', 'Maximaler Stützabstand'), '—' if summary.busbar_max_support_spacing_mm is None else f'{summary.busbar_max_support_spacing_mm:g} mm'),
@@ -2100,14 +2377,14 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         _pn = summary.main_breaker.part_number if summary.main_breaker else "-"
         main_txt = f"In: {_mp['rated_current_in']} | Id: {_mp['design_current']}{_warn}\n{_pn}"
         self.kpi_labels["main_current"].configure(text=main_txt)
-        bus_txt = f"{summary.recommended_busbar_spec}\n{tr('kpi_bus_icw', a=summary.busbar_icw_1s_ka, b=summary.busbar_required_supports)}\nΔU={summary.busbar_du_v}V ({summary.busbar_du_pct}%)"
+        bus_txt = f"{summary.recommended_busbar_spec}\n{tr('kpi_bus_icw', a=_prelim_gui(f'{summary.busbar_icw_1s_ka:g}', True), b=summary.busbar_required_supports)} | Ipk={_prelim_gui(f'{summary.busbar_ipk_ka:g}', True)} kA\nΔU={summary.busbar_du_v}V ({summary.busbar_du_pct}%)"
         if summary.motor_contribution_ka is not None:
-            bus_txt += f" | I''kM={summary.motor_contribution_ka}kA"
+            bus_txt += f" | I''kM={_prelim_gui(f'{summary.motor_contribution_ka:g}', True)} kA"
         bus_txt += "\n" + (tr("kpi_spd", a=summary.selected_spd.spd_class, b=summary.selected_spd.part_number) if summary.selected_spd else tr("kpi_spd_none"))
         self.kpi_labels["busbar"].configure(text=bus_txt)
         self.kpi_labels["psu_24v"].configure(text=f"{summary.selected_psu_24v.series if summary.selected_psu_24v else 'N/A'}\n({summary.ctrl_24v_total_continuous_w}W)")
         tint = summary.estimated_internal_temp_c
-        tint_text = f"{summary.total_power_loss_w}W / {summary.enclosure_natural_dissipation_w}W\n{tint}°C"
+        tint_text = f"{summary.total_power_loss_w}W / {summary.enclosure_natural_dissipation_w}W\n{_prelim_gui(f'{tint}°C', True) if tint is not None else '—'}"
         if tint is not None and tint > 50.0:
             tint_text += f"\n{tr('kpi_tint_50_warn')}"
             self.kpi_labels["thermal"].configure(text=tint_text, text_color="#E74C3C")
@@ -2198,7 +2475,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             self._status_lbl.configure(text=tr("lbl_up_to_date", a=self._last_calc_time or "-"), text_color=("#176333", "#65D6A0"))
         state = "disabled" if (self._stale or not self.last_results) else "normal"
         for b in self._export_buttons:
-            try: b.configure(state=state)
+            try: b.configure(state="disabled" if b in self._disabled_export_buttons else state)
             except Exception: pass
         self._refresh_precision_context()
 
@@ -2289,12 +2566,41 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             ExcelExporter.export_to_excel(path, self.current_project, f_outs, summary, validations)
             messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
 
+    def action_export_bom_csv(self):
+        results = self._get_results()
+        if not results:
+            return
+        project_tag = re.sub(r"[^A-Za-z0-9_-]+", "_", self.current_project.panel_tag).strip("_")
+        project_tag = project_tag or "PANEL"
+        initial_filename = f"BOM_Export_{project_tag}_{datetime.now():%Y%m%d_%H%M}.csv"
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            initialfile=initial_filename,
+            filetypes=[(tr("btn_bom_csv"), "*.csv")],
+        )
+        if not filename:
+            return
+        filename = str(Path(filename).with_suffix(".csv"))
+        try:
+            from lv_assist.bom import build_bom, export_bom_csv
+
+            export_bom_csv(filename, build_bom(self.current_project, results[0], results[1]))
+            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+        except PermissionError:
+            messagebox.showerror(
+                tr("msg_error"), tr("err_csv_file_locked"), parent=self
+            )
+        except Exception as ex:
+            messagebox.showerror(
+                tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+            )
+
     def action_open_printable_report(self):
         if not self._get_results(): return
         f_outs, summary, validations = self.last_results
         path = str(get_output_dir("reports") / "LV_Panel_Engineering_Report.html")
         PrintableReportExporter.generate_html_report(path, self.current_project, f_outs, summary, validations)
-        webbrowser.open(f"file://{path}")
+        _open_local_file(path)
 
     def action_open_commercial_quote(self):
         if not self._get_results():
@@ -2303,7 +2609,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         f_outs, summary, _ = self.last_results
         path = str(get_output_dir("reports") / "LV_Panel_Commercial_Quotation.html")
         CommercialEngine.export_quote_html(path, self.current_project, f_outs, summary)
-        webbrowser.open(f"file://{path}")
+        _open_local_file(path)
 
     def action_export_dv(self):
         if not self._get_results(): return
@@ -2314,7 +2620,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         if not path: return
         report = build_design_verification(self.current_project, f_outs, summary, validations)
         DesignVerificationExporter.generate_html(path, self.current_project, summary, report)
-        webbrowser.open(f"file://{path}")
+        _open_local_file(path)
         messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
 
     def _get_results(self):
@@ -2330,18 +2636,34 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         if not res: return
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Single_Line_Diagram.svg", filetypes=[("SVG", "*.svg")])
         if path:
-            SldGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            webbrowser.open(f"file://{path}")
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            try:
+                SldGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
+                _open_local_file(path)
+                messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except StaleCalculationStateError:
+                messagebox.showerror(tr("msg_stale_title"), tr("msg_stale_export"), parent=self)
+                self._mark_stale()
+            except Exception as ex:
+                messagebox.showerror(
+                    tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+                )
 
     def action_export_tcc(self):
         res = self._get_results()
         if not res: return
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Time_Current_Curves.svg", filetypes=[("SVG", "*.svg")])
         if path:
-            TccGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            webbrowser.open(f"file://{path}")
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            try:
+                TccGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
+                _open_local_file(path)
+                messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except StaleCalculationStateError:
+                messagebox.showerror(tr("msg_stale_title"), tr("msg_stale_export"), parent=self)
+                self._mark_stale()
+            except Exception as ex:
+                messagebox.showerror(
+                    tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+                )
 
     def action_export_pdf(self):
         res = self._get_results()
@@ -2350,56 +2672,41 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         if not path: return
         # UI-12: دیالوگ واترمارک اجباری پیش از صدور PDF
         def _do_pdf():
-            tmp_html = os.path.join(os.environ.get("TEMP", get_app_working_dir()), "lvassist_report_temp.html")
-            PrintableReportExporter.generate_html_report(tmp_html, self.current_project, res[0], res[1], res[2])
-            if PdfExporter.export_html_to_pdf(tmp_html, path):
-                messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
-            else:
-                messagebox.showwarning(tr("msg_warning"), tr("msg_pdf_fail"))
+            try:
+                tmp_html = os.path.join(os.environ.get("TEMP", get_app_working_dir()), "lvassist_report_temp.html")
+                PrintableReportExporter.generate_html_report(tmp_html, self.current_project, res[0], res[1], res[2])
+                if PdfExporter.export_html_to_pdf(tmp_html, path):
+                    messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+                else:
+                    messagebox.showwarning(tr("msg_warning"), tr("msg_pdf_fail"))
+            except StaleCalculationStateError:
+                messagebox.showerror(tr("msg_stale_title"), tr("msg_stale_export"), parent=self)
+                self._mark_stale()
+            except Exception as ex:
+                messagebox.showerror(
+                    tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+                )
         self._prompt_export_guardrail_dialog(_do_pdf)
 
+    def _show_eplan_coming_soon(self):
+        messagebox.showinfo(
+            tr("msg_warning"), tr("tip_eplan_coming_soon"), parent=self
+        )
+
     def action_export_eplan(self):
-        res = self._get_results()
-        if not res: return
-        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile="EPLAN_Parts_Import.csv", filetypes=[("CSV", "*.csv")])
-        if path:
-            EplanExporter.export_csv(path, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+        self._show_eplan_coming_soon()
 
     def action_export_eplan_script(self):
-        res = self._get_results()
-        if not res: return
-        path = filedialog.asksaveasfilename(defaultextension=".cs", initialfile="EPLAN_Generate_Pages.cs", filetypes=[("C# Script", "*.cs")])
-        if path:
-            EplanMacroExporter.export_file(path, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+        self._show_eplan_coming_soon()
 
     def action_export_eplan_macros(self):
-        res = self._get_results()
-        if not res: return
-        folder = filedialog.askdirectory(title=tr("btn_eplan_macros"))
-        if folder:
-            out_dir = os.path.join(folder, "EPLAN_Macros")
-            written = EplanMacroFileExporter.export_library(out_dir, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_macros_done", n=len(written)))
+        self._show_eplan_coming_soon()
 
     def action_export_eplan_page_macros(self):
-        res = self._get_results()
-        if not res: return
-        folder = filedialog.askdirectory(title=tr("btn_eplan_page_macros"))
-        if folder:
-            out_dir = os.path.join(folder, "EPLAN_Page_Macros")
-            written = EplanPageMacroExporter.export_library(out_dir, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_page_macros_done", n=len(written)))
+        self._show_eplan_coming_soon()
 
     def action_export_eplan_test_kit(self):
-        res = self._get_results()
-        if not res: return
-        folder = filedialog.askdirectory(title=tr("btn_eplan_test_kit"))
-        if folder:
-            out_dir = os.path.join(folder, "EPLAN_FieldTest")
-            written = EplanFieldTestKit.export_kit(out_dir, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_test_kit_done", n=len(written)))
+        self._show_eplan_coming_soon()
 
     def _on_mfg_change(self, display_value: str):
         if self.current_project is None: return
@@ -2426,34 +2733,42 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         if not res: return
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Control_Circuits.svg", filetypes=[("SVG", "*.svg")])
         if path:
-            ControlCircuitGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            webbrowser.open(f"file://{path}")
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            try:
+                ControlCircuitGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
+                _open_local_file(path)
+                messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except StaleCalculationStateError:
+                messagebox.showerror(tr("msg_stale_title"), tr("msg_stale_export"), parent=self)
+                self._mark_stale()
+            except Exception as ex:
+                messagebox.showerror(
+                    tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+                )
 
     def action_export_connections(self):
         res = self._get_results()
         if not res: return
-        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile="Control_Connections_EPLAN.csv", filetypes=[("CSV", "*.csv")])
-        if path:
-            ControlCircuitGenerator.export_connections_csv(path, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+        self._show_eplan_coming_soon()
 
     def action_export_layout(self):
         res = self._get_results()
         if not res: return
         path = filedialog.asksaveasfilename(defaultextension=".svg", initialfile="Panel_Layout.svg", filetypes=[("SVG", "*.svg")])
         if path:
-            PanelLayoutGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
-            webbrowser.open(f"file://{path}")
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            try:
+                PanelLayoutGenerator.generate_svg_file(path, self.current_project, res[0], res[1])
+                _open_local_file(path)
+                messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+            except StaleCalculationStateError:
+                messagebox.showerror(tr("msg_stale_title"), tr("msg_stale_export"), parent=self)
+                self._mark_stale()
+            except Exception as ex:
+                messagebox.showerror(
+                    tr("msg_error"), tr("err_calc_generic", detail=str(ex)), parent=self
+                )
 
     def action_export_parts(self):
-        res = self._get_results()
-        if not res: return
-        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile="EPLAN_Parts_Management.csv", filetypes=[("CSV", "*.csv")])
-        if path:
-            EplanPartsExporter.export_csv(path, self.current_project, res[0], res[1])
-            messagebox.showinfo(tr("msg_success"), tr("msg_export_saved"))
+        self._show_eplan_coming_soon()
 
     # --- پیش‌نمایش نقشه‌ها (IEC SVG bridge) ---
     def _build_schematics_preview_tab(self, parent):
@@ -2560,7 +2875,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
         with open(preview_path, "w", encoding="utf-8") as fp:
             fp.write(f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{fname}</title></head>"
                      f"<body style='margin:20px;background:#F1F5F9;'>{svg_str}</body></html>")
-        webbrowser.open(f"file://{preview_path}")
+        _open_local_file(preview_path)
 
     def action_save_single_svg(self):
         svg_str, fname = self._get_selected_svg_and_name()
@@ -2666,21 +2981,21 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
 
         ctk.CTkLabel(
             timeline_frame,
-            text='گاه‌شمار استعلام فنی تجهیز پیش‌نمایش',
+            text=tr("cat_inquiry_title"),
             font=(font, 13, 'bold'),
             text_color='#38BDF8',
             anchor='e',
         ).pack(fill='x', padx=12, pady=(10, 2))
 
-        # (شماره، عنوان گام، وضعیت، رنگ، آیا برجسته)
         steps = [
-            ('۱', 'استخراج نمودار و شناسایی ابهام', 'تکمیل‌شده', '#10B981', False),
-            ('۲', 'ارسال نامه استعلام به سازنده', 'تکمیل‌شده', '#10B981', False),
-            ('۳', 'دریافت پاسخ و جداول آزمون آزمایشگاهی', 'در انتظار پاسخ رسمی سازنده', '#F59E0B', True),
-            ('۴', 'ادغام در هسته محاسبات مهندسی', 'معلق تا تایید نهایی اسناد', '#64748B', False),
+            ('1', "cat_step1_title", "cat_step1_status", '#10B981', False),
+            ('2', "cat_step2_title", "cat_step2_status", '#10B981', False),
+            ('3', "cat_step3_title", "cat_step3_status", '#F59E0B', True),
+            ('4', "cat_step4_title", "cat_step4_status", '#64748B', False),
         ]
 
-        for num, title, status, color, highlight in steps:
+        localized_numbers = {"fa": ("۱", "۲", "۳", "۴")}
+        for index, (num, title, status, color, highlight) in enumerate(steps):
             card = ctk.CTkFrame(
                 timeline_frame,
                 fg_color=('#FEF3C7', '#1E293B') if highlight else ('#F1F5F9', '#0F172A'),
@@ -2691,14 +3006,19 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             card.pack(fill='x', padx=12, pady=4)
             ctk.CTkLabel(
                 card,
-                text=f'گام {num} \u2014 {status}',
+                text=tr(
+                    "cat_step_status_line",
+                    number=localized_numbers.get(i18n.get_language(), ())[index]
+                    if i18n.get_language() == "fa" else num,
+                    status=tr(status),
+                ),
                 font=(font, 11, 'bold'),
                 text_color=color,
                 anchor='e',
             ).pack(fill='x', padx=10, pady=(6, 0))
             ctk.CTkLabel(
                 card,
-                text=title,
+                text=tr(title),
                 font=(font, 13 if highlight else 12, 'bold' if highlight else 'normal'),
                 text_color=('#0F172A', '#F8FAFC'),
                 anchor='e',

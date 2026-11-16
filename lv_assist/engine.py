@@ -342,7 +342,10 @@ class EngineeringEngine:
         return float(raw_t)
     def _device_icu_ka(self, dev: CatalogDevice, project: ProjectSpec) -> Optional[float]:
         # Icu در ولتاژ واقعی پروژه از جدول قدرت قطع دیتابیس؛ در نبود داده → None (F-006)
-        return catalog_repo.get_device_icu_at_voltage(dev.part_number, project.nominal_voltage_v)
+        return self._device_icu_match(dev, project)[0]
+
+    def _device_icu_match(self, dev: CatalogDevice, project: ProjectSpec) -> Tuple[Optional[float], bool]:
+        return catalog_repo.get_device_icu_match_at_voltage(dev.part_number, project.nominal_voltage_v)
 
     def _icu_ok(self, dev: CatalogDevice, project: ProjectSpec, ik_ka: Optional[float]) -> bool:
         # Catalog PRE-FILTER only: never reject a device merely because Ik''/Icu is unknown.
@@ -426,7 +429,21 @@ class EngineeringEngine:
         ids = [f.feeder_id for f in feeders]
         if len(ids) != len(set(ids)):
             raise ValueError(tr('paste_duplicate'))
-        input_hash = project.compute_input_hash(feeders)
+        from datetime import datetime, timezone
+        from lv_assist.models import (
+            _compute_catalog_revision,
+            _compute_engine_version,
+            _compute_rules_revision,
+            compute_input_hash,
+        )
+        from lv_assist.paths import get_data_dir
+
+        data_dir = get_data_dir()
+        engine_version = _compute_engine_version()
+        catalog_revision = _compute_catalog_revision(data_dir)
+        rules_revision = _compute_rules_revision(data_dir)
+        calculated_at = datetime.now(timezone.utc).isoformat()
+        input_hash = compute_input_hash(project, feeders)
         self.catalog = list(self._full_catalog)
         if project.preferred_manufacturer != "ANY":
             filtered = [d for d in self.catalog if d.manufacturer == project.preferred_manufacturer]
@@ -477,6 +494,10 @@ class EngineeringEngine:
                 check.rule_category = 'OEM_MANUFACTURER_RULE'
         apply_vde_standard_refs(project, validations)
         summary.verified_input_hash = input_hash
+        summary.engine_version = engine_version
+        summary.catalog_revision = catalog_revision
+        summary.rules_revision = rules_revision
+        summary.calculated_at = calculated_at
         summary.assumptions = {'PROJECT': {name: project.model_dump(mode='json')[name]
                                           for name in project.assumed_fields}}
         for source, output in zip(feeders, feeder_outputs):
@@ -493,6 +514,12 @@ class EngineeringEngine:
                                ik_total_ka: Optional[float]):
         vals, assumptions = [], []
         cos_phi, eff = self._resolve_cos_phi_eff(f.load_type, f.cos_phi, f.efficiency)
+        motor_load = f.load_type in (
+            LoadType.MOTOR_DOL,
+            LoadType.MOTOR_STAR_DELTA,
+            LoadType.MOTOR_SOFT_STARTER,
+            LoadType.MOTOR_VFD,
+        )
 
         if f.load_type in (LoadType.MOTOR_DOL, LoadType.MOTOR_STAR_DELTA, LoadType.MOTOR_SOFT_STARTER, LoadType.MOTOR_VFD):
             if f.cos_phi is None or f.efficiency is None:
@@ -774,11 +801,20 @@ class EngineeringEngine:
         out = FeederCalcOutput(
             phases=f.phases, supply_phase=f.supply_phase,
             feeder_id=f.feeder_id, func_tag=f.func_tag, loc_tag=f.loc_tag, description=f.description, load_type=f.load_type,
-            power_kw=f.power_kw, active_power_demand_kw=round(p_elec_kw, 2), reactive_power_demand_kvar=round(q_elec_kvar, 2),
+            power_kw=f.power_kw,
+            cos_phi_resolved=cos_phi if motor_load else None,
+            cos_phi_source=("plate" if f.cos_phi is not None else "default") if motor_load else None,
+            efficiency_resolved=eff if motor_load else None,
+            efficiency_source=("plate" if f.efficiency is not None else "default") if motor_load else None,
+            kva_normal=round(f.power_kw / (cos_phi * eff), 2) if motor_load else None,
+            active_power_demand_kw=round(p_elec_kw, 2), reactive_power_demand_kvar=round(q_elec_kvar, 2),
             design_current_ib_a=round(ib_a, 2), delta_loop_current_a=i_delta_a, star_current_a=i_star_a,
             required_in_after_derating_a=round(ib_a / k_derate_ref, 2), cable_length_m=cable_len_m,
             selected_phase_mm2=s_ph, selected_pe_mm2=s_pe, cable_derated_iz_a=iz_derated, cable_Auto_sized=(f.cable_section_mm2 is None),
-            cable_designation_str=cable_desig, cable_temp_factor_k1=k1_f, cable_grouping_factor_k2=k2_f,
+            cable_designation_str=cable_desig,
+            conductor_material=f.conductor_material.value if f.conductor_material else None,
+            insulation_type=f.insulation.value if f.insulation else None,
+            cable_temp_factor_k1=k1_f, cable_grouping_factor_k2=k2_f,
             cable_total_derating_k=ktotal_f, cable_method_ref_str=method_ref_str, pe_basis_str=pe_basis_str,
             ik_end_min_ka=profile.ik_feeder_end_min_1p_ka, ik_end_max_ka=profile.ik_feeder_end_max_3p_ka,
             clearing_time_s=clear_t if _is_valid_clear_time(clear_t) else None,
@@ -1142,9 +1178,47 @@ class EngineeringEngine:
                 recommended_action=tr("val_spd_provisional_action"),
             ))
 
-        main_candidates = [d for d in self.catalog if d.device_type == "MCCB" and (d.rated_current_in_a * self._get_derating_factor(d, project.max_internal_temp_c)) >= i_main_req_a and self._icu_ok(d, project, ik_total_ka)]
+        main_current_candidates = [
+            d for d in self.catalog
+            if d.device_type == "MCCB"
+            and (d.rated_current_in_a * self._get_derating_factor(d, project.max_internal_temp_c)) >= i_main_req_a
+        ]
+        main_candidates = [d for d in main_current_candidates if self._icu_ok(d, project, ik_total_ka)]
         main_candidates.sort(key=lambda x: x.rated_current_in_a)
         main_breaker = main_candidates[0] if main_candidates else None
+
+        main_icu_value: Optional[float] = None
+        main_icu_source = "unknown"
+        main_icu_status = "UNKNOWN"
+        main_icu_reason: Optional[str] = None
+        main_ik_at_point = ik_total_ka
+        main_icu_exact_voltage_match = False
+        if main_breaker is None:
+            rejected_for_icu = bool(main_current_candidates and ik_total_ka is not None)
+            if rejected_for_icu:
+                rejected_for_icu = all(
+                    (value := self._device_icu_ka(device, project)) is not None
+                    and value < ik_total_ka
+                    for device in main_current_candidates
+                )
+            main_icu_status = "FAIL"
+            main_icu_reason = "icu_below_ik" if rejected_for_icu else "no_breaker_selected"
+        else:
+            main_icu_value, main_icu_exact_voltage_match = self._device_icu_match(main_breaker, project)
+            if ik_total_ka is None:
+                main_icu_reason = "no_ik"
+            elif main_icu_value is None:
+                main_icu_reason = "no_icu"
+            else:
+                main_icu_source = "exact" if main_icu_exact_voltage_match else "estimated"
+                check = audit_verify_breaking_capacity_icu(
+                    device_icu_ka=main_icu_value,
+                    prospective_ik_ka=ik_total_ka,
+                    is_ik_preliminary=(project.prospective_ik_ka is None or mot_ka > 0.0),
+                )
+                main_icu_status = "FAIL" if check.status == ValidationStatus.ERROR else "OK"
+                if main_icu_status == "FAIL":
+                    main_icu_reason = "icu_below_ik"
 
         if (main_breaker and selected_spd
                 and selected_spd.spd_backup_fuse_a is not None
@@ -1417,13 +1491,22 @@ class EngineeringEngine:
             neutral_current_a=round(neutral_a, 2), phase_imbalance_pct=round(imbalance, 2),
             total_active_kw=round(sum_p, 2), total_reactive_kvar=round(sum_q, 2), total_apparent_kva=round(s_design_kva, 2),
             overall_cos_phi=overall_cos_phi, sum_feeder_currents_a=round(sum_ib, 2), design_main_current_a=round(i_main_req_a, 2),
-            main_breaker=main_breaker, recommended_busbar_spec=busbar_spec, recommended_pe_busbar_spec=pe_busbar_spec,
+            main_breaker=main_breaker,
+            main_breaker_icu_status=main_icu_status,
+            main_breaker_icu_reason=main_icu_reason,
+            main_breaker_icu_value=main_icu_value,
+            main_breaker_icu_source=main_icu_source,
+            main_breaker_ik=main_ik_at_point,
+            recommended_busbar_spec=busbar_spec, recommended_pe_busbar_spec=pe_busbar_spec,
+            busbar_length_m=bus_res.length_m if bus_res.length_m > 0 else None,
+            pe_busbar_length_m=bus_res.length_m if bus_res.length_m > 0 else None,
             busbar_rating_a=bus_res.rating_a, busbar_icw_1s_ka=bus_res.icw_1s_ka, busbar_ipk_ka=bus_res.ipk_ka,
             busbar_required_ipk_ka=bus_res.required_ipk_ka, busbar_max_support_spacing_mm=bus_res.max_support_spacing_mm,
             busbar_required_supports=bus_res.required_supports,
             busbar_bending_stress_mpa=bus_res.bending_stress_mpa,
             busbar_force_n_per_m=bus_res.force_n_per_m, busbar_temperature_factor=bus_res.temperature_factor,
             recommended_incoming_cable_str=inc_cable_str, ctrl_24v_plc_hmi_w=plc_hmi_w, ctrl_24v_coils_holding_w=coils_holding_w,
+            incoming_cable_length_m=None,
             ctrl_24v_total_continuous_w=total_cont_24v_w, ctrl_24v_continuous_current_a=i_cont_24v_a,
             ctrl_24v_design_current_with_spare_a=i_design_24v_a, ctrl_24v_peak_inrush_current_a=i_peak_24v_a,
             selected_psu_24v=selected_psu, selected_dc_selectivity_mod=selected_dc_sel_mod, selected_psu_primary_mcb=selected_psu_mcb,

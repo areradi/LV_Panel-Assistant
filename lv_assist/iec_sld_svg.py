@@ -5,10 +5,11 @@ LV-PanelAssist Dynamic IEC 60617 Single-Line Diagram (SLD) SVG Generator
 No hardcoded project or feeder values.
 """
 
-from lv_assist.drawing_status import preliminary_drawing
+from lv_assist.drawing_status import build_provenance_metadata, preliminary_drawing
+from lv_assist.i18n import tr
 import html
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SLDFeederDTO(BaseModel):
@@ -46,6 +47,10 @@ class SLDPanelDTO(BaseModel):
     main_breaker_part: str
     main_breaker_in_a: float
     main_breaker_icu_ka: Optional[float]
+    main_breaker_icu_status: str = "UNKNOWN"
+    main_breaker_icu_source: str = "unknown"
+    main_breaker_icu_reason: Optional[str] = None
+    main_breaker_ik: Optional[float] = None
     design_main_current_a: float
     busbar_spec: str
     pe_busbar_spec: str
@@ -55,6 +60,14 @@ class SLDPanelDTO(BaseModel):
     psu_rating_str: str = ""
     spd_part: str = ""
     feeders: List[SLDFeederDTO]
+    ik_is_preliminary: bool = False
+    main_icu_is_preliminary: bool = False
+    feeder_icu_preliminary: Dict[str, bool] = Field(default_factory=dict)
+    verified_input_hash: Optional[str] = None
+    engine_version: Optional[str] = None
+    catalog_revision: Optional[str] = None
+    rules_revision: Optional[str] = None
+    calculated_at: Optional[str] = None
 
 
 class IECSldSvgGenerator:
@@ -78,18 +91,32 @@ class IECSldSvgGenerator:
         feeder_columns_svg = []
         for idx, f in enumerate(data.feeders):
             fx = left_margin + idx * col_pitch
-            feeder_columns_svg.append(cls._render_single_feeder_column(fx, f, esc))
+            feeder_columns_svg.append(cls._render_single_feeder_column(
+                fx, f, esc, data.feeder_icu_preliminary.get(f.feeder_id, False)
+            ))
+
+        ik_display = f"{data.prospective_ik_ka:g} kA" if data.prospective_ik_ka is not None else "? kA"
+        if data.ik_is_preliminary and data.prospective_ik_ka is not None:
+            ik_display += " (prelim.)"
+        main_icu_display = (
+            f"{data.main_breaker_icu_ka:g} kA" if data.main_breaker_icu_ka is not None else "? kA"
+        )
+        if data.main_breaker_icu_source == "estimated" and data.main_breaker_icu_ka is not None:
+            main_icu_display += f" ({tr('status_estimated')})"
+        elif data.main_icu_is_preliminary and data.main_breaker_icu_ka is not None:
+            main_icu_display += " (prelim.)"
 
         return f"""
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {svg_w} {svg_h}" width="100%" height="680"
              style="background:#FFFFFF; border:2px solid #1E3A5F; font-family:Calibri,Consolas,sans-serif;">
+            {build_provenance_metadata(data)}
             <!-- Top Title Header Bar -->
             <rect x="0" y="0" width="{svg_w}" height="32" fill="#1E3A5F"/>
             <text x="20" y="21" fill="#FFFFFF" font-size="13" font-weight="bold">
                 IEC 60617 SINGLE-LINE DIAGRAM (SLD) | {esc(data.project_name)} ({esc(data.panel_tag)})
             </text>
             <text x="{svg_w - 20}" y="21" fill="#AED6F1" font-size="11" text-anchor="end">
-                {esc(data.nominal_voltage_v)}V {esc(data.frequency_hz)}Hz | {esc(data.earthing_system)} | Ik'' = {esc(data.prospective_ik_ka)} kA
+                {esc(data.nominal_voltage_v)}V {esc(data.frequency_hz)}Hz | {esc(data.earthing_system)} | Ik'' = {esc(ik_display)}
             </text>
 
             <!-- Incoming Supply & Cable -->
@@ -111,7 +138,7 @@ class IECSldSvgGenerator:
                 {esc(data.main_breaker_part)}
             </text>
             <text x="{main_x + 16}" y="143" fill="#4B5563" font-size="10">
-                In = {esc(data.main_breaker_in_a)} A | Icu = {esc(data.main_breaker_icu_ka)} kA
+                In = {esc(data.main_breaker_in_a)} A | Icu = {esc(main_icu_display)}
             </text>
             <!-- X symbol + contacts for Main Breaker -->
             <line x1="{main_x - 5}" y1="112" x2="{main_x + 5}" y2="122" stroke="#C0392B" stroke-width="2"/>
@@ -144,7 +171,8 @@ class IECSldSvgGenerator:
         """.strip()
 
     @classmethod
-    def _render_single_feeder_column(cls, fx: int, f: SLDFeederDTO, esc) -> str:
+    def _render_single_feeder_column(cls, fx: int, f: SLDFeederDTO, esc,
+                                     icu_is_preliminary: bool = False) -> str:
         parts = []
         # 1. Tap from Main Busbar (Y=195 to Y=245)
         parts.append(f'<circle cx="{fx}" cy="195" r="4" fill="#C0392B"/>')
@@ -158,7 +186,12 @@ class IECSldSvgGenerator:
         parts.append(f'<circle cx="{fx}" cy="280" r="2.5" fill="#1E3A5F"/>')
         parts.append(f'<text x="{fx + 10}" y="254" fill="#1E3A5F" font-size="10" font-weight="bold">{esc(f.protection_tag)}</text>')
         parts.append(f'<text x="{fx + 10}" y="267" fill="#1F2937" font-size="9.5">{esc(f.protection_part)}</text>')
-        parts.append(f'<text x="{fx + 10}" y="279" fill="#4B5563" font-size="9">In={esc(f.protection_in_a)}A | {esc(f.protection_icu_ka)}kA</text>')
+        feeder_icu_display = (
+            f"{f.protection_icu_ka:g}kA" if f.protection_icu_ka is not None else "?kA"
+        )
+        if f.protection_icu_ka is not None and icu_is_preliminary:
+            feeder_icu_display += " (prelim.)"
+        parts.append(f'<text x="{fx + 10}" y="279" fill="#4B5563" font-size="9">In={esc(f.protection_in_a)}A | {esc(feeder_icu_display)}</text>')
         parts.append(f'<line x1="{fx}" y1="280" x2="{fx}" y2="330" stroke="#1E3A5F" stroke-width="1.8"/>')
 
         # 3. Switching Device (Contactor -K / Star-Delta / VFD -U / RCD -F) at Y=330..380

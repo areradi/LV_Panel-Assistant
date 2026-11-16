@@ -1533,8 +1533,8 @@ class TestPhase7HtmlReport:
         assert summary.recommended_pe_busbar_spec in content
         n_err = sum(1 for v in validations if v.status == ValidationStatus.ERROR)
         n_warn = sum(1 for v in validations if v.status == ValidationStatus.WARNING)
-        assert f"{n_err} {html.escape(tr('html_kpi_err'))}" in content
-        assert f"{n_warn} {html.escape(tr('html_kpi_warn'))}" in content
+        assert f'<span class="ltr-isolate" dir="ltr">{n_err}</span> {html.escape(tr("html_kpi_err"))}' in content
+        assert f'<span class="ltr-isolate" dir="ltr">{n_warn}</span> {html.escape(tr("html_kpi_warn"))}' in content
 
     def test_calculation_trace_formula(self, tmp_path):
         _, outs, _, _, content = self._html_project(tmp_path)
@@ -1546,7 +1546,7 @@ class TestPhase7HtmlReport:
         assert html.escape(tr("html_trace_formula")) in content
         assert html.escape(tr("html_trace_vd")) in content
         for f in outs:
-            assert f"<b>{f.feeder_id}</b>" in content
+            assert f'<b><bdi dir="ltr">{f.feeder_id}</bdi></b>' in content
         f = outs[0]
         assert f.cable_derated_iz_a is not None and f.cable_total_derating_k
         iz0 = round(f.cable_derated_iz_a / f.cable_total_derating_k, 1)
@@ -1995,8 +1995,8 @@ class TestPhase13Spd:
         assert tr("rpt_spd") in labels
         ws4 = wb["04_BOM"]
         bom_rows = [[str(c.value) for c in r] for r in ws4.iter_rows(min_row=2)]
-        assert any("-F9" in r[0] and summary.selected_spd.part_number in r[6] for r in bom_rows)
-        assert any("-F9F" in r[0] and r[6] == "None" and "gG" in r[7] for r in bom_rows)
+        assert any("-F-SPD" in r[0] and summary.selected_spd.part_number in r[6] for r in bom_rows)
+        assert any("-F-SPDF" in r[0] and r[6] == "None" and "gG" in r[7] for r in bom_rows)
 
     def test_html_contains_spd(self, tmp_path):
         project, outs, summary, validations = self._run()
@@ -2009,15 +2009,15 @@ class TestPhase13Spd:
     def test_sld_contains_spd_branch(self):
         project, outs, summary, _ = self._run()
         svg = SldGenerator.generate_svg(project, outs, summary)
-        assert "-F9" in svg
+        assert "-F-SPD" in svg
         assert "SPD" in svg
 
     def test_layout_contains_spd_device(self):
         project, outs, summary, _ = self._run()
         result = PanelLayoutGenerator.generate(project, outs, summary)
         tags = [d.tag for row in result.rows for d in row.devices]
-        assert "-F9" in tags
-        spd_dev = [d for row in result.rows for d in row.devices if d.tag == "-F9"][0]
+        assert "-F-SPD" in tags
+        spd_dev = [d for row in result.rows for d in row.devices if d.tag == "-F-SPD"][0]
         assert spd_dev.zone == "POWER"
         assert spd_dev.part_number == summary.selected_spd.part_number
 

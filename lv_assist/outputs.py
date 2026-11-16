@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-from lv_assist.drawing_status import preliminary_drawing
+from lv_assist.drawing_status import build_provenance_metadata, preliminary_drawing
 from lv_assist.calculation_state import require_current_calculation
 import csv
+import logging
 import math
 import os
 import shutil
@@ -12,14 +13,21 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from lv_assist.models import (
-    ProjectSpec, FeederCalcOutput, PanelSummaryOutput, CatalogDevice, LoadType
+    ProjectSpec, FeederCalcOutput, PanelSummaryOutput, CatalogDevice, LoadType, DataQuality
 )
 from lv_assist.catalog import TripCurveRepository
 from lv_assist.i18n import tr
 
+logger = logging.getLogger(__name__)
+
 
 def _esc(s: str) -> str:
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _prelim_out(value: str, is_prelim: bool) -> str:
+    """Append '(prelim.)' to an engineering value when it is preliminary."""
+    return f"{value} (prelim.)" if is_prelim else value
 
 
 class SldGenerator:
@@ -102,7 +110,7 @@ class SldGenerator:
             f'<line x1="{inc_x}" y1="{bus_y + 12}" x2="{x}" y2="{bus_y + 12}" stroke="#1E8449" stroke-width="1.8"/>',
             f'<line x1="{x}" y1="{bus_y + 12}" x2="{x}" y2="{base}" stroke="#1E8449" stroke-width="1.8"/>',
             f'<rect x="{x - 20}" y="{base}" width="40" height="30" rx="4" fill="#1E8449" stroke="#1F4E78" stroke-width="1.5"/>',
-            f'<text x="{x}" y="{base + 19}" text-anchor="middle" font-size="10" fill="white" font-weight="bold">-F9</text>',
+            f'<text x="{x}" y="{base + 19}" text-anchor="middle" font-size="10" fill="white" font-weight="bold">-F-SPD</text>',
             f'<text x="{x}" y="{base + 42}" text-anchor="middle" font-size="8" font-weight="bold" fill="#1E8449" dir="ltr">{pn[:26]}</text>',
             f'<text x="{x}" y="{base + 54}" text-anchor="middle" font-size="8" fill="#566573">{_esc(tr("sld_spd"))} {_esc(cls)}</text>',
         ]
@@ -152,11 +160,17 @@ class SldGenerator:
         w = max(1180.0, 120.0 + per_row * col_w + 40.0)
         h = 330.0 + rows * SldGenerator.ROW_H + SldGenerator.TITLE_BLOCK_H
         bus_y = 120.0
+        ik_is_prelim = summary.ik_used_ka is not None and project.prospective_ik_ka is None
+        ik_str = (
+            _prelim_out(f"{summary.ik_used_ka:g} kA", ik_is_prelim)
+            if summary.ik_used_ka is not None else "?"
+        )
         parts: List[str] = [
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" font-family="Tahoma, Segoe UI, sans-serif">',
+            build_provenance_metadata(summary),
             f'<rect width="{w}" height="{h}" fill="white"/>',
             f'<text x="20" y="28" font-size="17" font-weight="bold" fill="#1F4E78">{_esc(tr("sld_title"))} — {_esc(project.project_name)} ({_esc(project.panel_tag)})</text>',
-            f'<text x="20" y="46" font-size="10" fill="#566573">{datetime.now().strftime("%Y-%m-%d %H:%M")} | {_esc(project.standard_ref)} | Ik″={summary.ik_used_ka if summary.ik_used_ka is not None else "?"} kA</text>',
+            f'<text x="20" y="46" font-size="10" fill="#566573">{datetime.now().strftime("%Y-%m-%d %H:%M")} | {_esc(project.standard_ref)} | Ik″={_esc(ik_str)}</text>',
         ]
         sel_colors = {"VERIFIED_TOTAL": "#1E8449", "VERIFIED_PARTIAL": "#B7950B",
                       "PRELIMINARY": "#566573", "PRELIMINARY_RATIO": "#566573", "VIOLATION": "#C0392B"}
@@ -282,6 +296,7 @@ class TccGenerator:
         require_current_calculation(project, summary, feeders)
         parts: List[str] = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="720" font-family="Tahoma, Segoe UI, sans-serif">',
+            build_provenance_metadata(summary),
             '<rect width="1180" height="720" fill="white"/>',
             f'<text x="20" y="30" font-size="17" font-weight="bold" fill="#1F4E78">{_esc(tr("tcc_title"))} — {_esc(project.project_name)}</text>',
         ]
@@ -301,7 +316,9 @@ class TccGenerator:
         if summary.ik_used_ka is not None:
             x = TccGenerator._px(summary.ik_used_ka * 1000.0)
             parts.append(f'<line x1="{x:.1f}" y1="{TccGenerator.Y0}" x2="{x:.1f}" y2="{TccGenerator.Y1}" stroke="#C0392B" stroke-width="2" stroke-dasharray="6,4"/>')
-            parts.append(f'<text x="{x + 5:.1f}" y="{TccGenerator.Y0 + 14}" font-size="11" font-weight="bold" fill="#C0392B">{_esc(tr("tcc_ik"))} {summary.ik_used_ka} kA</text>')
+            ik_is_prelim = project.prospective_ik_ka is None
+            ik_label = _prelim_out(f"{summary.ik_used_ka} kA", ik_is_prelim)
+            parts.append(f'<text x="{x + 5:.1f}" y="{TccGenerator.Y0 + 14}" font-size="11" font-weight="bold" fill="#C0392B">{_esc(tr("tcc_ik"))} {ik_label}</text>')
 
         legend_y = TccGenerator.Y0 + 6
         def _legend(color: str, text: str):
@@ -322,10 +339,20 @@ class TccGenerator:
             parts.append(TccGenerator._polyline(TccGenerator._curve_points(summary.main_breaker), "#1F4E78", 3.0))
             parts.append(TccGenerator._instantaneous_band(summary.main_breaker, "#1F4E78"))
             parts.append(_legend("#1F4E78", f'{tr("tcc_main")}: {summary.main_breaker.part_number} ({summary.main_breaker.rated_current_in_a:g}A){mb_mark}'))
-            if (summary.main_breaker.icu_ka_400v is not None
-                    and summary.main_breaker.icu_ka_400v > 0):
-                x = TccGenerator._px(summary.main_breaker.icu_ka_400v * 1000.0)
-                parts.append(f'<line x1="{x:.1f}" y1="{TccGenerator.Y0}" x2="{x:.1f}" y2="{TccGenerator.Y1}" stroke="#7F8C8D" stroke-width="1.5" stroke-dasharray="2,4"/>')
+            main_icu = summary.main_breaker_icu_value
+            if main_icu is not None and main_icu > 0:
+                x = TccGenerator._px(main_icu * 1000.0)
+                estimated = (
+                    summary.main_breaker_icu_source == "estimated"
+                    or summary.main_breaker.data_quality != DataQuality.REAL_VERIFIED
+                )
+                dash = ' stroke-dasharray="2,4"' if estimated else ""
+                parts.append(f'<line x1="{x:.1f}" y1="{TccGenerator.Y0}" x2="{x:.1f}" y2="{TccGenerator.Y1}" stroke="#7F8C8D" stroke-width="1.5"{dash}/>')
+                label = tr("tcc_icu_estimated") if estimated else tr("tcc_icu")
+                parts.append(
+                    f'<text x="{x + 4:.1f}" y="{TccGenerator.Y0 + 16}" '
+                    f'font-size="9" fill="#5D6D7E">{_esc(label)}: {main_icu:g} kA</text>'
+                )
 
         # Feeder curves
         for i, f in enumerate(feeders):
@@ -346,6 +373,7 @@ class TccGenerator:
                 parts.append(f'<text x="{x + 5:.1f}" y="{TccGenerator.Y0 + 30}" font-size="9" fill="#B7950B">{_esc(tr("tcc_sel"))} {_esc(f.feeder_id)} = {f.selectivity_limit_is_ka:g} kA</text>')
 
         # فاز تحلیل TCC: علامت‌گذاری تقاطع ریاضی منحنی کلید اصلی و هر فیدر
+        intersection_errors = []
         if summary.main_breaker:
             from lv_assist.tcc_analyzer import TccAnalyzer
             inter_y = (TccGenerator.Y0 + TccGenerator.Y1) / 2.0
@@ -356,6 +384,12 @@ class TccGenerator:
                 try:
                     inter = TccAnalyzer.find_intersection(summary.main_breaker, dev)
                 except Exception:
+                    logger.warning(
+                        "TCC intersection calculation failed for feeder %s",
+                        f.feeder_id,
+                        exc_info=True,
+                    )
+                    intersection_errors.append(f.feeder_id)
                     continue
                 if not inter.intersection_a or inter.intersection_a <= TccGenerator.X_MIN \
                         or inter.intersection_a >= TccGenerator.X_MAX:
@@ -364,7 +398,16 @@ class TccGenerator:
                 color = TccGenerator.PALETTE[(i + 1) % len(TccGenerator.PALETTE)]
                 parts.append(f'<circle cx="{x:.1f}" cy="{inter_y:.1f}" r="5" fill="none" stroke="{color}" stroke-width="2"/>')
                 parts.append(f'<circle cx="{x:.1f}" cy="{inter_y:.1f}" r="1.8" fill="{color}"/>')
-                parts.append(f'<text x="{x:.1f}" y="{inter_y - 9:.1f}" text-anchor="middle" font-size="8.5" fill="{color}" dir="ltr">Is = {inter.intersection_a / 1000.0:g} kA</text>')
+                parts.append(f'<text x="{x:.1f}" y="{inter_y - 9:.1f}" text-anchor="middle" font-size="8.5" fill="{color}" dir="ltr">Is ≈ {inter.intersection_a / 1000.0:g} kA</text>')
+
+        if intersection_errors:
+            failed_feeders = ", ".join(intersection_errors)
+            parts.append(
+                f'<text x="{TccGenerator.X0}" y="50" font-size="10" '
+                'font-weight="bold" fill="#C0392B">'
+                f'ERROR: intersection calculation failed for {_esc(failed_feeders)}; '
+                'review required.</text>'
+            )
 
         # F-003: برچسب بصری واضح برای منحنی‌های تخمینی
         if any_estimated:
@@ -459,6 +502,8 @@ class EplanExporter:
 
     @classmethod
     def export_csv(cls, filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        from lv_assist.exporters import _csv_safe
+
         require_current_calculation(project, summary, feeders)
         rows: List[list] = []
         for func, loc, bmk, cat, dev, spec, qty in _bom_entries(project, feeders, summary):
@@ -471,7 +516,7 @@ class EplanExporter:
         with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(cls.HEADERS)
-            writer.writerows(rows)
+            writer.writerows([_csv_safe(value) for value in row] for row in rows)
 
 
 class EplanPartsExporter:
@@ -494,6 +539,8 @@ class EplanPartsExporter:
 
     @classmethod
     def export_csv(cls, filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        from lv_assist.exporters import _csv_safe
+
         require_current_calculation(project, summary, feeders)
         agg: dict = {}
         for _, _, _, _, dev, _, qty in _bom_entries(project, feeders, summary):
@@ -520,4 +567,4 @@ class EplanPartsExporter:
         with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(cls.HEADERS)
-            writer.writerows(rows)
+            writer.writerows([_csv_safe(value) for value in row] for row in rows)

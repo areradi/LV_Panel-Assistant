@@ -79,7 +79,7 @@ class PanelLayoutGenerator:
         devs: List[LayoutDevice] = []
         devs += cls._dev("-E1", summary.selected_fan, "COOLING")
         devs += cls._dev("-Q0", summary.main_breaker, "POWER")
-        devs += cls._dev("-F9", summary.selected_spd, "POWER")
+        devs += cls._dev("-F-SPD", summary.selected_spd, "POWER")
         for i, f in enumerate(feeders, start=1):
             devs += cls._dev(feeder_reference_tag(i, 'protection'), f.selected_protection, "POWER",
                              extra_loss_w=f.total_feeder_loss_w)

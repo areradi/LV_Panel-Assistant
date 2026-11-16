@@ -28,6 +28,7 @@ from lv_assist.models import (
     StepEngStatus,
     StepExecState,
 )
+from lv_assist.i18n import tr
 
 
 NA_LABEL_FA = "نامشخص"
@@ -82,6 +83,11 @@ def format_summary_cards(
     enclosure: Any,
     design_current_a: Optional[float] = None,
     na_label: str = NA_LABEL_FA,
+    icu_status: Optional[str] = None,
+    icu_source: Optional[str] = None,
+    icu_value: Optional[float] = None,
+    icu_voltage_v: Optional[float] = None,
+    icu_is_preliminary: bool = False,
 ) -> Dict[str, Dict[str, str]]:
     """Build the two summary cards ("main_protection" and "enclosure").
 
@@ -100,6 +106,7 @@ def format_summary_cards(
             "breaking_capacity": na_label,
             "poles": na_label,
             "trip_settings": na_label,
+            "icu_status": "",
         }
     else:
         model_parts = [p for p in (spec.device_type, spec.model_name, spec.part_number) if p]
@@ -108,9 +115,12 @@ def format_summary_cards(
         in_str = f"\u2066{spec.in_a:g} A\u2069" if spec.in_a is not None else na_label
 
         cap_tokens: List[str] = []
-        v_ref = f" @ {spec.rated_voltage_v:g} V" if spec.rated_voltage_v else ""
-        if spec.icu_ka is not None:
-            cap_tokens.append(f"Icu = {spec.icu_ka:g} kA")
+        resolved_icu = icu_value if icu_status is not None else spec.icu_ka
+        voltage_ref = icu_voltage_v if icu_status is not None else spec.rated_voltage_v
+        if resolved_icu is not None:
+            icu_voltage_ref = f" @ {voltage_ref:g} V" if voltage_ref else ""
+            cap_tokens.append(f"Icu = {resolved_icu:g} kA{icu_voltage_ref}")
+        v_ref = f" @ {voltage_ref:g} V" if voltage_ref and icu_status is None else ""
         if spec.ics_ka is not None:
             cap_tokens.append(f"Ics = {spec.ics_ka:g} kA")
         if spec.icn_ka is not None:
@@ -143,6 +153,19 @@ def format_summary_cards(
             "poles": poles_str,
             "trip_settings": trip_settings_str,
         }
+    if icu_status is None:
+        main_protection_card["icu_status"] = ""
+    else:
+        status_key = {
+            "OK": "status_ok",
+            "FAIL": "status_fail",
+            "UNKNOWN": "status_unknown",
+        }.get(icu_status, "status_unknown")
+        status_icon = {"OK": "✓", "FAIL": "✗", "UNKNOWN": "?"}.get(icu_status, "?")
+        status_text = f"{status_icon} {tr('main_breaker_icu_status')}: {tr(status_key)}"
+        if icu_source == "estimated" or icu_is_preliminary:
+            status_text += f" · {tr('status_estimated')}"
+        main_protection_card["icu_status"] = status_text
 
     # Design current is a SEPARATE concept from the breaker's In.
     main_protection_card["design_current"] = (

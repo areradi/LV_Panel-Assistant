@@ -1,6 +1,8 @@
 ﻿# -*- coding: utf-8 -*-
 """Core behaviour tests for lv_assist.excel_clipboard (no cos/eff yet)."""
 
+import pytest
+
 from lv_assist.excel_clipboard import (
     ExcelClipboardParser as E,
     ClipboardImportResult,
@@ -164,3 +166,89 @@ def test_blank_rows_skipped():
     raw = "F01\tPump\t15\t50\tDOL\n\n   \t  \t\t\t\nF02\tFan\t5\t20\tVFD"
     res = E.parse_clipboard_text(raw)
     assert len(res.valid_rows) == 2
+
+
+def test_extended_feeder_fields_parse_from_english_headers():
+    raw = (
+        "Tag\tDescription\tPower kW\tPhases\tDemand Factor\tCable Section mm2\t"
+        "Conductor Material\tTHDi %\tSocket Outlets\tFire Resistant\n"
+        "F01\tPump\t15\t3\t0.8\t25\tAL\t35\tyes\tno"
+    )
+    result = E.parse_clipboard_text(raw)
+
+    assert result.errors == []
+    row = result.valid_rows[0]
+    assert row.phases == 3
+    assert row.demand_factor_kd == 0.8
+    assert row.cable_section_mm2 == 25.0
+    assert row.conductor_material == "AL"
+    assert row.thdi_pct == 35.0
+    assert row.has_socket_outlets is True
+    assert row.fire_resistant is False
+
+
+def test_extended_feeder_fields_accept_persian_values_and_german_headers():
+    raw = (
+        "Tag\tPower kW\tPhasen\tBedarfsfaktor\tQuerschnitt mm²\tLeiterwerkstoff\t"
+        "THDi\tSteckdosen\tFeuerbeständig\n"
+        "F01\t15\t1\t0,75\t16\tمس\t25\tبله\tخیر"
+    )
+    result = E.parse_clipboard_text(raw)
+
+    assert result.errors == []
+    row = result.valid_rows[0]
+    assert row.phases == 1
+    assert row.demand_factor_kd == 0.75
+    assert row.cable_section_mm2 == 16.0
+    assert row.conductor_material == "CU"
+    assert row.thdi_pct == 25.0
+    assert row.has_socket_outlets is True
+    assert row.fire_resistant is False
+
+
+def test_missing_extended_columns_remain_none():
+    result = E.parse_clipboard_text("F01\tPump\t15\t50\tDOL")
+
+    assert result.errors == []
+    row = result.valid_rows[0]
+    assert row.phases is None
+    assert row.demand_factor_kd is None
+    assert row.cable_section_mm2 is None
+    assert row.conductor_material is None
+    assert row.thdi_pct is None
+    assert row.has_socket_outlets is None
+    assert row.fire_resistant is None
+
+
+def test_invalid_conductor_material_is_reported():
+    result = E.parse_clipboard_text(
+        "Tag\tPower\tConductor Material\nF01\t15\tXYZ"
+    )
+
+    assert result.valid_rows == []
+    assert len(result.errors) == 1
+    assert result.errors[0].column_name == "conductor_material"
+    assert "XYZ" in result.errors[0].raw_value
+
+
+def test_persian_boolean_values_are_parsed():
+    result = E.parse_clipboard_text(
+        "Tag\tPower\tپریز\tمقاوم در برابر حریق\nF01\t15\tبله\tخیر"
+    )
+
+    assert result.errors == []
+    assert result.valid_rows[0].has_socket_outlets is True
+    assert result.valid_rows[0].fire_resistant is False
+
+
+@pytest.mark.parametrize(("true_value", "false_value"), [("true", "false"), ("1", "0")])
+def test_boolean_literal_and_numeric_values_are_parsed(true_value, false_value):
+    raw = (
+        "Tag\tPower\tSocket Outlets\tFire Resistant\n"
+        f"F01\t15\t{true_value}\t{false_value}"
+    )
+    result = E.parse_clipboard_text(raw)
+
+    assert result.errors == []
+    assert result.valid_rows[0].has_socket_outlets is True
+    assert result.valid_rows[0].fire_resistant is False
