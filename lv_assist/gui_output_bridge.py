@@ -115,12 +115,11 @@ class GuiOutputBridge:
         psu_str = f"24VDC Load = {psu_w}W ({psu_a}A w/Spare)" if psu_w else "24VDC Control Circuit"
 
         ik_val = summary.ik_bus_total_ka or summary.ik_used_ka
-        from lv_assist.catalog import catalog_repo
-        main_icu = catalog_repo.get_device_icu_at_voltage(main_brk.part_number, project.nominal_voltage_v) if main_brk else None
+        main_icu = getattr(summary, "main_breaker_icu_value", None)
         ik_is_preliminary = summary.ik_used_ka is not None and project.prospective_ik_ka is None
         main_icu_is_preliminary = (
             main_brk is not None and main_brk.data_quality != DataQuality.REAL_VERIFIED
-        )
+        ) or getattr(summary, "main_breaker_icu_source", "unknown") == "estimated"
         feeder_icu_preliminary = {
             f_out.feeder_id: f_out.selected_protection.data_quality != DataQuality.REAL_VERIFIED
             for f_out in feeders_out
@@ -139,6 +138,10 @@ class GuiOutputBridge:
             main_breaker_part=str(getattr(main_brk, "part_number", "Main Breaker")),
             main_breaker_in_a=float(getattr(main_brk, "rated_current_in_a", 0.0)),
             main_breaker_icu_ka=main_icu,
+            main_breaker_icu_status=getattr(summary, "main_breaker_icu_status", "UNKNOWN"),
+            main_breaker_icu_source=getattr(summary, "main_breaker_icu_source", "unknown"),
+            main_breaker_icu_reason=getattr(summary, "main_breaker_icu_reason", None),
+            main_breaker_ik=getattr(summary, "main_breaker_ik", None),
             design_main_current_a=float(getattr(summary, "design_main_current_a", 0.0)),
             busbar_spec=str(bus_spec),
             pe_busbar_spec=str(pe_spec),

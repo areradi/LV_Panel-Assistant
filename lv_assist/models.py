@@ -519,6 +519,11 @@ class PanelSummaryOutput(BaseModel):
     phase_imbalance_pct: Optional[float] = None
     design_main_current_a: float
     main_breaker: Optional[CatalogDevice] = None
+    main_breaker_icu_status: Literal["OK", "FAIL", "UNKNOWN"] = "UNKNOWN"
+    main_breaker_icu_reason: Optional[str] = None
+    main_breaker_icu_value: Optional[float] = None
+    main_breaker_icu_source: Literal["exact", "estimated", "unknown"] = "unknown"
+    main_breaker_ik: Optional[float] = None
     recommended_busbar_spec: str
     recommended_pe_busbar_spec: str
     busbar_length_m: Optional[float] = None

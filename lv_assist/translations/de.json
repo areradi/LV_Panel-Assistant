@@ -1149,5 +1149,18 @@
   "cat_step4_title": "In den technischen Berechnungskern integrieren",
   "cat_step4_status": "Bis zur endgültigen Dokumentenfreigabe ausgesetzt",
   "sidebar_active_project": "Aktives Projekt",
-  "sidebar_validation_center": "Dokumentenvalidierung"
+  "sidebar_validation_center": "Dokumentenvalidierung",
+  "main_breaker_part_number": "Artikelnummer des Hauptschalters",
+  "main_breaker_in": "Bemessungsstrom In",
+  "main_breaker_icu_status": "Icu-Status des Hauptschalters",
+  "col_icu_main_breaker": "Icu @ Projektspannung",
+  "status_ok": "OK",
+  "status_fail": "FEHLER",
+  "status_unknown": "UNBEKANNT",
+  "status_estimated": "geschätzt",
+  "tooltip_icu_fail": "Icu liegt am Installationsort unter Ik",
+  "tooltip_icu_unknown": "Ik- oder Icu-Daten sind nicht verfügbar",
+  "tooltip_icu_ok": "Icu={a} kA ≥ Ik={b} kA am Installationsort",
+  "tcc_icu": "Icu",
+  "tcc_icu_estimated": "Icu (geschätzt)"
 }

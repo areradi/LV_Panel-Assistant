@@ -1149,5 +1149,18 @@
   "cat_step4_title": "Integrate into the engineering calculation core",
   "cat_step4_status": "Paused pending final document approval",
   "sidebar_active_project": "Active Project",
-  "sidebar_validation_center": "Document Validation Center"
+  "sidebar_validation_center": "Document Validation Center",
+  "main_breaker_part_number": "Main Breaker Part Number",
+  "main_breaker_in": "Rated Current In",
+  "main_breaker_icu_status": "Main Breaker Icu Status",
+  "col_icu_main_breaker": "Icu @ project voltage",
+  "status_ok": "OK",
+  "status_fail": "FAIL",
+  "status_unknown": "UNKNOWN",
+  "status_estimated": "estimated",
+  "tooltip_icu_fail": "Icu is below Ik at the point of installation",
+  "tooltip_icu_unknown": "Ik or Icu data is unavailable",
+  "tooltip_icu_ok": "Icu={a} kA ≥ Ik={b} kA at the point of installation",
+  "tcc_icu": "Icu",
+  "tcc_icu_estimated": "Icu (est.)"
 }

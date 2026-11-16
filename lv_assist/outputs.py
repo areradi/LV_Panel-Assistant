@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from lv_assist.models import (
-    ProjectSpec, FeederCalcOutput, PanelSummaryOutput, CatalogDevice, LoadType
+    ProjectSpec, FeederCalcOutput, PanelSummaryOutput, CatalogDevice, LoadType, DataQuality
 )
 from lv_assist.catalog import TripCurveRepository
 from lv_assist.i18n import tr
@@ -339,10 +339,20 @@ class TccGenerator:
             parts.append(TccGenerator._polyline(TccGenerator._curve_points(summary.main_breaker), "#1F4E78", 3.0))
             parts.append(TccGenerator._instantaneous_band(summary.main_breaker, "#1F4E78"))
             parts.append(_legend("#1F4E78", f'{tr("tcc_main")}: {summary.main_breaker.part_number} ({summary.main_breaker.rated_current_in_a:g}A){mb_mark}'))
-            if (summary.main_breaker.icu_ka_400v is not None
-                    and summary.main_breaker.icu_ka_400v > 0):
-                x = TccGenerator._px(summary.main_breaker.icu_ka_400v * 1000.0)
-                parts.append(f'<line x1="{x:.1f}" y1="{TccGenerator.Y0}" x2="{x:.1f}" y2="{TccGenerator.Y1}" stroke="#7F8C8D" stroke-width="1.5" stroke-dasharray="2,4"/>')
+            main_icu = summary.main_breaker_icu_value
+            if main_icu is not None and main_icu > 0:
+                x = TccGenerator._px(main_icu * 1000.0)
+                estimated = (
+                    summary.main_breaker_icu_source == "estimated"
+                    or summary.main_breaker.data_quality != DataQuality.REAL_VERIFIED
+                )
+                dash = ' stroke-dasharray="2,4"' if estimated else ""
+                parts.append(f'<line x1="{x:.1f}" y1="{TccGenerator.Y0}" x2="{x:.1f}" y2="{TccGenerator.Y1}" stroke="#7F8C8D" stroke-width="1.5"{dash}/>')
+                label = tr("tcc_icu_estimated") if estimated else tr("tcc_icu")
+                parts.append(
+                    f'<text x="{x + 4:.1f}" y="{TccGenerator.Y0 + 16}" '
+                    f'font-size="9" fill="#5D6D7E">{_esc(label)}: {main_icu:g} kA</text>'
+                )
 
         # Feeder curves
         for i, f in enumerate(feeders):

@@ -187,17 +187,33 @@ class CatalogRepository:
         tolerance_v: float = 20.0,
     ) -> Optional[float]:
         """بازیابی Icu متناسب با ولتاژ نامی؛ در نبود داده دیتاشیت برای آن ولتاژ، None برمی‌گردد."""
+        value, _exact_voltage_match = self.get_device_icu_match_at_voltage(
+            device_id, nominal_voltage_v, tolerance_v
+        )
+        return value
+
+    def get_device_icu_match_at_voltage(
+        self,
+        device_id: str,
+        nominal_voltage_v: float,
+        tolerance_v: float = 20.0,
+    ) -> tuple[Optional[float], bool]:
+        """Return Icu and whether its catalog voltage exactly matches the request."""
         with self._connect() as conn:
             row = conn.execute(
                 """
-                SELECT icu_ka FROM device_breaking_capacities
+                SELECT icu_ka, voltage_v FROM device_breaking_capacities
                 WHERE device_id = ? AND ABS(voltage_v - ?) <= ?
                 ORDER BY ABS(voltage_v - ?) ASC
                 LIMIT 1
                 """,
                 (device_id, nominal_voltage_v, tolerance_v, nominal_voltage_v),
             ).fetchone()
-            return float(row["icu_ka"]) if row else None
+            if row is None:
+                return None, False
+            matched_voltage = float(row["voltage_v"])
+            exact = math.isclose(matched_voltage, float(nominal_voltage_v), rel_tol=0.0, abs_tol=1e-6)
+            return float(row["icu_ka"]), exact
 
     # ------------------------------------------------------------------
     # ۳. ضریب کاهش ظرفیت دمایی با کنترل سقف دما (رفع F-017)

@@ -9,6 +9,7 @@ from lv_assist.i18n import i18n, tr
 from lv_assist.ui_direction import align_persian_text, align_persian_table
 from lv_assist.summary_workflow import format_summary_cards
 from lv_assist.ui_theme import TOKENS
+from lv_assist.models import DataQuality
 
 COPY = {
     'fa': ('خلاصه محاسبات', 'جریان طراحی', 'ابعاد پیشنهادی', 'پیش‌نمایش تابلو', 'کشوی فرمول',
@@ -191,6 +192,11 @@ class PrecisionShell:
         self._hero_current.pack(pady=(0, 8))
         self._main_details = ctk.CTkLabel(summary, text='', font=(font, 11), wraplength=310)
         self._main_details.pack(fill='x', padx=12, pady=(0, 8))
+        self._main_icu_status = ctk.CTkLabel(
+            summary, text='', font=(font, 10, 'bold'), corner_radius=5,
+            fg_color=('#E5E7EB', '#374151'), text_color=('#374151', '#E5E7EB'),
+        )
+        self._main_icu_status.pack(fill='x', padx=16, pady=(0, 8))
         ctk.CTkLabel(summary, text=self._shell_copy[2], font=(font, 12)).pack()
         self._hero_dimensions = ctk.CTkLabel(summary, text='—', font=('Consolas', 14, 'bold'), wraplength=310)
         self._hero_dimensions.pack(pady=(0, 12))
@@ -327,7 +333,17 @@ class PrecisionShell:
         project = self.current_project
         from lv_assist.scenario_rules import localized
         unknown = localized(('نامشخص', 'Unknown', 'Unbekannt'))
-        cards = format_summary_cards(summary.main_breaker, summary.selected_enclosure, na_label=unknown)
+        cards = format_summary_cards(
+            summary.main_breaker,
+            summary.selected_enclosure,
+            na_label=unknown,
+            icu_status=summary.main_breaker_icu_status,
+            icu_source=summary.main_breaker_icu_source,
+            icu_value=summary.main_breaker_icu_value,
+            icu_voltage_v=project.nominal_voltage_v,
+            icu_is_preliminary=(summary.main_breaker is not None
+                                and summary.main_breaker.data_quality != DataQuality.REAL_VERIFIED),
+        )
         main, enclosure = cards['main_protection'], cards['enclosure']
         self._current_caption.configure(text=localized(('جریان نامی کلید اصلی (In)', 'Main device rated current (In)', 'Bemessungsstrom des Hauptschutzgeräts (In)')))
         self._hero_current.configure(text=f'{summary.main_breaker.rated_current_in_a:,.1f} A'
@@ -335,6 +351,17 @@ class PrecisionShell:
         self._main_details.configure(text='\n'.join((main['device_model'], main['breaking_capacity'],
             localized(('تعداد پل', 'Poles', 'Pole')) + ': ' + main['poles'],
             localized(('تنظیمات', 'Settings', 'Einstellungen')) + ': ' + main['trip_settings'])))
+        status_colors = {
+            'OK': (('#DCFCE7', '#14532D'), ('#166534', '#DCFCE7')),
+            'FAIL': (('#FEE2E2', '#7F1D1D'), ('#991B1B', '#FEE2E2')),
+            'UNKNOWN': (('#E5E7EB', '#374151'), ('#374151', '#E5E7EB')),
+        }
+        fg_color, text_color = status_colors.get(
+            summary.main_breaker_icu_status, status_colors['UNKNOWN']
+        )
+        self._main_icu_status.configure(
+            text=main['icu_status'], fg_color=fg_color, text_color=text_color
+        )
         self._hero_dimensions.configure(text=f"W: {enclosure['width']}\nH: {enclosure['height']}\nD: {enclosure['depth']}")
         voltage = project.nominal_voltage_v
         power = summary.total_active_kw * 1000

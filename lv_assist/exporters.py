@@ -169,6 +169,31 @@ class ExcelExporter:
             summary_rows.append((phase, current, 'A', 'Design current by phase'))
         summary_rows.append(('Neutral (fundamental)', summary.neutral_current_a, 'A', 'Harmonic currents require separate verification'))
         for r in summary_rows: _append_safe(ws1, r)
+        main_icu_is_preliminary = (
+            summary.main_breaker_icu_source == "estimated"
+            or (summary.main_breaker is not None
+                and summary.main_breaker.data_quality != DataQuality.REAL_VERIFIED)
+        )
+        main_icu_value = (
+            _prelim(f"{summary.main_breaker_icu_value:g}", main_icu_is_preliminary)
+            if summary.main_breaker_icu_value is not None else "-"
+        )
+        main_status_key = {
+            "OK": "status_ok", "FAIL": "status_fail", "UNKNOWN": "status_unknown",
+        }.get(summary.main_breaker_icu_status, "status_unknown")
+        main_icu_status_text = tr(main_status_key)
+        if main_icu_is_preliminary:
+            main_icu_status_text += f" ({tr('status_estimated')})"
+        _append_safe(ws1, [
+            tr("main_breaker_part_number"), tr("main_breaker_in"),
+            tr("col_icu_main_breaker"), tr("main_breaker_icu_status"),
+        ])
+        _append_safe(ws1, [
+            summary.main_breaker.part_number if summary.main_breaker else "N/A",
+            f"{summary.main_breaker.rated_current_in_a:g} A" if summary.main_breaker else "-",
+            f"{main_icu_value} kA @ {project.nominal_voltage_v:g}V" if main_icu_value != "-" else "-",
+            main_icu_status_text,
+        ])
         _append_safe(ws1, ["Provenance", "", "", ""])
         for label, value in _provenance_lines(summary):
             _append_safe(ws1, [label, value, "", ""])
@@ -486,12 +511,46 @@ class PrintableReportExporter:
         main_brk = summary.main_breaker
         if main_brk:
             main_sub = f"{_h(main_brk.part_number)} | In={_h(main_brk.rated_current_in_a)}A"
+            if summary.main_breaker_icu_value is not None:
+                main_icu_text = _prelim(
+                    f"{summary.main_breaker_icu_value:g}",
+                    (summary.main_breaker_icu_source == "estimated"
+                     or main_brk.data_quality != DataQuality.REAL_VERIFIED),
+                )
+                main_sub += (f" | Icu={_h(main_icu_text)} kA"
+                             f" @ {_h(project.nominal_voltage_v)}V")
             if summary.ik_used_ka is not None:
                 main_sub += f" | Ik={_h(_prelim(str(summary.ik_used_ka), ik_is_preliminary))} kA"
                 if summary.ik_bus_total_ka is not None and summary.ik_bus_total_ka != summary.ik_used_ka:
                     main_sub += f" (Σ={_h(_prelim(str(summary.ik_bus_total_ka), summary.motor_contribution_ka is not None))})"
         else:
             main_sub = _h(summary.suggested_main_breaker_str)
+
+        main_icu_status_key = {
+            "OK": "status_ok", "FAIL": "status_fail", "UNKNOWN": "status_unknown",
+        }.get(summary.main_breaker_icu_status, "status_unknown")
+        main_icu_badge_class = {
+            "OK": "badge-verified", "FAIL": "badge-error", "UNKNOWN": "badge-insufficient",
+        }.get(summary.main_breaker_icu_status, "badge-insufficient")
+        main_icu_status_label = tr(main_icu_status_key)
+        main_icu_tooltip = tr("tooltip_icu_unknown")
+        if summary.main_breaker_icu_status == "FAIL":
+            main_icu_tooltip = tr("tooltip_icu_fail")
+        elif (summary.main_breaker_icu_status == "OK"
+              and summary.main_breaker_icu_value is not None
+              and summary.main_breaker_ik is not None):
+            main_icu_tooltip = tr(
+                "tooltip_icu_ok",
+                a=f"{summary.main_breaker_icu_value:g}",
+                b=f"{summary.main_breaker_ik:g}",
+            )
+        if (summary.main_breaker_icu_source == "estimated"
+                or (main_brk is not None and main_brk.data_quality != DataQuality.REAL_VERIFIED)):
+            main_icu_status_label += f" · {tr('status_estimated')}"
+        main_icu_badge_html = (
+            f'<br><span class="badge {main_icu_badge_class}" title="{_h(main_icu_tooltip)}">'
+            f'{_h(tr("main_breaker_icu_status"))}: {_h(main_icu_status_label)}</span>'
+        )
 
         bus_sub = f"Ik: {_h(ik_cell)}"
         if summary.busbar_icw_1s_ka is not None:
@@ -516,7 +575,7 @@ class PrintableReportExporter:
 <div class="kpi-strip">
   <div class="kpi-card"><div class="kpi-title">{_h(tr("kpi_main_current"))}</div>
     <div class="kpi-value" dir="auto"><span class="ltr-isolate" dir="ltr">{_h(summary.design_main_current_a)} A</span></div>
-    <div class="kpi-sub" dir="auto"><span class="bidi-isolate" dir="auto">{main_sub}</span></div></div>
+    <div class="kpi-sub" dir="auto"><span class="bidi-isolate" dir="auto">{main_sub}</span>{main_icu_badge_html}</div></div>
   <div class="kpi-card"><div class="kpi-title">{_h(tr("kpi_busbar"))}</div>
     <div class="kpi-value" dir="auto"><span class="bidi-isolate" dir="auto">{_h(summary.recommended_busbar_spec)}</span></div>
     <div class="kpi-sub" dir="auto"><span class="bidi-isolate" dir="auto">{bus_sub}</span></div></div>

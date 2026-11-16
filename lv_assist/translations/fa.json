@@ -1149,5 +1149,18 @@
   "cat_step4_title": "ادغام در هسته محاسبات مهندسی",
   "cat_step4_status": "معلق تا تایید نهایی اسناد",
   "sidebar_active_project": "پروژه فعال",
-  "sidebar_validation_center": "مرکز اعتبارسنجی اسناد"
+  "sidebar_validation_center": "مرکز اعتبارسنجی اسناد",
+  "main_breaker_part_number": "شماره قطعه کلید اصلی",
+  "main_breaker_in": "جریان نامی In",
+  "main_breaker_icu_status": "وضعیت Icu کلید اصلی",
+  "col_icu_main_breaker": "Icu @ ولتاژ پروژه",
+  "status_ok": "قبول",
+  "status_fail": "رد",
+  "status_unknown": "نامعلوم",
+  "status_estimated": "تخمینی",
+  "tooltip_icu_fail": "Icu کمتر از Ik در نقطه نصب",
+  "tooltip_icu_unknown": "داده Ik یا Icu در دسترس نیست",
+  "tooltip_icu_ok": "Icu={a} kA ≥ Ik={b} kA در نقطه نصب",
+  "tcc_icu": "Icu",
+  "tcc_icu_estimated": "Icu (تخمینی)"
 }

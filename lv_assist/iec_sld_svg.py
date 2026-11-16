@@ -6,6 +6,7 @@ No hardcoded project or feeder values.
 """
 
 from lv_assist.drawing_status import build_provenance_metadata, preliminary_drawing
+from lv_assist.i18n import tr
 import html
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
@@ -46,6 +47,10 @@ class SLDPanelDTO(BaseModel):
     main_breaker_part: str
     main_breaker_in_a: float
     main_breaker_icu_ka: Optional[float]
+    main_breaker_icu_status: str = "UNKNOWN"
+    main_breaker_icu_source: str = "unknown"
+    main_breaker_icu_reason: Optional[str] = None
+    main_breaker_ik: Optional[float] = None
     design_main_current_a: float
     busbar_spec: str
     pe_busbar_spec: str
@@ -96,7 +101,9 @@ class IECSldSvgGenerator:
         main_icu_display = (
             f"{data.main_breaker_icu_ka:g} kA" if data.main_breaker_icu_ka is not None else "? kA"
         )
-        if data.main_icu_is_preliminary and data.main_breaker_icu_ka is not None:
+        if data.main_breaker_icu_source == "estimated" and data.main_breaker_icu_ka is not None:
+            main_icu_display += f" ({tr('status_estimated')})"
+        elif data.main_icu_is_preliminary and data.main_breaker_icu_ka is not None:
             main_icu_display += " (prelim.)"
 
         return f"""
