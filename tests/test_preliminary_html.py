@@ -43,6 +43,21 @@ def _render(tmp_path, project, feeders=None, protection_quality=None):
     return path.read_text(encoding="utf-8"), outputs, summary
 
 
+def _render_design_verification(tmp_path):
+    from lv_assist.engine import build_design_verification
+    from lv_assist.exporters import DesignVerificationExporter
+
+    project = _make_project()
+    feeders = [_make_feeder()]
+    outputs, summary, validations = EngineeringEngine(
+        CatalogRepository.get_default_catalog()
+    ).process_project(project, feeders)
+    report = build_design_verification(project, outputs, summary, validations)
+    path = tmp_path / "design-verification.html"
+    DesignVerificationExporter.generate_html(str(path), project, summary, report)
+    return path.read_text(encoding="utf-8")
+
+
 def test_busbar_icw_and_ipk_are_marked_and_ipk_is_visible(tmp_path):
     content, _, summary = _render(tmp_path, _make_project())
     assert f"Icw(1s)={_prelim(f'{summary.busbar_icw_1s_ka:g}', True)} kA" in content
@@ -410,7 +425,36 @@ def test_design_verification_signature_has_no_forced_break_or_large_top_margin(t
     assert "break-before: auto" in signature.group(1)
     assert "page-break-before: auto" in signature.group(1)
     assert "break-inside: auto" in signature.group(1)
-    assert "margin-top: 0" in signature.group(1)
+    assert "margin-top: 8px" in signature.group(1)
+    assert "margin-bottom: 8px" in signature.group(1)
+
+
+def test_design_verification_evidence_cells_wrap_long_content(tmp_path):
+    content = _render_design_verification(tmp_path)
+    print_css = content.split("@media print {", 1)[1].split("</style>", 1)[0]
+    evidence_rule = re.search(r"td\.cell-evidence\s*\{([^}]*)\}", print_css)
+
+    assert 'class="cell-evidence"' in content
+    assert evidence_rule
+    assert "overflow-wrap: anywhere" in evidence_rule.group(1)
+    assert "word-break: break-word" in evidence_rule.group(1)
+    assert "font-size: 0.85em" in evidence_rule.group(1)
+
+
+def test_design_verification_signature_wrapper_stays_together_with_small_margins(tmp_path):
+    content = _render_design_verification(tmp_path)
+    print_css = content.split("@media print {", 1)[1].split("</style>", 1)[0]
+    wrapper_rule = re.search(r"\.signature-wrapper\s*\{([^}]*)\}", print_css)
+    signature_rule = re.search(r"\.signature-block\s*\{([^}]*)\}", print_css)
+
+    assert '<div class="signature-wrapper">' in content
+    assert wrapper_rule
+    assert "break-inside: avoid" in wrapper_rule.group(1)
+    assert "break-before: avoid" in wrapper_rule.group(1)
+    assert signature_rule
+    assert "margin-top: 8px" in signature_rule.group(1)
+    assert "margin-bottom: 8px" in signature_rule.group(1)
+    assert "margin-bottom: 24px" not in signature_rule.group(1)
 
 
 def test_report_tables_and_trace_cells_are_balanced(tmp_path):

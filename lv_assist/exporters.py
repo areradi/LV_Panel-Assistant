@@ -740,7 +740,7 @@ class DesignVerificationExporter:
                 <td dir="auto"><span class="bidi-isolate" dir="auto"><b>{_h(it.title)}</b><br><small>{_h(it.requirement)}</small></span></td>
                 <td dir="auto" style="text-align:center;"><span class="bidi-isolate" dir="auto">{_h(method)}</span></td>
                 <td dir="auto"><b><bdi dir="ltr">{_h(it.computed_value)}</bdi></b></td>
-                <td dir="auto"><small><span class="bidi-isolate" dir="auto">{_h(it.evidence)}</span></small></td>
+                <td class="cell-evidence" dir="auto"><small><span class="bidi-isolate" dir="auto">{_h(it.evidence)}</span></small></td>
                 <td dir="auto"><small><bdi dir="ltr">{_h(rules)}</bdi></small></td>
                 <td style="text-align:center;"><span class="badge {cls}">{_h(label)}</span></td>
             </tr>"""
@@ -782,11 +782,13 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
   table {{ orphans: 3; widows: 3; }}
   td, th {{ break-inside: avoid; page-break-inside: avoid; }}
   tr {{ break-inside: auto; page-break-inside: auto; }}
+  td.cell-evidence {{ overflow-wrap: anywhere; word-break: break-word; font-size: 0.85em; }}
   p, blockquote {{ orphans: 2; widows: 2; }}
   thead {{ display: table-header-group; }}
   .no-print {{ display: none !important; }}
   .container {{ border: none; padding: 0; }}
-  .signature-block {{ break-before: auto; page-break-before: auto; break-inside: auto; page-break-inside: auto; margin-top: 0; }}
+  .signature-block {{ break-before: auto; page-break-before: auto; break-inside: auto; page-break-inside: auto; margin-top: 8px; margin-bottom: 8px; }}
+  .signature-wrapper {{ break-inside: avoid; page-break-inside: avoid; break-before: avoid; page-break-before: avoid; }}
   .summary-box, .conclusion-box {{ break-inside: avoid; page-break-inside: avoid; margin-top: 0; }}
   .signature-block h2 {{ margin-top: 0; }}
   h2 {{ break-inside: avoid; break-after: avoid; page-break-after: avoid; }}
@@ -825,6 +827,7 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
 <p style="margin:8px 0 0; font-size:10px; color:#566573;">{_h(tr("dv_note_scope"))}</p>
 </div>
 
+<div class="signature-wrapper">
 <div class="signature-block">
 <h2>{_h(tr("html_sign_title"))}</h2>
 <div class="sign-block">
@@ -832,6 +835,7 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
   <div class="sign-cell"><b>{_h(tr("html_sign_reviewer"))}</b><span>-</span></div>
   <div class="sign-cell"><b>{_h(tr("html_sign_approver"))}</b><span>-</span></div>
   <div class="sign-cell" dir="auto"><b>{_h(tr("html_sign_date"))}</b><span><span class="ltr-isolate" dir="ltr">{_h(now_str)}</span></span></div>
+</div>
 </div>
 </div>
 <div class="page-footer">{_h(project.project_name)} | {_h(tr("dv_title"))} | LV-PanelAssist | {_h(now_str)}</div>
