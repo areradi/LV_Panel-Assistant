@@ -502,6 +502,8 @@ class EplanExporter:
 
     @classmethod
     def export_csv(cls, filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        from lv_assist.exporters import _csv_safe
+
         require_current_calculation(project, summary, feeders)
         rows: List[list] = []
         for func, loc, bmk, cat, dev, spec, qty in _bom_entries(project, feeders, summary):
@@ -514,7 +516,7 @@ class EplanExporter:
         with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(cls.HEADERS)
-            writer.writerows(rows)
+            writer.writerows([_csv_safe(value) for value in row] for row in rows)
 
 
 class EplanPartsExporter:
@@ -537,6 +539,8 @@ class EplanPartsExporter:
 
     @classmethod
     def export_csv(cls, filepath: str, project: ProjectSpec, feeders: List[FeederCalcOutput], summary: PanelSummaryOutput) -> None:
+        from lv_assist.exporters import _csv_safe
+
         require_current_calculation(project, summary, feeders)
         agg: dict = {}
         for _, _, _, _, dev, _, qty in _bom_entries(project, feeders, summary):
@@ -563,4 +567,4 @@ class EplanPartsExporter:
         with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(cls.HEADERS)
-            writer.writerows(rows)
+            writer.writerows([_csv_safe(value) for value in row] for row in rows)
