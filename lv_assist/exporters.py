@@ -26,6 +26,21 @@ def _h(val) -> str:
     return html.escape(str(val), quote=True)
 
 
+def _page_counter_rule() -> str:
+    """Build localized print CSS using the browser's page and pages counters."""
+    template = tr("page_x_of_y", page="__PAGE__", total="__TOTAL__")
+    before, page_and_after = template.split("__PAGE__", 1)
+    between, after = page_and_after.split("__TOTAL__", 1)
+
+    def css_string(value: str) -> str:
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+        return f'"{escaped}"' if escaped else ""
+
+    pieces = [css_string(before), "counter(page)", css_string(between), "counter(pages)", css_string(after)]
+    content = " ".join(piece for piece in pieces if piece)
+    return f".page-footer::after {{ content: {content}; margin-inline-start: 8px; }}"
+
+
 def _xl_safe(val):
     """Prevent formula injection in XLSX text cells."""
     if not isinstance(val, str) or not val:
@@ -719,6 +734,7 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
   .disclaimer {{ break-inside: avoid; page-break-inside: avoid; margin-top: 0; }}
   .kpi-card {{ break-inside: avoid; page-break-inside: avoid; }}
   .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; padding: 4px 0; text-align: center; background: #FFF; }}
+  {_page_counter_rule()}
 }}
 </style></head>
 <body><div class="container">
@@ -854,6 +870,7 @@ th {{ background: #EBF5FB; color: #1F4E78; text-align: center; }}
   .signature-block h2 {{ margin-top: 0; }}
   h2 {{ break-inside: avoid; break-after: avoid; page-break-after: avoid; }}
   .page-footer {{ display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8px; color: #7F8C8D; padding: 4px 0; text-align: center; background: #FFF; }}
+  {_page_counter_rule()}
 }}
 </style></head>
 <body><div class="container">
