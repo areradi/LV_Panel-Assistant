@@ -345,7 +345,18 @@ class EngineeringEngine:
         return self._device_icu_match(dev, project)[0]
 
     def _device_icu_match(self, dev: CatalogDevice, project: ProjectSpec) -> Tuple[Optional[float], bool]:
-        return catalog_repo.get_device_icu_match_at_voltage(dev.part_number, project.nominal_voltage_v)
+        icu_ka, exact_match = catalog_repo.get_device_icu_match_at_voltage(
+            dev.part_number, project.nominal_voltage_v
+        )
+        if icu_ka is not None:
+            try:
+                if not math.isfinite(icu_ka):
+                    # Treat invalid Icu as missing so it cannot confirm breaker selection.
+                    return None, False
+            except (TypeError, ValueError, OverflowError):
+                # Treat invalid Icu as missing so it cannot confirm breaker selection.
+                return None, False
+        return icu_ka, exact_match
 
     def _icu_ok(self, dev: CatalogDevice, project: ProjectSpec, ik_ka: Optional[float]) -> bool:
         # Catalog PRE-FILTER only: never reject a device merely because Ik''/Icu is unknown.

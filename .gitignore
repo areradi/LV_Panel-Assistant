@@ -57,3 +57,4 @@ Desktop.ini
 
 # Pytest bootstrap dirs (leaked on crash)
 .pytest-catalog-bootstrap-*
+.venv-audit/
