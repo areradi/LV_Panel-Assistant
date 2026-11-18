@@ -437,6 +437,10 @@ class EngineeringEngine:
         return total_ka, parts
 
     def process_project(self, project: ProjectSpec, feeders: List[FeederInput]):
+        with catalog_repo._project_cache_scope():
+            return self._process_project(project, feeders)
+
+    def _process_project(self, project: ProjectSpec, feeders: List[FeederInput]):
         ids = [f.feeder_id for f in feeders]
         if len(ids) != len(set(ids)):
             raise ValueError(tr('paste_duplicate'))
