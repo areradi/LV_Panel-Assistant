@@ -86,3 +86,36 @@ Single source of truth for:
 ### Not blocking
 - Phase 7 can proceed to T-034
 - T-036 (Disclaimer exists in SVG) technically complete, but visual rendering issue remains
+
+## T-036-SVG-BiDi — RESOLVED AS ACCEPTED LIMITATION (2026-11-18)
+
+**Status:** ACCEPTED LIMITATION — not blocking B2B.
+
+### Background
+SVG Persian text (disclaimer) has unresolved BiDi rendering issues in Chrome
+Headless PDF generation. Three vector approaches failed:
+1. FSI/PDI (U+2068...U+2069) — Chrome Headless does not render Unicode controls in SVG
+2. <tspan direction="ltr"> — order still broken
+3. wrap + tspan (drawing_status.py) — overflow fixed, BiDi not
+
+### Decision
+Accept as known limitation. Rationale:
+- SVG is secondary B2B deliverable (PDF/Excel are primary)
+- Raster fallback (Pillow + libraqm) requires:
+  * FriBiDi DLL on Windows (not guaranteed in PyInstaller)
+  * Vazirmatn font packaging + OFL license
+  * 1.5-3 days work with PyInstaller risk
+- Value vs cost is not favorable
+
+### Workaround for customers
+- Use HTML/PDF report (which has correct FA rendering via bdi + unicode-bidi)
+- SVG disclaimer FA shows 'مقدماتی' correctly; only mixed Latin (IEC 61439)
+  has minor order issue. This is cosmetic, not functional.
+
+### If revisited (future)
+Options:
+1. Raster: Pillow + libraqm + Vazirmatn + PyInstaller config (risky)
+2. Replace Chrome PDF pipeline with WeasyPrint (larger refactor)
+3. HTML-only for FA: use 'Preliminary' EN universally in SVG (acceptable trade-off)
+
+**Evidence:** See commits cfd71e7 (tspan WIP), 223909c (tspan, initial).
