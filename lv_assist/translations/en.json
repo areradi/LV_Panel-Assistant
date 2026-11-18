@@ -1167,5 +1167,6 @@
   "tip_eplan_coming_soon": "EPLAN/DXF export in development",
   "disclaimer_general": "PRELIMINARY — All engineering results require review by a qualified engineer. Not an IEC 61439 compliance certificate.",
   "disclaimer_short": "Preliminary — review required",
+  "page_x_of_y": "Page {page} of {total}",
   "err_csv_file_locked": "The CSV file is open in another application. Close it and try again."
 }

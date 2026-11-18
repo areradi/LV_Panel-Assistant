@@ -11,8 +11,10 @@ import json
 import math
 import re
 import sqlite3
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from lv_assist.models import CatalogDevice, SelectivityRuleRecord, SelectivityEvalState, DataQuality
 from lv_assist.i18n import tr, i18n
@@ -20,6 +22,27 @@ from lv_assist import paths
 
 DATA_DIR = paths.get_data_dir()
 DB_PATH = DATA_DIR / "lv_assist.db"
+
+
+class _CatalogCache:
+    """Lookup results scoped to one project calculation."""
+
+    def __init__(self) -> None:
+        self._icu_cache: Dict[Tuple[str, float, float], Tuple[Optional[float], bool]] = {}
+        self._derating_cache: Dict[Tuple[str, float], Optional[float]] = {}
+        self._pe_section_cache: Dict[float, Optional[float]] = {}
+        self._iz0_cache: Dict[int, Dict[float, float]] = {}
+
+    def clear(self) -> None:
+        self._icu_cache.clear()
+        self._derating_cache.clear()
+        self._pe_section_cache.clear()
+        self._iz0_cache.clear()
+
+
+_ACTIVE_CATALOG_CACHE: ContextVar[Optional[Tuple[str, _CatalogCache]]] = ContextVar(
+    "lv_assist_catalog_cache", default=None
+)
 
 
 USER_TABLES_SQL = """
@@ -154,6 +177,22 @@ class CatalogRepository:
         conn.row_factory = sqlite3.Row
         return conn
 
+    @contextmanager
+    def _project_cache_scope(self) -> Iterator[_CatalogCache]:
+        cache = _CatalogCache()
+        token = _ACTIVE_CATALOG_CACHE.set((str(self.db_path), cache))
+        try:
+            yield cache
+        finally:
+            cache.clear()
+            _ACTIVE_CATALOG_CACHE.reset(token)
+
+    def _active_project_cache(self) -> Optional[_CatalogCache]:
+        active = _ACTIVE_CATALOG_CACHE.get()
+        if active is None or active[0] != str(self.db_path):
+            return None
+        return active[1]
+
     # ------------------------------------------------------------------
     # ۱. تجهیزات کاتالوگ با اعمال صریح کیفیت داده (رفع F-016)
     # ------------------------------------------------------------------
@@ -199,6 +238,10 @@ class CatalogRepository:
         tolerance_v: float = 20.0,
     ) -> tuple[Optional[float], bool]:
         """Return Icu and whether its catalog voltage exactly matches the request."""
+        cache = self._active_project_cache()
+        key = (device_id, float(nominal_voltage_v), float(tolerance_v))
+        if cache is not None and key in cache._icu_cache:
+            return cache._icu_cache[key]
         with self._connect() as conn:
             row = conn.execute(
                 """
@@ -210,10 +253,16 @@ class CatalogRepository:
                 (device_id, nominal_voltage_v, tolerance_v, nominal_voltage_v),
             ).fetchone()
             if row is None:
-                return None, False
+                result = (None, False)
+                if cache is not None:
+                    cache._icu_cache[key] = result
+                return result
             matched_voltage = float(row["voltage_v"])
             exact = math.isclose(matched_voltage, float(nominal_voltage_v), rel_tol=0.0, abs_tol=1e-6)
-            return float(row["icu_ka"]), exact
+            result = (float(row["icu_ka"]), exact)
+            if cache is not None:
+                cache._icu_cache[key] = result
+            return result
 
     # ------------------------------------------------------------------
     # ۳. ضریب کاهش ظرفیت دمایی با کنترل سقف دما (رفع F-017)
@@ -227,6 +276,11 @@ class CatalogRepository:
         else:
             target_temp = internal_temp_c
 
+        cache = self._active_project_cache()
+        key = (device_id, float(target_temp))
+        if cache is not None and key in cache._derating_cache:
+            return cache._derating_cache[key]
+
         with self._connect() as conn:
             row = conn.execute(
                 """
@@ -237,7 +291,10 @@ class CatalogRepository:
                 """,
                 (device_id, target_temp),
             ).fetchone()
-            return float(row["derating_factor"]) if row else None
+            result = float(row["derating_factor"]) if row else None
+            if cache is not None:
+                cache._derating_cache[key] = result
+            return result
 
     # ------------------------------------------------------------------
     # ۴. بدنه تابلو با شرط IP هدف (رفع F-007)
@@ -269,6 +326,9 @@ class CatalogRepository:
     # ------------------------------------------------------------------
     def get_cable_iz0_table_cu_pvc_c(self, loaded_conductors: int = 3) -> Dict[float, float]:
         """جدول کامل جریان‌دهی پایه Cu/PVC/روش C از دیتابیس استاندارد."""
+        cache = self._active_project_cache()
+        if cache is not None and loaded_conductors in cache._iz0_cache:
+            return dict(cache._iz0_cache[loaded_conductors])
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -278,7 +338,10 @@ class CatalogRepository:
                 """,
                 (loaded_conductors,),
             ).fetchall()
-            return {float(r["section_mm2"]): float(r["iz0_a"]) for r in rows}
+            result = {float(r["section_mm2"]): float(r["iz0_a"]) for r in rows}
+            if cache is not None:
+                cache._iz0_cache[loaded_conductors] = result
+            return dict(result)
 
     def get_base_cable_iz0(
         self,
@@ -324,6 +387,10 @@ class CatalogRepository:
 
     def get_standard_pe_section(self, required_pe_mm2: float) -> Optional[float]:
         """اولین مقطع استاندارد PE بزرگ‌تر یا مساوی مقدار لازم؛ اگر فراتر از جدول باشد None."""
+        cache = self._active_project_cache()
+        key = float(required_pe_mm2)
+        if cache is not None and key in cache._pe_section_cache:
+            return cache._pe_section_cache[key]
         with self._connect() as conn:
             row = conn.execute(
                 """
@@ -334,7 +401,10 @@ class CatalogRepository:
                 """,
                 (required_pe_mm2,),
             ).fetchone()
-            return float(row["section_mm2"]) if row else None
+            result = float(row["section_mm2"]) if row else None
+            if cache is not None:
+                cache._pe_section_cache[key] = result
+            return result
 
     # ------------------------------------------------------------------
     # ۶. قواعد سلکتیویته، منحنی‌های قطع و رجیستری استانداردها

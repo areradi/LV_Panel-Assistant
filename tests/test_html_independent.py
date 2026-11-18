@@ -44,6 +44,13 @@ def test_html_has_preliminary_watermark(demo_html):
     assert "PRELIMINARY" in html
 
 
+def test_html_has_localized_page_counters(demo_html):
+    html, _, _, _ = demo_html
+    assert "counter(page)" in html
+    assert "counter(pages)" in html
+    assert '"Page " counter(page) " of " counter(pages)' in html
+
+
 def test_html_has_feeder_tags(demo_html):
     html, _, feeders, _ = demo_html
     for feeder in feeders:

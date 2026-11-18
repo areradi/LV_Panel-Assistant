@@ -1,5 +1,6 @@
 import openpyxl
 import sqlite3
+import pytest
 
 from lv_assist.catalog import CatalogRepository, catalog_repo
 from lv_assist.engine import EngineeringEngine
@@ -110,6 +111,52 @@ def test_main_breaker_icu_is_unknown_when_ik_is_missing(monkeypatch):
     assert summary.main_breaker_icu_status == "UNKNOWN"
     assert summary.main_breaker_icu_reason == "no_ik"
     assert summary.main_breaker_icu_source == "unknown"
+
+
+@pytest.mark.parametrize("invalid_icu", [
+    pytest.param(float("nan"), id="nan"),
+    pytest.param(float("inf"), id="positive-infinity"),
+    pytest.param(float("-inf"), id="negative-infinity"),
+    pytest.param("not-a-number", id="non-numeric-string"),
+])
+def test_main_breaker_icu_invalid_capacity_is_unknown(monkeypatch, invalid_icu):
+    def get_match(device_id, nominal_voltage_v, tolerance_v=20.0):
+        return (invalid_icu, True)
+
+    monkeypatch.setattr(catalog_repo, "get_device_icu_match_at_voltage", get_match)
+    _, summary, _ = EngineeringEngine(
+        CatalogRepository.get_default_catalog()
+    ).process_project(_project(), [])
+
+    assert summary.main_breaker_icu_status == "UNKNOWN"
+    assert summary.main_breaker_icu_source == "unknown"
+    assert summary.main_breaker_icu_value is None
+
+
+@pytest.mark.parametrize("invalid_icu", [
+    pytest.param(float("nan"), id="nan"),
+    pytest.param(float("inf"), id="positive-infinity"),
+    pytest.param(float("-inf"), id="negative-infinity"),
+    pytest.param("not-a-number", id="non-numeric-string"),
+])
+def test_feeder_breaking_capacity_invalid_icu_is_insufficient_data(monkeypatch, invalid_icu):
+    def get_match(device_id, nominal_voltage_v, tolerance_v=20.0):
+        return (invalid_icu, True)
+
+    monkeypatch.setattr(catalog_repo, "get_device_icu_match_at_voltage", get_match)
+    project = _project()
+    outputs, summary, validations = EngineeringEngine(
+        CatalogRepository.get_default_catalog()
+    ).process_project(project, _feeders())
+
+    feeder_check = next(
+        item for item in validations
+        if item.rule_id == "RULE-PROT-SC-001" and item.feeder_id == "F01"
+    )
+    assert feeder_check.status.value == "INSUFFICIENT_DATA"
+    assert outputs[0].protection_icu_ka is None
+    assert summary.main_breaker_icu_status == "UNKNOWN"
+    assert summary.main_breaker_icu_value is None
 
 
 def test_main_breaker_card_uses_resolved_icu_status_and_source():
