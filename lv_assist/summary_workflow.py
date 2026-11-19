@@ -34,6 +34,20 @@ from lv_assist.i18n import tr
 NA_LABEL_FA = "نامشخص"
 
 
+def main_icu_badge_key(icu_status: Optional[str], icu_source: Optional[str]) -> str:
+    """Return the localized badge key for main-breaker Icu evidence."""
+    if icu_status == "FAIL":
+        return "status_fail"
+    if icu_status == "UNKNOWN":
+        return "badge_icu_unknown"
+    if icu_status == "OK":
+        if icu_source == "exact":
+            return "badge_icu_exact"
+        if icu_source == "estimated":
+            return "badge_icu_estimated"
+    return "badge_icu_unknown"
+
+
 def _catalog_to_breaker(breaker: Any) -> Optional[MainBreakerSpec]:
     """Adapt a legacy ``CatalogDevice`` to ``MainBreakerSpec`` (passthrough if already one)."""
     if breaker is None:
@@ -163,8 +177,13 @@ def format_summary_cards(
         }.get(icu_status, "status_unknown")
         status_icon = {"OK": "✓", "FAIL": "✗", "UNKNOWN": "?"}.get(icu_status, "?")
         status_text = f"{status_icon} {tr('main_breaker_icu_status')}: {tr(status_key)}"
-        if icu_source == "estimated" or icu_is_preliminary:
-            status_text += f" · {tr('status_estimated')}"
+        badge_key = main_icu_badge_key(icu_status, icu_source)
+        if icu_status == "OK":
+            status_text += f" · {tr(badge_key)}"
+            if icu_source != "estimated" and icu_is_preliminary:
+                status_text += f" · {tr('status_estimated')}"
+        elif icu_status == "UNKNOWN":
+            status_text = f"{status_icon} {tr('main_breaker_icu_status')}: {tr(badge_key)}"
         main_protection_card["icu_status"] = status_text
 
     # Design current is a SEPARATE concept from the breaker's In.

@@ -17,6 +17,7 @@ from lv_assist.outputs import TccGenerator
 from lv_assist.control_circuits import ControlCircuitGenerator
 from lv_assist.engine import build_design_verification
 from lv_assist.i18n import tr, i18n
+from lv_assist.summary_workflow import main_icu_badge_key
 
 logger = logging.getLogger(__name__)
 
@@ -197,11 +198,15 @@ class ExcelExporter:
             "OK": "status_ok", "FAIL": "status_fail", "UNKNOWN": "status_unknown",
         }.get(summary.main_breaker_icu_status, "status_unknown")
         main_icu_status_text = tr(main_status_key)
-        if main_icu_is_preliminary:
-            main_icu_status_text += f" ({tr('status_estimated')})"
+        if summary.main_breaker_icu_status == "OK" and summary.main_breaker_icu_source == "exact":
+            main_icu_status_text = f"{main_icu_status_text} ({tr('badge_icu_exact')})"
+        elif summary.main_breaker_icu_status == "OK" and summary.main_breaker_icu_source == "estimated":
+            main_icu_status_text = f"{main_icu_status_text} ({tr('badge_icu_estimated')})"
+        elif summary.main_breaker_icu_status == "OK":
+            main_icu_status_text = f"{main_icu_status_text} ({tr('badge_icu_unknown')})"
         _append_safe(ws1, [
             tr("main_breaker_part_number"), tr("main_breaker_in"),
-            tr("col_icu_main_breaker"), tr("main_breaker_icu_status"),
+            tr("col_icu_main_breaker"), tr("main_breaker_icu_status_source"),
         ])
         _append_safe(ws1, [
             summary.main_breaker.part_number if summary.main_breaker else "N/A",
@@ -546,13 +551,25 @@ class PrintableReportExporter:
         main_icu_status_key = {
             "OK": "status_ok", "FAIL": "status_fail", "UNKNOWN": "status_unknown",
         }.get(summary.main_breaker_icu_status, "status_unknown")
+        main_badge_key = main_icu_badge_key(
+            summary.main_breaker_icu_status, summary.main_breaker_icu_source
+        )
         main_icu_badge_class = {
-            "OK": "badge-verified", "FAIL": "badge-error", "UNKNOWN": "badge-insufficient",
-        }.get(summary.main_breaker_icu_status, "badge-insufficient")
-        main_icu_status_label = tr(main_icu_status_key)
+            "badge_icu_exact": "badge-verified",
+            "badge_icu_estimated": "badge-preliminary",
+            "badge_icu_unknown": "badge-insufficient",
+            "status_fail": "badge-error",
+        }[main_badge_key]
+        main_icu_status_label = (
+            f"{tr(main_icu_status_key)} · {tr(main_badge_key)}"
+            if summary.main_breaker_icu_status == "OK"
+            else tr(main_badge_key)
+        )
         main_icu_tooltip = tr("tooltip_icu_unknown")
         if summary.main_breaker_icu_status == "FAIL":
             main_icu_tooltip = tr("tooltip_icu_fail")
+        elif main_badge_key == "badge_icu_estimated":
+            main_icu_tooltip = tr("tooltip_icu_estimated")
         elif (summary.main_breaker_icu_status == "OK"
               and summary.main_breaker_icu_value is not None
               and summary.main_breaker_ik is not None):
