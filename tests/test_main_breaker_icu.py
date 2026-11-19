@@ -1,6 +1,8 @@
+import json
 import openpyxl
 import sqlite3
 import pytest
+from pathlib import Path
 
 from lv_assist.catalog import CatalogRepository, catalog_repo
 from lv_assist.engine import EngineeringEngine
@@ -172,7 +174,40 @@ def test_main_breaker_card_uses_resolved_icu_status_and_source():
     assert "36" in cards["main_protection"]["breaking_capacity"]
     assert "415" in cards["main_protection"]["breaking_capacity"]
     assert tr("status_ok") in cards["main_protection"]["icu_status"]
-    assert tr("status_estimated") in cards["main_protection"]["icu_status"]
+    assert tr("badge_icu_estimated") in cards["main_protection"]["icu_status"]
+
+
+@pytest.mark.parametrize(
+    ("status", "source", "badge_key", "color", "tooltip_key"),
+    [
+        ("OK", "exact", "badge_icu_exact", "#DCFCE7", None),
+        ("OK", "estimated", "badge_icu_estimated", "#FEF9C3", "tooltip_icu_estimated"),
+        ("UNKNOWN", "unknown", "badge_icu_unknown", "#E5E7EB", "tooltip_icu_unknown"),
+        ("FAIL", "unknown", "status_fail", "#FEE2E2", "tooltip_icu_fail"),
+    ],
+)
+def test_main_icu_gui_badge_presentation(status, source, badge_key, color, tooltip_key):
+    from lv_assist.precision_ui import _main_icu_badge_style
+
+    key, foreground, _text_color, actual_tooltip_key = _main_icu_badge_style(status, source)
+
+    assert key == badge_key
+    assert color in foreground
+    assert actual_tooltip_key == tooltip_key
+
+
+def test_main_icu_summary_card_shows_exact_and_unknown_source():
+    exact = format_summary_cards(
+        MainBreakerSpec(part_number="TEST", in_a=100.0), None,
+        icu_status="OK", icu_source="exact", icu_value=36.0, icu_voltage_v=400.0,
+    )
+    unknown = format_summary_cards(
+        MainBreakerSpec(part_number="TEST", in_a=100.0), None,
+        icu_status="UNKNOWN", icu_source="unknown",
+    )
+
+    assert tr("badge_icu_exact") in exact["main_protection"]["icu_status"]
+    assert tr("badge_icu_unknown") in unknown["main_protection"]["icu_status"]
 
 
 def test_main_breaker_icu_is_attached_to_excel_and_html_reports(monkeypatch, tmp_path):
@@ -195,6 +230,65 @@ def test_main_breaker_icu_is_attached_to_excel_and_html_reports(monkeypatch, tmp
     html = html_path.read_text(encoding="utf-8")
     assert "50" in html
     assert tr("status_ok") in html
+
+
+def test_estimated_main_icu_source_is_visible_in_excel_and_html(monkeypatch, tmp_path):
+    project, feeders, outputs, summary, validations = _run_with_icu(
+        monkeypatch, 50.0, exact=False, voltage=415.0
+    )
+    assert summary.main_breaker_icu_status == "OK"
+    assert summary.main_breaker_icu_source == "estimated"
+
+    xlsx_path = tmp_path / "main-icu-estimated.xlsx"
+    ExcelExporter.export_to_excel(str(xlsx_path), project, outputs, summary, validations)
+    workbook = openpyxl.load_workbook(xlsx_path, data_only=True)
+    rows = list(workbook["01_Project_Summary"].iter_rows(values_only=True))
+    header_row = next(row for row in rows if tr("main_breaker_icu_status_source") in row)
+    status_col = header_row.index(tr("main_breaker_icu_status_source"))
+    data_row = rows[rows.index(header_row) + 1]
+    assert data_row[status_col] == f"{tr('status_ok')} ({tr('badge_icu_estimated')})"
+    assert tr("badge_icu_estimated") in data_row[status_col]
+
+    html_path = tmp_path / "main-icu-estimated.html"
+    PrintableReportExporter.generate_html_report(
+        str(html_path), project, outputs, summary, validations
+    )
+    html = html_path.read_text(encoding="utf-8")
+    assert 'class="badge badge-preliminary"' in html
+    assert tr("badge_icu_estimated") in html
+    assert tr("tooltip_icu_estimated") in html
+
+
+def test_exact_voltage_source_is_not_labeled_estimated_in_excel(monkeypatch, tmp_path):
+    project, _feeders, outputs, summary, validations = _run_with_icu(
+        monkeypatch, 55.0, exact=True, voltage=415.0
+    )
+    assert summary.main_breaker_icu_status == "OK"
+    assert summary.main_breaker_icu_source == "exact"
+
+    xlsx_path = tmp_path / "main-icu-exact-preliminary-data.xlsx"
+    ExcelExporter.export_to_excel(str(xlsx_path), project, outputs, summary, validations)
+    workbook = openpyxl.load_workbook(xlsx_path, data_only=True)
+    rows = list(workbook["01_Project_Summary"].iter_rows(values_only=True))
+    header_row = next(row for row in rows if tr("main_breaker_icu_status_source") in row)
+    status_col = header_row.index(tr("main_breaker_icu_status_source"))
+    data_row = rows[rows.index(header_row) + 1]
+    icu_col = header_row.index(tr("col_icu_main_breaker"))
+
+    assert data_row[status_col] == f"{tr('status_ok')} ({tr('badge_icu_exact')})"
+    assert tr("badge_icu_estimated") not in data_row[status_col]
+    assert "prelim." in data_row[icu_col]
+
+
+def test_icu_display_translation_keys_have_parity():
+    root = Path(__file__).resolve().parents[1] / "lv_assist" / "translations"
+    required = {
+        "badge_icu_exact", "badge_icu_estimated", "badge_icu_unknown",
+        "tooltip_icu_estimated", "main_breaker_icu_status_source",
+    }
+    for language in ("fa", "en", "de"):
+        data = json.loads((root / f"{language}.json").read_text(encoding="utf-8"))
+        assert required <= data.keys(), f"Missing keys in {language}: {required - data.keys()}"
 
 
 def test_iec_sld_and_tcc_mark_estimated_main_icu(monkeypatch):

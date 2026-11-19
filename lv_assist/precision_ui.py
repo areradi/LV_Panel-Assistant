@@ -7,7 +7,7 @@ import customtkinter as ctk
 from tkinter import ttk
 from lv_assist.i18n import i18n, tr
 from lv_assist.ui_direction import align_persian_text, align_persian_table
-from lv_assist.summary_workflow import format_summary_cards
+from lv_assist.summary_workflow import format_summary_cards, main_icu_badge_key
 from lv_assist.ui_theme import TOKENS
 from lv_assist.models import DataQuality
 
@@ -25,6 +25,18 @@ COPY = {
            'Letzte Berechnung; Eingaben geändert', 'Projekt und Lasten', 'Einstellungen',
            'Referenzstrom vor Gleichzeitigkeits- und Reservefaktoren'),
 }
+
+
+def _main_icu_badge_style(status, source):
+    badge_key = main_icu_badge_key(status, source)
+    styles = {
+        "badge_icu_exact": (("#DCFCE7", "#14532D"), ("#166534", "#DCFCE7"), None),
+        "badge_icu_estimated": (("#FEF9C3", "#713F12"), ("#854D0E", "#FEF9C3"), "tooltip_icu_estimated"),
+        "badge_icu_unknown": (("#E5E7EB", "#374151"), ("#374151", "#E5E7EB"), "tooltip_icu_unknown"),
+        "status_fail": (("#FEE2E2", "#7F1D1D"), ("#991B1B", "#FEE2E2"), "tooltip_icu_fail"),
+    }
+    foreground, text_color, tooltip_key = styles[badge_key]
+    return badge_key, foreground, text_color, tooltip_key
 
 
 class PrecisionShell:
@@ -197,6 +209,10 @@ class PrecisionShell:
             fg_color=('#E5E7EB', '#374151'), text_color=('#374151', '#E5E7EB'),
         )
         self._main_icu_status.pack(fill='x', padx=16, pady=(0, 8))
+        self._main_icu_tooltip_text = ""
+        self._main_icu_tooltip_window = None
+        self._main_icu_status.bind('<Enter>', self._show_main_icu_tooltip)
+        self._main_icu_status.bind('<Leave>', self._hide_main_icu_tooltip)
         ctk.CTkLabel(summary, text=self._shell_copy[2], font=(font, 12)).pack()
         self._hero_dimensions = ctk.CTkLabel(summary, text='—', font=('Consolas', 14, 'bold'), wraplength=310)
         self._hero_dimensions.pack(pady=(0, 12))
@@ -308,6 +324,28 @@ class PrecisionShell:
             self._drawer_toggle_btn.configure(text='بستن پنل', width=90)
             self._drawer_open = True
 
+    def _show_main_icu_tooltip(self, _event=None):
+        if not self._main_icu_tooltip_text or self._main_icu_tooltip_window is not None:
+            return
+        tooltip = tk.Toplevel(self._main_icu_status)
+        tooltip.wm_overrideredirect(True)
+        tk.Label(
+            tooltip, text=self._main_icu_tooltip_text,
+            justify='right' if i18n.direction() == 'rtl' else 'left',
+            background='#FFF8C5', foreground='#713F12', relief='solid', borderwidth=1,
+            padx=8, pady=5, wraplength=320,
+        ).pack()
+        x = self._main_icu_status.winfo_rootx()
+        y = self._main_icu_status.winfo_rooty() + self._main_icu_status.winfo_height() + 3
+        tooltip.geometry(f'+{x}+{y}')
+        self._main_icu_tooltip_window = tooltip
+
+    def _hide_main_icu_tooltip(self, _event=None):
+        tooltip = self._main_icu_tooltip_window
+        self._main_icu_tooltip_window = None
+        if tooltip is not None and tooltip.winfo_exists():
+            tooltip.destroy()
+
     def _open_precision_settings(self):
         dialog = ctk.CTkToplevel(self)
         dialog.title(self._shell_copy[13])
@@ -351,14 +389,10 @@ class PrecisionShell:
         self._main_details.configure(text='\n'.join((main['device_model'], main['breaking_capacity'],
             localized(('تعداد پل', 'Poles', 'Pole')) + ': ' + main['poles'],
             localized(('تنظیمات', 'Settings', 'Einstellungen')) + ': ' + main['trip_settings'])))
-        status_colors = {
-            'OK': (('#DCFCE7', '#14532D'), ('#166534', '#DCFCE7')),
-            'FAIL': (('#FEE2E2', '#7F1D1D'), ('#991B1B', '#FEE2E2')),
-            'UNKNOWN': (('#E5E7EB', '#374151'), ('#374151', '#E5E7EB')),
-        }
-        fg_color, text_color = status_colors.get(
-            summary.main_breaker_icu_status, status_colors['UNKNOWN']
+        _badge_key, fg_color, text_color, tooltip_key = _main_icu_badge_style(
+            summary.main_breaker_icu_status, summary.main_breaker_icu_source
         )
+        self._main_icu_tooltip_text = tr(tooltip_key) if tooltip_key else ""
         self._main_icu_status.configure(
             text=main['icu_status'], fg_color=fg_color, text_color=text_color
         )
