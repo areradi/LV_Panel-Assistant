@@ -1,0 +1,530 @@
+{
+  "normalization_version": 1,
+  "source_files": [
+    {
+      "file_id": "6e4b2296127ac79b4279756a888ae2e68a2197f43d9096c0623e9c23b5533235",
+      "filename": "IEC 60204-33.md",
+      "sha256": "41fed4e5f621f4492adbd52e03e4907f95f7b0ece8e7495a52eb624a2e6c1649",
+      "size_bytes": 629568,
+      "kind": "md"
+    },
+    {
+      "file_id": "5f40a60dc786f59ee814eaf7a8c9244d842c955657864fbe2d1cb5afe8da1382",
+      "filename": "IEC 60947 2 2016 Low voltage switchgear.md",
+      "sha256": "6d0312390dd393f9943a47f05fe27e61ab5f00fe2fae2b66e826219dbdc75127",
+      "size_bytes": 1094694,
+      "kind": "md"
+    },
+    {
+      "file_id": "e9306531e582c62180321011a93d1c26590586e7ea9b8db371633aad7159c481",
+      "filename": "IEC 60947-1 2014-2.md",
+      "sha256": "58f008aca747df21916288834afdbd56b9480a4b5a16421bf8980bd7cb090f24",
+      "size_bytes": 2305991,
+      "kind": "md"
+    },
+    {
+      "file_id": "f6c53447bac44ffae3365478eea6b13bf86ec246085c7c6828b09d13621a6aed",
+      "filename": "IEC 60947-1 2014.md",
+      "sha256": "88afd13b26df36e50e27d9ff49071c251d4b965103dbbc160d4fd1fc0a812693",
+      "size_bytes": 2305990,
+      "kind": "md"
+    },
+    {
+      "file_id": "40fdef1cf25b29ccf1ee35618514cca50f57401664940445f0e3b242388aff88",
+      "filename": "IEC 60947-2 2016.md",
+      "sha256": "434ee427b2288d5c00361cea8f96f92c87615f61a36ebf7063250ecaf7a7c08b",
+      "size_bytes": 1094757,
+      "kind": "md"
+    },
+    {
+      "file_id": "9f659124e31a2caa9f8ff9cba85fedcb5d2fd7f28bc1173eca1e4d7228819d31",
+      "filename": "IEC 60947-2 Ed 5.1 2019 (2).md",
+      "sha256": "abe712f45ed5a967240dcbea3eeee851bbc17ae2b3e208723744308dc3b4b19f",
+      "size_bytes": 1275702,
+      "kind": "md"
+    },
+    {
+      "file_id": "1dc237192fc2e924f02d5c8c5137654e74f133319813eaf6650c18b0ffebdb39",
+      "filename": "IEC 60947-2 Ed 5.1 2019.md",
+      "sha256": "abe712f45ed5a967240dcbea3eeee851bbc17ae2b3e208723744308dc3b4b19f",
+      "size_bytes": 1275702,
+      "kind": "md"
+    },
+    {
+      "file_id": "4bca67869d2d08e4937d29886aee1f5529d49fb01d1b40bb57be7967d00d8c43",
+      "filename": "IEC 60947-4-1 (2).md",
+      "sha256": "6aba5dbfdf33f6dafc7fe3d3bc281b81233ccd59e527b504b168b1f9609b8796",
+      "size_bytes": 574250,
+      "kind": "md"
+    },
+    {
+      "file_id": "fe10cb9851c181dd35985481136dfd15b69394c4857b32f137131f870cb7ae2d",
+      "filename": "IEC 60947-4-1 2012.md",
+      "sha256": "ca5272f4b01719645a0fba670c2b4418ac0e73c8c9996414a7b5bd2e078d1011",
+      "size_bytes": 634735,
+      "kind": "md"
+    },
+    {
+      "file_id": "38866b86ffa6e020e206ba46e68b91a61d3691f3a2f1134da61c64fd5ba2c995",
+      "filename": "IEC 60947-4-1 2018.md",
+      "sha256": "b7e1d065ae4c9c62fa076006d9a38394606adc35c6e0142346259c557618fd8f",
+      "size_bytes": 883770,
+      "kind": "md"
+    },
+    {
+      "file_id": "dc1df9c49c1420e02c55a659584281c3f136f72f13410889c561f0344f19aa50",
+      "filename": "IEC 60947-4-1.md",
+      "sha256": "933025f9405d31a13bd14096f844cd41b623543e7c0e3457eb575df02af9e954",
+      "size_bytes": 553095,
+      "kind": "md"
+    },
+    {
+      "file_id": "b7215d0c24e52f01226d4f4a6562ef0d9898d67a85e0d86df615b3ecae07366d",
+      "filename": "IEC 60947-4-3 2014.md",
+      "sha256": "861fb6ce0cf05b9238d0e38d0c13c74e94d7516ac07b36256609e4f333cebca5",
+      "size_bytes": 341978,
+      "kind": "md"
+    },
+    {
+      "file_id": "80cea6298ca8c3c2b96b2dc29fc008fb1d2fc6651430d33b20579009f70ad8b6",
+      "filename": "IEC 60947-4-3 2020.md",
+      "sha256": "86f52ea9b4828c9a70ac185be6357a51caee3b3d047217328fc6b37fc755b541",
+      "size_bytes": 197521,
+      "kind": "md"
+    },
+    {
+      "file_id": "413e12e53cf3c3d608d9baf9c332abc07bd018f820df10b9e8914197f291ebf4",
+      "filename": "IEC 60947-6-1 2021.md",
+      "sha256": "20d3f614f35cc70341a6ba05c75074d24b11a9f308a67d9cc7faa16ed6dd7a06",
+      "size_bytes": 153507,
+      "kind": "md"
+    },
+    {
+      "file_id": "f620c38428b5e0ab46210cb032385bece9b68343c374a111d348aeba13c44578",
+      "filename": "IEC 60947-9-2 2021.md",
+      "sha256": "1234c23c6ac9b927298dc6f6df9962c34665d9699e6f5193c201406d38e6c03d",
+      "size_bytes": 182572,
+      "kind": "md"
+    },
+    {
+      "file_id": "ea12a7ebe4fbfd57134b2f53cf44e003c736815ea80aa3edd85476c119ce675f",
+      "filename": "IEC 61000-6-5 2015.md",
+      "sha256": "4b2ae12361971a550832a2098779a9e9e7fffec20f100e8597277fda59772fc2",
+      "size_bytes": 264274,
+      "kind": "md"
+    },
+    {
+      "file_id": "18ef4c6e9af3cb1f6381f3f38e748acd783a3f5b5f916131349cea716d37ce9c",
+      "filename": "IEC 61439-1 2011.md",
+      "sha256": "369f8d9cc3543e6f26029814c02803643042a95108fc0763e6509063c007d5d5",
+      "size_bytes": 717065,
+      "kind": "md"
+    },
+    {
+      "file_id": "a083d5ae7cf3ef8d0e2dd93655f5af56bf72c11759d42b26c9e99b3158af2f39",
+      "filename": "IEC 61439-1 2020 (2).md",
+      "sha256": "bada8fa926168f8f118a677047277c072a12ad0725793e489cbe0a8907bd2834",
+      "size_bytes": 871695,
+      "kind": "md"
+    },
+    {
+      "file_id": "86f70bf5e6ab65fa6635caa6936f522d49468649aaf7e728bafc9f98ee3693ee",
+      "filename": "IEC 61439-1 2020 {ed3.0}en.md",
+      "sha256": "bada8fa926168f8f118a677047277c072a12ad0725793e489cbe0a8907bd2834",
+      "size_bytes": 871695,
+      "kind": "md"
+    },
+    {
+      "file_id": "8ee63e1bef5d0c3a48c1779db5de1342c41c1a89e6d4f59cc0d210a416a565ee",
+      "filename": "IEC 61439-1 2020.md",
+      "sha256": "7eaf9f7628c15d4e12a0e732dae38bee949a02183c0524c41b9ff29086880bf5",
+      "size_bytes": 871631,
+      "kind": "md"
+    },
+    {
+      "file_id": "1b52ff79184e98bafa5f96906c386edffb1d129f9ee291cad4d4aa5b5868d6ec",
+      "filename": "IEC 61439-1 or low voltage switchgear.md",
+      "sha256": "24c38fb75347a989824b473b141a2cfdce2f03a9b33b18f1af426fec4486617c",
+      "size_bytes": 22249,
+      "kind": "md"
+    },
+    {
+      "file_id": "aef2254857488bc6a9a2d9febcc974024cc094ec03064329e7b96bd7f38570f3",
+      "filename": "IEC 61439-1.md",
+      "sha256": "dee59414e115c4c8ec9f3938f1875c56b636b0ceb04665dce751d1a3b14ba8ea",
+      "size_bytes": 660496,
+      "kind": "md"
+    },
+    {
+      "file_id": "3528cd332f9d526260a33e6b45789374a6714011a28a0ca42e053de0c5c1dca0",
+      "filename": "IEC 61439-2 2011 FR.md",
+      "sha256": "c736fb2e5cfa0046348c9ae8c37dc0543a5a194dfbfdb37a4bd08a569e6ac1db",
+      "size_bytes": 43610,
+      "kind": "md"
+    },
+    {
+      "file_id": "1c5b21306e126fbfc890c6e7bb0b714694c952d3e9e843ebac70ea930277ad7c",
+      "filename": "IEC 61439-2 2011.md",
+      "sha256": "c332e5660423042d98032beed10a54361b082afd3a2b18d4e79a725096e71567",
+      "size_bytes": 86995,
+      "kind": "md"
+    },
+    {
+      "file_id": "02a6c0e5d6c48b8596a4a0560f5f6a62a65016342e0b7564e837dc88bbb9d713",
+      "filename": "IEC 61439-2 2020 (2).md",
+      "sha256": "cf1e1de96c7cf90dd6c450d45ba0ab0cbcbd8242829889057cd0a9631ee33e98",
+      "size_bytes": 219679,
+      "kind": "md"
+    },
+    {
+      "file_id": "38ada84a2a29f9a99881aace16c29fa875aebaa64424b0b099192d734332ff8e",
+      "filename": "IEC 61439-2 2020 {ed3.0}en.md",
+      "sha256": "5ea0282ad4cff4bab15a8c9c9cbee9150588e6c40462de1aa8ee8d48eb417430",
+      "size_bytes": 101041,
+      "kind": "md"
+    },
+    {
+      "file_id": "54522437e456508bb45a16ced82e9c49eeae87e49f47ac27359660137fcd8bfd",
+      "filename": "IEC 61439-2 2020.md",
+      "sha256": "3a3dc5b35eabc4efda80e5e49450531708e5beb25b30fcd48ee92c097ef47bfa",
+      "size_bytes": 100977,
+      "kind": "md"
+    },
+    {
+      "file_id": "9eefa9bb723db40f980d76820632d359cf5198def6b22eda8d802bf047a2ccf5",
+      "filename": "IEC 61439-2.md",
+      "sha256": "322281eb5f45031579cb591234cf63b586621f1bd503b4e6307f6216f3cbb30d",
+      "size_bytes": 77231,
+      "kind": "md"
+    },
+    {
+      "file_id": "7b5214fcc1006a6c1d1dc93ed1e3518968d53b25afb5872f99bc744c88597e42",
+      "filename": "IEC 61439-3 2012 FR.md",
+      "sha256": "88e9b79887240157421c85c4063f13453dddfc138ba4fd7b7b992b85fa2b34f9",
+      "size_bytes": 44553,
+      "kind": "md"
+    },
+    {
+      "file_id": "7dd9e7cd17919823eb380a346867484003bdb410fb58ab04d4a3dd0ed17a038b",
+      "filename": "IEC 61439-3 2012 cor1-2013.md",
+      "sha256": "dd63b74108ec784c6267fa624bcf1dd2161ad58efe71e65c4f989829b0d18ea5",
+      "size_bytes": 1497,
+      "kind": "md"
+    },
+    {
+      "file_id": "3f3549ab3611340f6a05074f24a98c808b6c553d79f91885dbb2d9caeebaeb26",
+      "filename": "IEC 61439-3 2012.md",
+      "sha256": "165be71faee61f621d8311dbb2dcff58f855efe672f30240edd847fe6b29ed83",
+      "size_bytes": 88739,
+      "kind": "md"
+    },
+    {
+      "file_id": "1adfc45aa09a0a51753e706e9a38432c632ed3830eabd2806a15e82bb8609219",
+      "filename": "IEC 61439-4 2012.md",
+      "sha256": "e9736bd7799c2274a922607a713218dce9f211c29a4a92177baadf55dbd6d774",
+      "size_bytes": 116193,
+      "kind": "md"
+    },
+    {
+      "file_id": "cd30b65a1efcb71d84444763c76e1c7490f70647133b3ad50410a5672ff14915",
+      "filename": "IEC 61439-5 2014 cor1-2015.md",
+      "sha256": "c18af4650cfa77f8b55abfb5cf486470f228ad81fe1ff72699879cd07fca2cdd",
+      "size_bytes": 839,
+      "kind": "md"
+    },
+    {
+      "file_id": "6a77a0675c9dcef03be29f769d23697a6645352ab8b797d168473169b757cd71",
+      "filename": "IEC 61439-5 2014.md",
+      "sha256": "977a5e5a3120299547303523acac625862169f7b1583e384c8995f12b63bb841",
+      "size_bytes": 135979,
+      "kind": "md"
+    },
+    {
+      "file_id": "edae81c68a3e08b260eae894eae4014d35f827693b8eae0d9b9f22060fd88a1b",
+      "filename": "IEC 61439-6 2012.md",
+      "sha256": "7e70448d43df52e9b65b14521de0781f478f5dfbb66bdedc1d99cfc0e3b2e259",
+      "size_bytes": 189372,
+      "kind": "md"
+    },
+    {
+      "file_id": "f21ae540d2bd2aeae86f78c33dd2dbfa3f86127d0660d60bb149050668aa4d11",
+      "filename": "IEC 61439-7 2022.md",
+      "sha256": "7840d79e79f98277dcaf8916c91fefae29b41ed1ef9e37f18f7fa584575ccd40",
+      "size_bytes": 153814,
+      "kind": "md"
+    },
+    {
+      "file_id": "26a3bc6d0cdf7950db9b0644a06366d9d3cace3553744cb025c8f4fd276c0939",
+      "filename": "IEC 61439-8 2026.md",
+      "sha256": "0b5dc1bf4c2a0e4a693c71c1a0d9a95ffcec26fe1842ee0e7cd33bfb27ba338e",
+      "size_bytes": 98022,
+      "kind": "md"
+    },
+    {
+      "file_id": "bce90a24b7c8cfa0ab286fcda00e31be5a04204edac8c261dfb4208ddca44ca6",
+      "filename": "IEC 61800-5-1 2022.md",
+      "sha256": "caa11820d582429c8ebf0d6744aca0bf7b642debc6f32d4c731e25802e2bead5",
+      "size_bytes": 1029299,
+      "kind": "md"
+    },
+    {
+      "file_id": "8ba90bb7467c9d1eeb681a9822c3465657317d38ca7d4222fa493938e70967f9",
+      "filename": "IEC 62208 2011.md",
+      "sha256": "1d3f5d9e5e0470a47c5df956b50185259abd3458ff5989e70ae9e125ace95e1e",
+      "size_bytes": 114598,
+      "kind": "md"
+    },
+    {
+      "file_id": "f8063c205bc6aea485967069f376a5a145e09c1f85c73d2b07aaf42054c03ed4",
+      "filename": "IEC Codes.md",
+      "sha256": "f1ba5065b9ba145988d470d6f0b7abc50ecc497ca52724a61904f70d8f5b45f6",
+      "size_bytes": 2922,
+      "kind": "md"
+    },
+    {
+      "file_id": "7f870b302a83c46ac27ababa18fa0e9a71375c7fba7e8574d43511733b1c3a67",
+      "filename": "IEC TR 61439-0 2013.md",
+      "sha256": "87f996950f39430cb3b31298c5b98c6a03bfe976e31a742d6c11feab6694a091",
+      "size_bytes": 147947,
+      "kind": "md"
+    },
+    {
+      "file_id": "e197bc0629bd1824424b65d0d704fa2e8cd22e6d3a11ac50d1e3bffd8be7a66c",
+      "filename": "IEC TR 61439-0 2022.md",
+      "sha256": "244b951348b87d48e353ee32bdf2637337fab8e79a19ca03c836a883e0aa6e3b",
+      "size_bytes": 385188,
+      "kind": "md"
+    },
+    {
+      "file_id": "0a5b617aeafcbc179ffebc823d3e2dd5473d6faf2b9401af39b9d36fdd8bf9c2",
+      "filename": "IEC TR 61641 2014.md",
+      "sha256": "ada9102b2534039cfdbefb023735d0e0ecc76a14760fd6ef34d8fb4260a155ed",
+      "size_bytes": 126219,
+      "kind": "md"
+    },
+    {
+      "file_id": "132e23d977dab235f2265d330d9090e766dce68514a35cecfe8992489d0e27e2",
+      "filename": "IEC TS 61439-7 2014.md",
+      "sha256": "02b02ab83f9a14c24ec2cbb96a4e9e38830bc63ced3da3d2830e1b1398cfe501",
+      "size_bytes": 126371,
+      "kind": "md"
+    },
+    {
+      "file_id": "8b138e3502665c0b72d902fd60301497223df1a1f5883657df1f980bab3ffecf",
+      "filename": "IEC TS 63107 2020.md",
+      "sha256": "7bc45ffdb0c9d872699541399a9711214658783aba60f877de118bec43bda8d6",
+      "size_bytes": 91027,
+      "kind": "md"
+    },
+    {
+      "file_id": "6978d1cdc2cf008ca74e83fc8842dba8fd419feddd49285ddf03cd4ca4294372",
+      "filename": "VDE 0100-520_DIN VDE 0100-520-2013-06.md",
+      "sha256": "ee2451014a66e9011a16ad1b4eee57460bea114bf3e7de9106c3a01671677416",
+      "size_bytes": 142101,
+      "kind": "md"
+    },
+    {
+      "file_id": "33fb674371a7bd6a4b66961cde8f58fc7ca23dd8c581b427936a2aac7186c5ed",
+      "filename": "VDE 0660-600-1 DIN EN 61439-1 2010-06.md",
+      "sha256": "52d2fafb9b594c8b26f3526cd41207dc678351f805326332ed95ba82123451dc",
+      "size_bytes": 374721,
+      "kind": "md"
+    },
+    {
+      "file_id": "bd5d1fe2cac8147ffb37bade5c635b198f28f26b2d79d3e52ba8b3c80f3d31a4",
+      "filename": "VDE 0660-600-1 DIN EN 61439-1 2012-06.md",
+      "sha256": "98af576dea60fa2cbee328c430621bf919cb5d55abdcdae07a5ee69cdf9a4e71",
+      "size_bytes": 13248,
+      "kind": "md"
+    },
+    {
+      "file_id": "81352075a251536f90984aadc9c21003ffeb5ad13e2f2486e49c9a7c9f11423f",
+      "filename": "VDE 0660-600-1 DIN EN 61439-1 Bei 1 Ber 1 2014-10.md",
+      "sha256": "9b242ec9852f4c742ae8bfa6ba5c412d148a6fc6d2ac39c8fc199dbfd51a1d63",
+      "size_bytes": 187,
+      "kind": "md"
+    },
+    {
+      "file_id": "2096e6661b1caa7908fb35a59a7073424115219d3348ad4ec147dc9c84101c4c",
+      "filename": "VDE 0660-600-1 E DIN EN 61439-1 2008-02.md",
+      "sha256": "9cc96e92ad851aef3c55eaf987cd427f0b0dfb1fc4c456aa4f708e2071190133",
+      "size_bytes": 641330,
+      "kind": "md"
+    },
+    {
+      "file_id": "bb6fd49d8dbdd54c9f72d315118935366aacee32a2dd100cf32ce545f5c1b8f0",
+      "filename": "VDE 0660-600-1 E DIN EN 61439-1 2010-08.md",
+      "sha256": "734907018c7fc3a8c0a0687147ec85c66f132fece22dc6d95b24841e12b4f565",
+      "size_bytes": 721500,
+      "kind": "md"
+    },
+    {
+      "file_id": "2bea16a0f68c7a320d717a773c186791d8449d8f3b223500eead089711265e7b",
+      "filename": "VDE 0660-600-2 A100 E DIN EN 61439-2 A100 2009-09.md",
+      "sha256": "ab6c084739450910b980a12da4d4bdbb230a251f2932518debf5cff34e762fb4",
+      "size_bytes": 17070,
+      "kind": "md"
+    },
+    {
+      "file_id": "1c88564af0df39b0db2d26e0211632e9fdb744f2d29de0e55eb87d931f2e15f2",
+      "filename": "VDE 0660-600-2 Beiblatt 1 DIN EN 61439-2 Beiblatt 1 2016-01.md",
+      "sha256": "ca79f1d256a60ee786b3140aeef04937423b401d3925fda30755f2ba7f90abc2",
+      "size_bytes": 2807,
+      "kind": "md"
+    },
+    {
+      "file_id": "83ddd208ecbb5e692628a40814183480214f4c56944eae77eaa45e7d818f85c1",
+      "filename": "VDE 0660-600-2 DIN EN 61439-2 2010-06.md",
+      "sha256": "9d251570f6a1c3fda4002a7f69f172b6fe16f59d76da20330c670ea2d8344efa",
+      "size_bytes": 44496,
+      "kind": "md"
+    },
+    {
+      "file_id": "4a28d13e4cd78ea906abc7b909680f9321c10bf785833a191cd6548e69b1cb23",
+      "filename": "VDE 0660-600-7 E DIN EN 61439-7 2016-10.md",
+      "sha256": "c700f19e0522b711b06915fe5c6ab3c53bca02e5a82773a69ed797f87fae369a",
+      "size_bytes": 5147,
+      "kind": "md"
+    },
+    {
+      "file_id": "f52169db1bb78f5182af633ca14141e7ed8de2f8a0b410ce0ebdae6935b1b4bd",
+      "filename": "breaking_capacity_tables.csv",
+      "sha256": "87b621bc393c5b28848feb1400dfd6498a7ac404a264a3e78874b4f37c62c22b",
+      "size_bytes": 4688353,
+      "kind": "csv"
+    },
+    {
+      "file_id": "32ad8c4a9a1aa490a8a6da3234979f4f4537cb7f5ba8664fb3ff33605e7cdcb5",
+      "filename": "current_rating_tables.csv",
+      "sha256": "c642c65c44b1143de0451e9acbaa5f1d553d0fb2dcf472ed8e4808fcc1650434",
+      "size_bytes": 1445278,
+      "kind": "csv"
+    },
+    {
+      "file_id": "f380de8e7d4096dcaaa7a5f929d61ea1d2acaa656d1cb60e849a2e6c70eb7e00",
+      "filename": "derating_tables.csv",
+      "sha256": "89dfd5cc8a2e7ec0086e6c9ab487b2f3c6ad1213869859ada5fff1a7aed55369",
+      "size_bytes": 697471,
+      "kind": "csv"
+    },
+    {
+      "file_id": "611c95d0219aa465c26e6be7a7520dddf54faa9685acd2880fa792cbce304a7a",
+      "filename": "motor_coordination_tables.csv",
+      "sha256": "ef292267a60e57a0841349bce132f105f06c0bd8a9f82d7776faee04a56ccc2d",
+      "size_bytes": 1248305,
+      "kind": "csv"
+    },
+    {
+      "file_id": "1ca20a2d3bea95cff558b1aa04ae070ccb4db0df282ceb8327a2c43a16396f9a",
+      "filename": "power_loss_tables.csv",
+      "sha256": "cf7cb65d6d37b9225c30246d86a7a011641008906f03336ff250ed4c2a4d8547",
+      "size_bytes": 918940,
+      "kind": "csv"
+    },
+    {
+      "file_id": "552eb17faaa16d9de180d61487dc1409ba650845e01709c8fb17865747a9e675",
+      "filename": "selectivity_tables.csv",
+      "sha256": "b7da2c34fc0ee6a10bec88745a50ca8f496f43514847723893c7b34dcc660731",
+      "size_bytes": 105546,
+      "kind": "csv"
+    },
+    {
+      "file_id": "c83e63f791bb5142d0fa41e156634d11a973234d6bccec07d7bbf1f5279605f3",
+      "filename": "summary.json",
+      "sha256": "67c67be317675dfac6abab4c608cc16d5ab43acd40f47b5737663e9a0cd917aa",
+      "size_bytes": 82,
+      "kind": "json"
+    },
+    {
+      "file_id": "ddfb076e9176232d5d89bfe02937e59aae8a817c72de683e6a318c6ae5be4857",
+      "filename": "trip_curves_tables.csv",
+      "sha256": "68e7239307378cc7934eaa5851d082eeb8f3a2a8fdf9bd010801f0521231d825",
+      "size_bytes": 346975,
+      "kind": "csv"
+    },
+    {
+      "file_id": "4da0a406fdbc2b352c5113b8b65f7204b989cc7752dc8ada2d80f2cabd2ea308",
+      "filename": "voltage_rating_tables.csv",
+      "sha256": "788e08d00dea9137a81538d90d3843ce2eedfa57b7e9df6d7be99e355fcd2a06",
+      "size_bytes": 4827159,
+      "kind": "csv"
+    }
+  ],
+  "csv_tables": {
+    "breaking_capacity_tables.csv": 1533,
+    "current_rating_tables.csv": 320,
+    "derating_tables.csv": 209,
+    "motor_coordination_tables.csv": 368,
+    "power_loss_tables.csv": 272,
+    "selectivity_tables.csv": 36,
+    "trip_curves_tables.csv": 125,
+    "voltage_rating_tables.csv": 2017
+  },
+  "total_extracted_tables": 4880,
+  "unique_tables": 3928,
+  "duplicate_occurrences": 952,
+  "invalid_records": 0,
+  "reference_document_files": 55,
+  "unique_reference_documents": 53,
+  "occurrence_issues": {
+    "CATEGORY_RECLASSIFIED": 259,
+    "CATEGORY_UNCONFIRMED": 3445,
+    "DUPLICATE_HEADERS": 66,
+    "EMPTY_TABLE": 3,
+    "MANUFACTURER_CONFLICT": 14,
+    "MANUFACTURER_UNKNOWN": 3625,
+    "PLC_CONFIGURATION": 378,
+    "STANDARD_REFERENCE_ONLY": 1264
+  },
+  "by_type": {
+    "BREAKING_CAPACITY": 921,
+    "CURRENT_RATING": 163,
+    "DERATING": 158,
+    "MOTOR_COORDINATION": 183,
+    "OTHER": 280,
+    "POWER_LOSS": 111,
+    "SELECTIVITY": 12,
+    "STANDARD_REFERENCE": 975,
+    "TRIP_CURVES": 34,
+    "VOLTAGE_RATING": 1091
+  },
+  "by_manufacturer": {
+    "ABB": 210,
+    "Carlo Gavazzi": 16,
+    "Danfoss": 11,
+    "Eaton": 115,
+    "Hoffman": 3,
+    "IDEC": 3,
+    "Legrand": 1,
+    "Rittal": 174,
+    "Schneider Electric": 113,
+    "Siemens": 151,
+    "Unknown": 2904,
+    "WAGO": 226,
+    "Weidmüller": 1
+  },
+  "by_review_state": {
+    "PENDING_REVIEW": 422,
+    "QUARANTINED": 3506
+  },
+  "table_issues": {
+    "CATEGORY_CONFLICT": 280,
+    "CATEGORY_RECLASSIFIED": 204,
+    "CATEGORY_UNCONFIRMED": 2998,
+    "DUPLICATE_HEADERS": 60,
+    "EMPTY_TABLE": 3,
+    "MANUFACTURER_CONFLICT": 9,
+    "MANUFACTURER_UNKNOWN": 2895,
+    "PLC_CONFIGURATION": 355,
+    "STANDARD_REFERENCE_ONLY": 975
+  },
+  "supplied_summary_total": 0,
+  "supplied_summary_matches": false,
+  "verified_records": 0,
+  "database_totals": {
+    "tables": 3928,
+    "occurrences": 4880,
+    "documents": 53,
+    "source_files": 64
+  }
+}

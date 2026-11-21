@@ -20,6 +20,7 @@ def test_release_data_excludes_local_database_and_preserves_seeds(tmp_path):
     source = tmp_path / 'source'
     seed_directory(source)
     (source / 'lv_assist.db').write_bytes(b'LOCAL_DATABASE_MUST_NOT_BE_DISTRIBUTED')
+    (source / 'reference_library.db').write_bytes(b'UNREVIEWED_REFERENCE_LIBRARY_MUST_NOT_BE_DISTRIBUTED')
     (source / 'private.log').write_text('LOCAL_ONLY')
     before = {p.name: p.read_bytes() for p in source.iterdir()}
     paths = prepare_release_data(source, tmp_path / 'release')
