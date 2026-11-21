@@ -219,7 +219,7 @@ def test_catalog_preview_copy_uses_english_without_persian_literals(app):
         app._rebuild_preserving_project_form()
         app_copy = texts(app)
         guardrail = texts(app._guardrail_bar)
-        catalog = texts(app.views[5])
+        catalog = texts(app.views[gui.LVAssistApp.VIEW_CATALOG])
         assert "Active Project" in app_copy
         assert "Document Validation Center" in app_copy
         assert any("active on baseline assumptions" in value for value in guardrail)

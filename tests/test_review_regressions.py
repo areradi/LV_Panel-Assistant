@@ -217,7 +217,7 @@ def test_theme_and_language_preserve_uncommitted_inputs(app):
 
 def test_schematic_preview_and_all_svg_exports_render_demo_feeders(app, tmp_path):
     assert app._run_calculations_and_refresh()
-    app._switch_view(4)
+    app._switch_view(gui.LVAssistApp.VIEW_DRAWINGS_EXPORTS)
     assert app.tree_wires_preview.get_children()
     assert "<svg" in app.txt_svg_inspector.get("1.0", "end")
     outs, summary, _ = app.last_results
@@ -295,7 +295,10 @@ def test_advanced_fields_keep_their_values(app):
 
 
 def test_stepper_navigates_to_existing_views(app):
-    for button, expected in zip(app._step_buttons, (1, 3, 3, 4)):
+    for button, expected in zip(
+        app._step_buttons,
+        (1, 3, 3, gui.LVAssistApp.VIEW_DRAWINGS_EXPORTS),
+    ):
         button.invoke()
         assert app._active_view == expected
 
