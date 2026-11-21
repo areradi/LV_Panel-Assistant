@@ -17,8 +17,8 @@ not certificates of compliance or substitutes for manufacturer data.
 |---|---:|---|
 | F-031a pure selection | 10 mm² | Minimum section passing thermal ampacity and voltage-drop checks |
 | F-031b fault energy, RMS fallback | 35 mm² | At `t=0.02 s`, the single bus Ik point requires about 27.55 mm² adiabatic section; next standard cable is 35 mm² |
-| F-031b manufacturer-curve candidate | ~2.5 mm² | At the bus point, candidate I²t implies about 2.46 mm² with Cu/PVC `k=115`; this constraint is not governing, pending review |
-| Engine actual | 35 mm² | Engine uses the RMS fault-energy callback plus feeder-end checks; it does not consume the quarantined manufacturer-curve candidate |
+| F-031b fault energy, manufacturer curve | 10 mm² phase / 10 mm² PE | Verified bus-point I²t implies 2.46 mm² adiabatic area; PE table minimum is 10 mm², and thermal ampacity governs phase selection |
+| Engine actual | 10 mm² phase / 10 mm² PE | Engine uses the verified curve at the bus point; feeder-end energy remains on its existing RMS fallback |
 
 ## Constraint Analysis for F01
 
@@ -26,28 +26,25 @@ not certificates of compliance or substitutes for manufacturer data.
 |---|---|---|---|
 | Thermal ampacity | With the copied Cu/PVC/method C table and correction factors, `k_total=0.696`. At 6 mm², corrected `Iz=28.5 A`, below the required `28.69 A`; at 10 mm², corrected `Iz=39.7 A`. | F-031a models this check; engine also applies its derating tables. | **Governing constraint in pure selection:** ampacity moves the minimum from 6 to 10 mm². Derating-factor accuracy remains a review item. |
 | Voltage drop | At 10 mm², calculated drop is `1.27%`, below the 5% motor-feeder limit. At 4 mm² it is `3.15%`, still below the limit, but ampacity fails; 2.5 mm² gives `5.03%`. | F-031a and engine both check steady-state voltage drop during cable selection. | Not governing the 10 mm² pure-selection result. |
-| Bus fault energy, RMS fallback | `Ik_bus=22.404 kA`, `t=0.02 s`; `I²t=10,038,784 A²s`. The adiabatic section at `k=115` is `27.55 mm²`, so the standard step is 35 mm². | F-031b checks this one supplied bus point. The engine uses an RMS estimate for its callback; the quarantined curve is not used. | Explains why the fallback path reaches 35 mm²; this is conservative and not a verified device let-through result. |
-| Bus fault energy, manufacturer-curve candidate | Candidate is ~80,300 A²s (reading interval 78,100–82,500 A²s), equivalent to ~2.46 mm² at `k=115`. | Digitized candidate is quarantined and unverified; F-031b does not load it. | If confirmed, this bus-point energy check would not govern the 10 mm² thermal selection. It does not prove the engine's final result because feeder-end behavior remains unmodeled by this point. |
-| Feeder-end fault energy and TN disconnection | The engine builds minimum end-of-line Ik from source impedance and the selected cable, estimates a separate clearing time, and checks phase/PE withstand using the greater of bus and feeder-end energy. | Engine checks are in `_candidate_fault_compatible` and `RULE-PHASE-I2T` / `RULE-PE-I2T`; F-031b uses only one bus Ik and one shared clearing time. | **Engine constraint not covered by F-031b:** the feeder-end fault profile and its clearing-time / TN ADS constraint (`RULE-FAULT-END`, `RULE-ADS-TN`). Its numerical contribution to the 35 mm² result is not isolated here. |
+| Bus fault energy, RMS fallback | `Ik_bus=22.404 kA`, `t=0.02 s`; `I²t=10,038,784 A²s`. The adiabatic section at `k=115` is `27.55 mm²`, so the standard step is 35 mm². | F-031b checks this one supplied bus point. The engine uses this RMS path only when a verified curve is unavailable. | Explains why the fallback path reaches 35 mm²; it is a conservative estimate, not a device let-through result. |
+| Bus fault energy, manufacturer curve | Verified point is 80,300 A²s (manual cross-read 77,500 A²s; documented reading interval 77,500–82,500 A²s), equivalent to 2.46 mm² at `k=115`. | Engine loader uses the active verified point at `22.404 kA`; standalone F-031b oracle remains a formula-level RMS calculation. | Bus-point fault energy no longer governs. The engine keeps the 10 mm² PE table minimum, while thermal ampacity governs the phase section. Feeder-end behavior still uses estimated RMS energy. |
+| Feeder-end fault energy and TN disconnection | The engine builds minimum end-of-line Ik from source impedance and selected cable, estimates a separate clearing time, and checks phase/PE withstand using the greater of bus and feeder-end energy. | Engine checks are in `_candidate_fault_compatible` and `RULE-PHASE-I2T` / `RULE-PE-I2T`; F-031b uses only one bus Ik and one shared clearing time. | **Engine constraint not covered by F-031b:** the feeder-end fault profile and its clearing-time / TN ADS constraint (`RULE-FAULT-END`, `RULE-ADS-TN`). Its contribution to the former 35 mm² result was not isolated. |
 
-The pure-selection minimum is governed by thermal ampacity, not steady-state
-voltage drop. The engine's final 35 mm² is the result of an additional
-fault-compatibility path that uses estimated RMS energy at the bus and at the
-feeder end; the available manufacturer-curve candidate changes only the
-single bus-point estimate and is not yet verified. Therefore the exact
-physical constraint governing the engine result is not fully resolved until
-the 400 V curve candidate and feeder-end profile are reviewed together.
+The pure-selection and current engine minimum are both governed by thermal
+ampacity, not steady-state voltage drop. The curve lowers the engine's F01
+phase/PE result from 35 mm² to 10 mm². The feeder-end fault profile still uses
+the estimated RMS fallback, so full fault-path parity remains in review.
 
 ## Remaining Work
 
 - **Thermal review:** verify the ambient-temperature and grouping derating
   factors used for F01, especially `k_total=0.696`, against the adopted
-  installation conditions and source tables. This is the constraint governing
-  F-031a's 10 mm² pure-selection result.
-- **Fault-energy reconciliation:** review/promote the quarantined 3RV2021
-  400 V candidate only after source and digitization review, then compare it
-  with the engine's bus and feeder-end energy checks. Add the end-of-line Ik
-  profile and its separate clearing time to any future oracle parity claim.
+  installation conditions and source tables. This governs the 10 mm² phase
+  selection after the bus-point curve check.
+- **Fault-energy reconciliation:** the verified bus curve is active in the
+  engine, but the feeder-end point still uses the estimated RMS fallback. Add
+  the end-of-line Ik profile and its separate clearing time to any future
+  full-engine parity claim.
 - **F-031c voltage-drop oracle:** not indicated by F01's current results;
   steady-state drop is 1.27% at the 10 mm² pure-selection result versus a 5%
   limit. Create F-031c only if broader coverage or another case shows voltage
@@ -56,8 +53,11 @@ the 400 V curve candidate and feeder-end profile are reviewed together.
 ## F-031b: Fault-energy oracle data and limits
 
 ### Source snapshot
-- `tools/i2t_curves.csv` contains only the header. There are no verified,
-  Ik-indexed points available to the oracle.
+- `tools/i2t_curves.csv` now contains one verified Ik-indexed MPCB point for
+  the 3RV2021-4EA10 at 22.404 kA. The engine uses it only within the loader's
+  single-point ±2% match tolerance. The standalone F-031b selector still uses
+  its formula-level RMS fallback because it receives generic `MPCB` device
+  type and is not connected to the engine loader in this change.
 - All 15 previously copied fuse rows are quarantined in
   `tools/i2t_curves_unverified.csv`. They identify the actual source file
   `catalogo-fusivel-2012-ingles.pdf`, page 15 (printed page 13). The table
@@ -91,17 +91,19 @@ the 400 V curve candidate and feeder-end profile are reviewed together.
   were checked on `2026-11-21`. The model and setting range match the F01
   selection `3RV2021-4EA10`, 27–32 A. Use the 400 V trace for the F01 point.
 - Controlled digitization of the 400 V trace at prospective current
-  `Ik = 22,404 A` gives a candidate `I²t ≈ 80,300 A²s`, with a visual reading
-  interval of `78,100–82,500 A²s`. This interval represents digitization and
-  line-width/calibration reading uncertainty only; it is not a manufacturer
-  tolerance or statistical confidence interval. The PDF contains vector paths:
+  `Ik = 22,404 A` gives `I²t ≈ 80,300 A²s`, with a visual reading interval of
+  `78,100–82,500 A²s`. The manual cross-read is `77,500 A²s`; the combined
+  recorded review interval is `77,500–82,500 A²s`. These intervals represent
+  reading and calibration uncertainty only; they are not a manufacturer
+  tolerance or statistical confidence interval. The verification record is
+  `docs/VERIFICATION_NEP461270226000.md`. The PDF contains vector paths:
   the horizontal current axis was calibrated at `10⁴ A` and `10⁵ A`, and the
   vertical I²t axis at `10⁴ A²s` and `10⁵ A²s`. Logarithmic interpolation was
   made on the 400 V path segment bracketing the target. The target lies inside
-  the plotted 400 V trace range; no extrapolation was used. The trace point is
-  retained only in `tools/i2t_curves_unverified.csv` with
-  `verification_status=NEEDS_REVIEW`; it is not loaded by the oracle and has
-  not been added to `tools/i2t_curves.csv`.
+  the plotted 400 V trace range; no extrapolation was used. Manual verification
+  found the reading within the documented uncertainty, and the point is now
+  promoted to `tools/i2t_curves.csv` with `verification_status=VERIFIED`.
+  The 15 fuse rows remain `UNVERIFIED` in `tools/i2t_curves_unverified.csv`.
 - The previously considered drawing `A5E31487886029A-02_AA` is the standalone
   `3RV2031-4EA..-0BA0` chart with setting range 22–32 A. It is not the F01
   device `3RV2021-4EA10`, so it remains **NOT_APPLICABLE_TO_F01** and may be
@@ -122,9 +124,10 @@ the 400 V curve candidate and feeder-end profile are reviewed together.
   `C:\Users\AsuS\Desktop\DataBase\_organized\A_critical_datasheets\siemens\A5E31515454006N-02_AA_201604111202410176.pdf`;
   SHA-256 `E95894DF0F7A4EEE193C908DE3766D41B183ACC952A3F2D00701CF72A1E5BF35`.
   Neither older drawing is used to infer F01 let-through energy.
-- F01 curve status: **LOCAL_COPY_ARCHIVED; CANDIDATE_DIGITIZED;
-  NOT_VERIFIED; NEEDS_REVIEW; NOT_IN_ACTIVE_CURVES**. The candidate remains
-  quarantined and is not promoted to verified curve data.
+- F01 curve status: **LOCAL_COPY_ARCHIVED; VERIFIED_SINGLE_POINT; ACTIVE**.
+  It is not a multi-point curve: the engine accepts it only within ±2% of
+  `22.404 kA`; outside that tolerance it uses the RMS fallback. No
+  extrapolation is allowed.
 - Verified curve data is used only at an exact point or by interpolation
   between bracketing source points. Extrapolation beyond the source range is
   rejected. A device with no verified curve uses the explicit RMS estimate
@@ -162,13 +165,13 @@ the 400 V curve candidate and feeder-end profile are reviewed together.
   conductor is required by the modeled feeder. A neutral for auxiliary loads
   needs an explicit input; assigning one to every three-phase motor would add
   an unsupported cable requirement.
-- The F01 test is a **formula-level cross-check with shared clearing-time
-  input**, not an independent full validation. It takes bus-total Ik from
+- The F01 test takes bus-total Ik from
   `PanelSummaryOutput.ik_bus_total_ka` (22.404 kA for the demo; displayed as
-  22.4 kA at one decimal), clearing time
-  from the engine output (0.02 s), and the auto-sizing state from
-  `FeederInput.cable_section_mm2` (`None`). It therefore does not independently
-  validate those engine-derived values or manufacturer let-through behavior.
+  22.4 kA at one decimal), clearing time from the engine output (0.02 s), and
+  auto-sizing state from `FeederInput.cable_section_mm2` (`None`). The engine
+  now uses the promoted curve for its bus point; the standalone F-031b result
+  remains a **formula-level cross-check with shared clearing-time input** and
+  is not an independent full validation or a full-engine parity claim.
 - The F01 Oracle input uses the engine's MPCB overload-ratio fallback of 1.3
   (`engine.py`, `i2_factor` selection). The 1.45 value in the cable selector is
   the IEC coordination ratio for `I2 <= 1.45 Iz`; it is not the MPCB-specific
@@ -176,17 +179,16 @@ the 400 V curve candidate and feeder-end profile are reviewed together.
   voltage-drop limit and adjustable-protection flag follow the same engine
   policy based on feeder load type and selected device type.
 - F-01 is not fully resolved.
-- For this formula-level comparison, using prospective RMS Ik over the shared
-  clearing interval instead of the device transient let-through I²t is expected
-  to be conservative (an energy overestimate). The F01-matching 3RV2021
-  400 V trace now gives a quarantined candidate near 80,300 A²s at 22,404 A,
-  versus the RMS fallback `22,404² × 0.02 = 10,038,784 A²s` (about 125 times
-  larger). With Cu/PVC `k=115`, the candidate corresponds to an adiabatic
-  requirement of about `2.46 mm²`, versus about `27.55 mm²` from the fallback.
-  If review confirms the digitization and applicability, this bus-energy point
-  alone would not explain a 35 mm² cable selection; the other engine checks,
-  feeder-end fault point, and full trip behavior still require separate
-  validation. The candidate remains quarantined and is not used by the oracle.
+- The F01 bus curve point is about 80,300 A²s at 22,404 A, versus the RMS
+  fallback `22,404² × 0.02 = 10,038,784 A²s` (about 125 times larger). At
+  Cu/PVC `k=115`, the curve gives an adiabatic requirement of about 2.46 mm²;
+  the engine still selects 10 mm² PE because its tabular minimum is 10 mm² for
+  the selected 10 mm² phase conductor. Engine F01 phase/PE sizing changed from
+  35 mm² to 10 mm². Thermal ampacity is now the phase-section constraint;
+  voltage drop is 1.27% against the 5% limit. Feeder-end fault energy and TN
+  disconnection continue to use the existing estimated path and require
+  separate validation. The standalone formula-level F-031b oracle still gives
+  35 mm² and is not evidence of full engine parity.
 
 ## F-031a scope and next steps
 
