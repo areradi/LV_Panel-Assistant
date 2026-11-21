@@ -4,31 +4,54 @@ This file records differences and limits found while comparing the independent
 oracles with the engineering engine. Oracle results are cross-checks; they are
 not certificates of compliance or substitutes for manufacturer data.
 
-## F-01: F01 cable section (Oracle vs full engine) — 2026-11-16
+## F-01 Resolution Path
 
 **Discovered in**: F-031a (Cable Selection Oracle)
 
 ### Setup
 - Feeder F01, MCC1 demo project
-- Ib approximately 27.99 A, 400 V three-phase, PVC Cu, method C, length 55 m
-- Maximum voltage drop 3%
+- Ib approximately 27.99 A, 400 V three-phase, PVC Cu, method C, length 45 m
+- Maximum voltage drop 5% for this motor feeder
 
-### Result
-| Layer | Phase section | Reason |
+| Analysis layer | F01 phase section | Interpretation |
 |---|---:|---|
-| Cable-selection oracle | 10 mm² | Ampacity, voltage drop and baseline PE sizing pass |
-| `select_feeder_cable` without `additional_check` | 10 mm² | Base selector agrees |
-| Full engine with `additional_check` | 35 mm² | Fault-current compatibility rejects smaller sections |
+| F-031a pure selection | 10 mm² | Minimum section passing thermal ampacity and voltage-drop checks |
+| F-031b fault energy, RMS fallback | 35 mm² | At `t=0.02 s`, the single bus Ik point requires about 27.55 mm² adiabatic section; next standard cable is 35 mm² |
+| F-031b manufacturer-curve candidate | ~2.5 mm² | At the bus point, candidate I²t implies about 2.46 mm² with Cu/PVC `k=115`; this constraint is not governing, pending review |
+| Engine actual | 35 mm² | Engine uses the RMS fault-energy callback plus feeder-end checks; it does not consume the quarantined manufacturer-curve candidate |
 
-### Interpretation
-- The F-031a oracle covers cable selection without the engine's final
-  fault-compatibility callback.
-- The engine checks both bus and feeder-end fault energy against phase and PE
-  adiabatic limits. At 10 mm² the callback rejects the candidate, so the engine
-  continues to a larger phase section.
-- F-031b adds an independent single-point fault-energy calculation. Its inputs
-  do not include the network source impedance or feeder-end Ik profile needed
-  to reproduce the engine callback exactly; it must not claim full parity.
+## Constraint Analysis for F01
+
+| Constraint | F01 evidence | Engine / oracle coverage | Conclusion |
+|---|---|---|---|
+| Thermal ampacity | With the copied Cu/PVC/method C table and correction factors, `k_total=0.696`. At 6 mm², corrected `Iz=28.5 A`, below the required `28.69 A`; at 10 mm², corrected `Iz=39.7 A`. | F-031a models this check; engine also applies its derating tables. | **Governing constraint in pure selection:** ampacity moves the minimum from 6 to 10 mm². Derating-factor accuracy remains a review item. |
+| Voltage drop | At 10 mm², calculated drop is `1.27%`, below the 5% motor-feeder limit. At 4 mm² it is `3.15%`, still below the limit, but ampacity fails; 2.5 mm² gives `5.03%`. | F-031a and engine both check steady-state voltage drop during cable selection. | Not governing the 10 mm² pure-selection result. |
+| Bus fault energy, RMS fallback | `Ik_bus=22.404 kA`, `t=0.02 s`; `I²t=10,038,784 A²s`. The adiabatic section at `k=115` is `27.55 mm²`, so the standard step is 35 mm². | F-031b checks this one supplied bus point. The engine uses an RMS estimate for its callback; the quarantined curve is not used. | Explains why the fallback path reaches 35 mm²; this is conservative and not a verified device let-through result. |
+| Bus fault energy, manufacturer-curve candidate | Candidate is ~80,300 A²s (reading interval 78,100–82,500 A²s), equivalent to ~2.46 mm² at `k=115`. | Digitized candidate is quarantined and unverified; F-031b does not load it. | If confirmed, this bus-point energy check would not govern the 10 mm² thermal selection. It does not prove the engine's final result because feeder-end behavior remains unmodeled by this point. |
+| Feeder-end fault energy and TN disconnection | The engine builds minimum end-of-line Ik from source impedance and the selected cable, estimates a separate clearing time, and checks phase/PE withstand using the greater of bus and feeder-end energy. | Engine checks are in `_candidate_fault_compatible` and `RULE-PHASE-I2T` / `RULE-PE-I2T`; F-031b uses only one bus Ik and one shared clearing time. | **Engine constraint not covered by F-031b:** the feeder-end fault profile and its clearing-time / TN ADS constraint (`RULE-FAULT-END`, `RULE-ADS-TN`). Its numerical contribution to the 35 mm² result is not isolated here. |
+
+The pure-selection minimum is governed by thermal ampacity, not steady-state
+voltage drop. The engine's final 35 mm² is the result of an additional
+fault-compatibility path that uses estimated RMS energy at the bus and at the
+feeder end; the available manufacturer-curve candidate changes only the
+single bus-point estimate and is not yet verified. Therefore the exact
+physical constraint governing the engine result is not fully resolved until
+the 400 V curve candidate and feeder-end profile are reviewed together.
+
+## Remaining Work
+
+- **Thermal review:** verify the ambient-temperature and grouping derating
+  factors used for F01, especially `k_total=0.696`, against the adopted
+  installation conditions and source tables. This is the constraint governing
+  F-031a's 10 mm² pure-selection result.
+- **Fault-energy reconciliation:** review/promote the quarantined 3RV2021
+  400 V candidate only after source and digitization review, then compare it
+  with the engine's bus and feeder-end energy checks. Add the end-of-line Ik
+  profile and its separate clearing time to any future oracle parity claim.
+- **F-031c voltage-drop oracle:** not indicated by F01's current results;
+  steady-state drop is 1.27% at the 10 mm² pure-selection result versus a 5%
+  limit. Create F-031c only if broader coverage or another case shows voltage
+  drop governing.
 
 ## F-031b: Fault-energy oracle data and limits
 
