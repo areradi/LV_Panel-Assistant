@@ -57,42 +57,51 @@ not certificates of compliance or substitutes for manufacturer data.
   used to close F01. If those table values are cited elsewhere, `I2t max` must
   retain the source unit kA²s; do not label it A²s or import it into the cable
   I²t calculation.
-- A Siemens 3RV2031-4EA..-0BA0 I²t characteristic chart is available for the
-  22–32 A setting range. The local bank has the matching datasheet
-  `3RV20314EA100BA0_datasheet_en.pdf` and manuals. The 2009 local reference is
-  `C:\Users\AsuS\Desktop\DataBase\_organized\A_critical_datasheets\3RV_reference_manual_04_2009_EN.pdf`,
-  page 23: “Time/current characteristic curves, current-limiting
-  characteristic curves and I2t curves can be ordered from Technical
-  Assistance.” Page 49 of local `manual_SIRIUS_circuit_breaker_3RV_en-US.pdf`
-  also points to Siemens' characteristic service:
-  `https://support.industry.siemens.com/cs/ww/en/ps/16027/char`.
-- The chart PDF is now archived locally at
-  `C:\Users\AsuS\Desktop\DataBase\_organized\A_critical_datasheets\siemens\A5E31487886029A-02_AA_201804091016500799.pdf`.
-  SHA-256: `FB770834ED632995C6689888DD31A1CB34C725CC6C68D2FEEF508E3C86C8335C`.
-  Local copy/hash checked on `2026-11-21`.
-- Online chart record: [Siemens 3RV2031-4EA..-0BA0 I²t characteristic](https://support.industry.siemens.com/cs/attachments/104095708/A5E31487886029A-02_AA_201804091016500799.pdf)
-  — URL: `https://support.industry.siemens.com/cs/attachments/104095708/A5E31487886029A-02_AA_201804091016500799.pdf`; accessed
-  `2026-11-21`; publisher: Siemens Industry Online Support; Entry ID
-  `104095708` metadata confirms model `3RV2031-4EA..-0BA0`, setting range
-  22–32 A, chart title `I²t-characteristic`, drawing/version
-  `A5E31487886029A-02_AA`, date `2018-03-01`, and page `1/1` (no figure number).
-  The chart includes a 400 V trace. The hostname `support.industry.siemens.com`
-  is within the Siemens domain; no third-party mirror is used. The exact-part
-  SIMARIS curve link is
+- The locally archived Siemens drawing applicable to F01 is
+  `NEP461270226000-02_AA`, titled `I²t-characteristic`, page 1/1. It identifies
+  model `3RV2021-4EA.. + 3RV2121-4EA..`, setting range 27–32 A, and separate
+  400 V, 500 V, and 690 V traces. Its internal approval date is `2018-12-20`.
+  Local path:
+  `C:\Users\AsuS\Desktop\DataBase\_organized\A_critical_datasheets\siemens\NEP461270226000-02_AA_201907050913320867.pdf`.
+  SHA-256: `542715B3D7EE18FB866B0460A627D70A91EEA60B7A93B4FE1BEDC8ADBB2A051B`.
+  The file hash, embedded title/model/range, drawing number, and approval date
+  were checked on `2026-11-21`. The model and setting range match the F01
+  selection `3RV2021-4EA10`, 27–32 A. Use the 400 V trace for the F01 point.
+- Controlled digitization of the 400 V trace at prospective current
+  `Ik = 22,404 A` gives a candidate `I²t ≈ 80,300 A²s`, with a visual reading
+  interval of `78,100–82,500 A²s`. This interval represents digitization and
+  line-width/calibration reading uncertainty only; it is not a manufacturer
+  tolerance or statistical confidence interval. The PDF contains vector paths:
+  the horizontal current axis was calibrated at `10⁴ A` and `10⁵ A`, and the
+  vertical I²t axis at `10⁴ A²s` and `10⁵ A²s`. Logarithmic interpolation was
+  made on the 400 V path segment bracketing the target. The target lies inside
+  the plotted 400 V trace range; no extrapolation was used. The trace point is
+  retained only in `tools/i2t_curves_unverified.csv` with
+  `verification_status=NEEDS_REVIEW`; it is not loaded by the oracle and has
+  not been added to `tools/i2t_curves.csv`.
+- The previously considered drawing `A5E31487886029A-02_AA` is the standalone
+  `3RV2031-4EA..-0BA0` chart with setting range 22–32 A. It is not the F01
+  device `3RV2021-4EA10`, so it remains **NOT_APPLICABLE_TO_F01** and may be
+  retained only as a reference for the 3RV2031 family. Its local SHA-256 is
+  `FB770834ED632995C6689888DD31A1CB34C725CC6C68D2FEEF508E3C86C8335C`.
+  This Siemens Industry Online Support chart is Entry ID `104095708`, drawing
+  version `A5E31487886029A-02_AA`, dated `2018-03-01`, page 1/1; its 400 V
+  trace and 22–32 A range describe the 3RV2031 family only. Source URL:
+  `https://support.industry.siemens.com/cs/attachments/104095708/A5E31487886029A-02_AA_201804091016500799.pdf`
+  (accessed `2026-11-21`). Exact-part SIMARIS link:
   `https://curves.simaris.siemens.com/curves/3RV2031-4EA10-0BA0`.
-  Entry ID `104095708` metadata is confirmed. An earlier automated download
-  attempt returned HTTP 403; the subsequently archived local copy is hash
-  verified against the supplied SHA-256.
-- F01 compatibility check: engine selected MPCB part
-  `3RV2021-4EA10`, with a 27–32 A setting range. The model has no `family`
-  value (`None`). The chart is for `3RV2031-4EA..-0BA0`, 22–32 A. The setting
-  intervals overlap, but the part number differs; range overlap alone does not
-  establish identical let-through behavior. **Stop F01 digitization** until a
-  Siemens source confirms that this 3RV2031 curve applies to the selected
-  3RV2021 device.
-- Status: **LOCAL_COPY_ARCHIVED; NOT_DIGITIZED; NEEDS_REVIEW**. No numeric value
-  from this chart has been added to `tools/i2t_curves.csv`; digitization remains
-  blocked pending device compatibility and curve legend review.
+- Drawing `A5E31515454006N-02_AA` is explicitly titled
+  `3RV2331-4WC.. + 3RV2021-4EA..`, setting range 27–32 A, and its chart note
+  specifies `690V_In=27 - 32 A / Limiter 3RV2331-4WC..+ 3RV2021-4EA..`.
+  Because its trace represents the 3RV2331 limiter combined with the MPCB, it
+  is **NOT_APPLICABLE_TO_F01**, which selects the standalone 3RV2021-4EA10.
+  Retain it as a reference for limiter+MPCB combinations only. Local file:
+  `C:\Users\AsuS\Desktop\DataBase\_organized\A_critical_datasheets\siemens\A5E31515454006N-02_AA_201604111202410176.pdf`;
+  SHA-256 `E95894DF0F7A4EEE193C908DE3766D41B183ACC952A3F2D00701CF72A1E5BF35`.
+  Neither older drawing is used to infer F01 let-through energy.
+- F01 curve status: **LOCAL_COPY_ARCHIVED; CANDIDATE_DIGITIZED;
+  NOT_VERIFIED; NEEDS_REVIEW; NOT_IN_ACTIVE_CURVES**. The candidate remains
+  quarantined and is not promoted to verified curve data.
 - Verified curve data is used only at an exact point or by interpolation
   between bracketing source points. Extrapolation beyond the source range is
   rejected. A device with no verified curve uses the explicit RMS estimate
@@ -145,12 +154,16 @@ not certificates of compliance or substitutes for manufacturer data.
   policy based on feeder load type and selected device type.
 - F-01 is not fully resolved.
 - For this formula-level comparison, using prospective RMS Ik over the shared
-  clearing interval instead of a device transient let-through I²t is expected
-  to be conservative (an energy overestimate). This direction is an engineering
-  assumption pending comparison with the device curve. The official Siemens
-  3RV2031 I²t curve for 22–32 A at 400 V has been located, but is not a local
-  bank file and has not been digitized, verified, or added to the CSV. Next
-  task: extract and verify that curve.
+  clearing interval instead of the device transient let-through I²t is expected
+  to be conservative (an energy overestimate). The F01-matching 3RV2021
+  400 V trace now gives a quarantined candidate near 80,300 A²s at 22,404 A,
+  versus the RMS fallback `22,404² × 0.02 = 10,038,784 A²s` (about 125 times
+  larger). With Cu/PVC `k=115`, the candidate corresponds to an adiabatic
+  requirement of about `2.46 mm²`, versus about `27.55 mm²` from the fallback.
+  If review confirms the digitization and applicability, this bus-energy point
+  alone would not explain a 35 mm² cable selection; the other engine checks,
+  feeder-end fault point, and full trip behavior still require separate
+  validation. The candidate remains quarantined and is not used by the oracle.
 
 ## F-031a scope and next steps
 
