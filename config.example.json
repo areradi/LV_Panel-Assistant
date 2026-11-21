@@ -1,4 +1,5 @@
 {
   "language": "fa",
-  "theme": "dark"
+  "theme": "dark",
+  "database_path": "data/lv_panel_database.sqlite"
 }
