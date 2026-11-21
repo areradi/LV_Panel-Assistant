@@ -50,13 +50,15 @@ def test_release_archive_uses_only_clean_inputs_and_retains_existing_user_data(t
     def fake_compiler(command, cwd):
         assert '--collect-data=customtkinter' in command
         assert not any(str(root / 'lv_assist' / 'data') in arg for arg in command if arg.startswith('--add-data'))
-        (root / 'dist' / build_exe.APP_NAME).write_bytes(b'TEST_EXECUTABLE')
+        exe_name = f'{build_exe.APP_NAME}.exe' if build_exe.os.name == 'nt' else build_exe.APP_NAME
+        (root / 'dist' / exe_name).write_bytes(b'TEST_EXECUTABLE')
 
     monkeypatch.setattr(build_exe.subprocess, 'check_call', fake_compiler)
     build_exe.build()
     assert local_db.read_bytes() == b'KEEP_EXISTING_PORTABLE_USER_DATA'
     with zipfile.ZipFile(root / 'dist' / f'{build_exe.APP_NAME}-release.zip') as archive:
-        assert set(archive.namelist()) == {build_exe.APP_NAME, *('data/' + name for name in RELEASE_DATA_FILES)}
+        exe_name = f'{build_exe.APP_NAME}.exe' if build_exe.os.name == 'nt' else build_exe.APP_NAME
+        assert set(archive.namelist()) == {exe_name, *('data/' + name for name in RELEASE_DATA_FILES)}
         assert archive.read('data/lv_assist.db').startswith(b'SQLite format 3')
 
 

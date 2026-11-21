@@ -1243,6 +1243,11 @@ class WebSearchDialog(ctk.CTkToplevel):
 
 
 class LVAssistApp(PrecisionShell, ctk.CTk):
+    # Keep navigation targets explicit: motor search was inserted before the
+    # merged drawings/exports view, and catalog remains the final view.
+    VIEW_DRAWINGS_EXPORTS = 5
+    VIEW_CATALOG = 6
+
     NAV_KEYS = (
         "nav_step1", "nav_step2", "nav_step3", "nav_step4",
         "nav_motor_search", "nav_step5_merged", "nav_step7",
@@ -1303,9 +1308,9 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             for i, button in enumerate(self._step_buttons):
                 button.configure(fg_color='#1763C0' if i == active_step else ('#DEE9F4', '#24394F'),
                                  text_color='#FFFFFF' if i == active_step else ('#183B5D', '#E3F1FF'))
-        if idx == 5 and self.last_results and not self._stale:
+        if idx == self.VIEW_DRAWINGS_EXPORTS and self.last_results and not self._stale:
             self.action_refresh_schematic_preview()
-        if idx == 6:
+        if idx == self.VIEW_CATALOG:
             self._refresh_catalog_tree()
 
     # ================================================================= گام ۱: پروژه
@@ -2044,7 +2049,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                              text_color='#FFFFFF' if index == active else ('#183B5D', '#E3F1FF'))
 
     def _show_workflow_step(self, step):
-        self._switch_view((1, 3, 3, 5)[step])
+        self._switch_view((1, 3, 3, self.VIEW_DRAWINGS_EXPORTS)[step])
         if step in (1, 2):
             self._results_tabs.set(tr('tab_equipment' if step == 1 else 'tab_busbars'))
             self._results_tab_changed()
