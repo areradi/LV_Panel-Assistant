@@ -28,6 +28,7 @@ from lv_assist.core_verification import (
 from lv_assist.catalog_provenance import (
     evaluate_selectivity_status as audit_evaluate_selectivity_status,
 )
+from tools.i2t_curve_loader import I2tCurveLoader
 # --- end audit safe imports ---
 # --- [AUDIT P0 POLICY FLAGS] ---
 # Backward-compatible by default.
@@ -155,18 +156,24 @@ class CableSizingEngine:
         material: str = "Cu",
         insulation: str = "PVC",
         arrangement: str = "separate",
+        fault_energy_i2t_a2s: Optional[float] = None,
     ) -> Optional[float]:
         _k, _ = select_pe_k_factor(material, insulation, arrangement)
-        if (fault_current_ka is None or not math.isfinite(fault_current_ka)
-                or not _is_valid_clear_time(clear_time_s)):
+        if fault_energy_i2t_a2s is not None:
+            if not math.isfinite(fault_energy_i2t_a2s) or fault_energy_i2t_a2s < 0:
+                return None
+            s_adiabatic = math.sqrt(fault_energy_i2t_a2s) / float(_k)
+        elif (fault_current_ka is not None and math.isfinite(fault_current_ka)
+              and _is_valid_clear_time(clear_time_s)):
+            if clear_time_s > 5:
+                return None
+            i_fault_a = fault_current_ka * 1000.0
+            s_adiabatic = (i_fault_a * math.sqrt(clear_time_s)) / float(_k)
+        else:
             return None
         if phase_section_mm2 <= 16.0: s_table = phase_section_mm2
         elif phase_section_mm2 <= 35.0: s_table = 16.0
         else: s_table = phase_section_mm2 / 2.0
-        if clear_time_s > 5:
-            return None
-        i_fault_a = fault_current_ka * 1000.0
-        s_adiabatic = (i_fault_a * math.sqrt(clear_time_s)) / float(_k)
         req_pe = max(s_table, s_adiabatic)
         # اولین مقطع استاندارد از جدول PE دیتابیس؛ فراتر از جدول → None (F-005، بدون سقف ساختگی)
         return catalog_repo.get_standard_pe_section(req_pe)
@@ -179,7 +186,8 @@ class CableSizingEngine:
         conductor: str = "CU", insulation: str = "PVC", installation_method: str = "C",
         fire_resistant: bool = False, thdi_pct: Optional[float] = None,
         fault_current_ka: Optional[float] = None, clear_time_s: Optional[float] = None,
-        overload_i2_factor: Optional[float] = None, additional_check=None
+        overload_i2_factor: Optional[float] = None, additional_check=None,
+        fault_energy_i2t_a2s: Optional[float] = None,
     ) -> Tuple[float, float, Optional[float], Optional[float], float, str]:
         k1, k2, total_k = cls.get_derating_summary(ambient_temp_c, grouping_k2, conductor, insulation, installation_method)
         required_iz = ib_a if is_adjustable_prot else protection_in_a
@@ -188,7 +196,9 @@ class CableSizingEngine:
         material = "Cu" if conductor == "CU" else "Al"
         phase_k, _ = select_pe_k_factor(material, insulation, "in_cable")
         adiabatic_min = 0.0
-        if fault_current_ka is not None and clear_time_s is not None and 0 < clear_time_s <= 5:
+        if fault_energy_i2t_a2s is not None and math.isfinite(fault_energy_i2t_a2s) and fault_energy_i2t_a2s >= 0:
+            adiabatic_min = math.sqrt(fault_energy_i2t_a2s) / phase_k
+        elif fault_current_ka is not None and clear_time_s is not None and 0 < clear_time_s <= 5:
             adiabatic_min = fault_current_ka * 1000 * math.sqrt(clear_time_s) / phase_k
         min_allowed_section = 1.5 if load_type == LoadType.LIGHTING_SOCKET else 2.5
 
@@ -212,7 +222,8 @@ class CableSizingEngine:
                     curr_iz = round(iz0 * total_k, 1)
                     curr_vd = cls.calc_voltage_drop_pct(ib_a, length_m, sec, cos_phi, voltage_v, phases, conductor, insulation)
                     pe = cls.calculate_pe_section(sec, fault_current_ka, clear_time_s,
-                                                  material, insulation, 'in_cable')
+                                                  material, insulation, 'in_cable',
+                                                  fault_energy_i2t_a2s=fault_energy_i2t_a2s)
                     extra_ok = additional_check is None or additional_check(sec, pe)
                     if curr_iz >= required_iz and curr_vd <= max_vdrop_pct and sec >= adiabatic_min and extra_ok:
                         s_ph = sec; iz_derated = curr_iz; vdrop = curr_vd; break
@@ -223,6 +234,7 @@ class CableSizingEngine:
             fault_current_ka,
             clear_time_s,
             material=material, insulation=insulation, arrangement="in_cable",
+            fault_energy_i2t_a2s=fault_energy_i2t_a2s,
         )
         s_neutral = 0.0
         if phases == 3 and load_type in (LoadType.LIGHTING_SOCKET, LoadType.SUB_FEEDER):
@@ -275,6 +287,18 @@ class EngineeringEngine:
     def __init__(self, catalog: List[CatalogDevice]):
         self._full_catalog = list(catalog)
         self.catalog = list(catalog)
+        self._i2t_curve_loader = I2tCurveLoader()
+
+    def _get_letthrough_i2t(self, protection, ik_ka):
+        if protection is None or ik_ka is None:
+            return None
+        if protection.part_number == "3RV2021-4EA10" and protection.device_type == "MPCB":
+            curve_type = "MPCB_SIEMENS_3RV2021_4EA10"
+        else:
+            return None
+        return self._i2t_curve_loader.get_letthrough_i2t(
+            curve_type, protection.rated_current_in_a, ik_ka
+        )
 
     @staticmethod
     def _resolve_cos_phi_eff(load_type: LoadType, cos_phi: Optional[float],
@@ -669,6 +693,7 @@ class EngineeringEngine:
         # فاز ۱۱: جریان کل باس شامل مشارکت موتورها (خطای داخل شاخه فیدر از همه منابع تغذیه می‌شود)
         fault_ka = ik_total_ka
         clear_t = self._estimate_clear_time_s(sel_prot, fault_ka) if (sel_prot and fault_ka is not None) else None
+        bus_i2t_curve = self._get_letthrough_i2t(sel_prot, fault_ka)
         protection_icu_ka = self._device_icu_ka(sel_prot, project) if sel_prot is not None else None
         i2_factor = (sel_prot.overload_i2_factor or
                      {"MCB": 1.45, "MCCB": 1.3, "MPCB": 1.3, "FUSE_GG": 1.6}.get(sel_prot.device_type)
@@ -682,8 +707,10 @@ class EngineeringEngine:
             insulation=f.insulation.value, installation_method=f.installation_method.value,
             fire_resistant=f.fire_resistant, thdi_pct=f.thdi_pct,
             fault_current_ka=fault_ka, clear_time_s=clear_t, overload_i2_factor=i2_factor,
+            fault_energy_i2t_a2s=bus_i2t_curve,
             additional_check=lambda phase, pe: self._candidate_fault_compatible(
-                project, f, sel_prot, phase, pe, ik_ka, ik_total_ka, clear_t)
+                project, f, sel_prot, phase, pe, ik_ka, ik_total_ka, clear_t,
+                bus_i2t_curve)
         )
 
         # F-008: ضرایب تصحیح دقیق و روش نصب مرجع برای گزارش
@@ -697,14 +724,21 @@ class EngineeringEngine:
         i_pe_ka = fault_ka
         k_pe, _ = select_pe_k_factor("Cu" if f.conductor_material.value == "CU" else "Al", f.insulation.value, "in_cable")
         s_adiabatic = None
-        if (fault_ka is not None and math.isfinite(fault_ka)
+        if bus_i2t_curve is not None:
+            s_adiabatic = math.sqrt(bus_i2t_curve) / k_pe
+            pe_basis_str = (
+                f"let-through curve {sel_prot.part_number} @ {fault_ka:g} kA: "
+                f"I2t={bus_i2t_curve:,.0f} A2s -> S={s_adiabatic:.2f} mm2 "
+                "(IEC 60364-5-54)"
+            )
+        elif (fault_ka is not None and math.isfinite(fault_ka)
                 and _is_valid_clear_time(clear_t) and clear_t <= 5):
             s_adiabatic = (fault_ka * 1000.0 * math.sqrt(clear_t)) / k_pe
-        if s_adiabatic is None:
-            pe_basis_str = _FAULT_BASIS_UNAVAILABLE.get(i18n.get_language(), _FAULT_BASIS_UNAVAILABLE["en"])
-        else:
             pe_basis_str = tr("pe_adia_basis", a=fault_ka, b=clear_t, c=round(i_pe_ka, 1),
                               d=round(s_adiabatic, 1), e=(f"{s_pe:g}" if s_pe is not None else "?"), k=k_pe)
+        else:
+            s_adiabatic = None
+            pe_basis_str = _FAULT_BASIS_UNAVAILABLE.get(i18n.get_language(), _FAULT_BASIS_UNAVAILABLE["en"])
 
         profile = audit_calculate_network_ik_profile(
             project.transformer_kva, project.transformer_uk_pct, project.nominal_voltage_v,
@@ -714,7 +748,8 @@ class EngineeringEngine:
             voltage_factor_c_max=project.voltage_factor_c_max, voltage_factor_c_min=project.voltage_factor_c_min,
             conductor=f.conductor_material.value, insulation=f.insulation.value)
         vals.extend(self._verify_feeder_safety(project, f, sel_prot, profile, s_ph, s_pe,
-                                              iz_derated, prot_in, i2_factor, clear_t, ik_total_ka))
+                                              iz_derated, prot_in, i2_factor, clear_t, ik_total_ka,
+                                              bus_i2t_curve))
 
         req_iz_ref = ib_a if is_adj_prot else prot_in
         if iz_derated is None:
@@ -733,7 +768,7 @@ class EngineeringEngine:
                 supporting_evidence=tr("val_pe_nostd_ev", a=f"{s_ph:g}"), consequence=tr("val_pe_nostd_cons"),
                 recommended_action=tr("val_pe_nostd_action")))
 
-        if fault_ka is None or not _is_valid_clear_time(clear_t):
+        if fault_ka is None or (bus_i2t_curve is None and not _is_valid_clear_time(clear_t)):
             vals.append(ValidationResult(
                 rule_id="RULE-FAULT-NOIK-FALLBACK-001", feeder_id=f.feeder_id,
                 standard_ref="IEC 60909-0 / IEC 60364-5-54",
@@ -852,11 +887,16 @@ class EngineeringEngine:
         final_limit = 0.8 if u0 <= 120 else (0.4 if u0 <= 230.95 else (0.2 if u0 <= 400 else 0.1))
         return final_limit if feeder.load_type != LoadType.SUB_FEEDER and rated_current_a <= 32 else 5.0
 
-    def _candidate_fault_compatible(self, project, feeder, protection, phase, pe, source_ik, total_ik, clear_s):
-        if (protection is None or source_ik is None or clear_s is None
-                or not math.isfinite(clear_s) or not 0 < clear_s <= 5):
+    def _candidate_fault_compatible(
+        self, project, feeder, protection, phase, pe, source_ik, total_ik,
+        clear_s, bus_i2t_curve=None,
+    ):
+        if protection is None or source_ik is None:
             return False
-        if pe is None or not 0 < clear_s <= 5:
+        if (bus_i2t_curve is None and (clear_s is None or not math.isfinite(clear_s)
+                                      or not 0 < clear_s <= 5)):
+            return False
+        if pe is None:
             return False
         profile = audit_calculate_network_ik_profile(
             project.transformer_kva, project.transformer_uk_pct, project.nominal_voltage_v,
@@ -872,12 +912,14 @@ class EngineeringEngine:
         if project.earthing_system.value.startswith('TN') and end_s > self._tn_disconnection_limit_s(project, feeder, protection.rated_current_in_a):
             return False
         k, _ = select_pe_k_factor('Cu' if feeder.conductor_material.value == 'CU' else 'Al', feeder.insulation.value, 'in_cable')
-        energy = max(((total_ik or source_ik)*1000)**2 * clear_s,
-                     (profile.ik_feeder_end_min_1p_ka*1000)**2 * end_s)
+        bus_energy = (bus_i2t_curve if bus_i2t_curve is not None
+                      else ((total_ik or source_ik) * 1000) ** 2 * clear_s)
+        energy = max(bus_energy, (profile.ik_feeder_end_min_1p_ka * 1000) ** 2 * end_s)
         return energy <= min((k*phase)**2, (k*pe)**2)
 
     def _verify_feeder_safety(self, project, f, protection, profile, phase_mm2, pe_mm2,
-                              iz_a, in_a, i2_factor, clear_s, bus_ik_ka):
+                              iz_a, in_a, i2_factor, clear_s, bus_ik_ka,
+                              bus_i2t_curve=None):
         checks = []
 
         def add(rule, key, status, evidence, standard="IEC 60364-4-43"):
@@ -917,12 +959,19 @@ class EngineeringEngine:
         material = "Cu" if f.conductor_material.value == "CU" else "Al"
         k, _ = select_pe_k_factor(material, f.insulation.value, "in_cable")
         energies = []
-        if bus_ik_ka is not None and protection and math.isfinite(clear_s) and 0 < clear_s <= 5:
-            energies.append((bus_ik_ka * 1000) ** 2 * clear_s)
+        energy_sources = []
+        if bus_ik_ka is not None and protection:
+            if bus_i2t_curve is not None:
+                energies.append(bus_i2t_curve)
+                energy_sources.append("bus=verified let-through curve")
+            elif clear_s is not None and math.isfinite(clear_s) and 0 < clear_s <= 5:
+                energies.append((bus_ik_ka * 1000) ** 2 * clear_s)
+                energy_sources.append("bus=estimated RMS Ik²t")
             if profile.ik_feeder_end_min_1p_ka:
                 end_s = self._estimate_clear_time_s(protection, profile.ik_feeder_end_min_1p_ka)
                 if 0 < end_s <= 5:
                     energies.append((profile.ik_feeder_end_min_1p_ka * 1000) ** 2 * end_s)
+                    energy_sources.append("feeder_end=estimated RMS Ik²t")
                 else:
                     energies = []
         for section, rule, key in ((phase_mm2, "RULE-PHASE-I2T", "phase_i2t"), (pe_mm2, "RULE-PE-I2T", "pe_i2t")):
@@ -931,7 +980,8 @@ class EngineeringEngine:
             else:
                 energy, withstand = max(energies), (k * section) ** 2
                 status = ValidationStatus.ERROR if energy > withstand else ValidationStatus.WARNING
-                evidence = f"max(I^2*t)={energy:g} A^2s; (k*S)^2={withstand:g} A^2s; k={k}; estimated curve"
+                source_text = "; ".join(energy_sources)
+                evidence = f"max(I^2*t)={energy:g} A^2s; (k*S)^2={withstand:g} A^2s; k={k}; {source_text}"
             add(rule, key, status, evidence, "IEC 60364-5-54" if key == "pe_i2t" else "IEC 60364-4-43")
         return checks
 

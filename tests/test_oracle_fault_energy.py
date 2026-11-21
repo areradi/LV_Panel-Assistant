@@ -39,6 +39,7 @@ def test_unverified_siemens_fuse_table_is_quarantined():
         rows = list(csv.DictReader(stream))
     fuse_rows = [row for row in rows if row["device_type"] == "FUSE_GG_SIEMENS_5SE2"]
     assert len(fuse_rows) == 15
+    assert not any(row["device_type"] == "MPCB_SIEMENS_3RV2021_4EA10" for row in rows)
     assert all(row["verification_status"] == "UNVERIFIED" for row in fuse_rows)
     assert all(row["source_file"] == "catalogo-fusivel-2012-ingles.pdf" for row in fuse_rows)
     assert all(row["source_page"] == "15" for row in fuse_rows)
@@ -153,12 +154,17 @@ def test_selected_device_type_is_required():
 
 
 def test_f01_formula_level_cross_check_with_shared_clearing_time_input():
-    """Formula-level comparison using engine-derived Ik and clearing time.
+    """Compare the engine curve result with the standalone RMS fallback.
 
     F01's bus-total Ik is read from PanelSummaryOutput.ik_bus_total_ka; the
     demo engine resolves it to 22.404 kA. The 1.3 overload ratio follows the
-    engine fallback for MPCB in engine.py; 1.45 is
-    the IEC I2/Iz coordination factor, not the MPCB-specific I2/In input.
+    engine fallback for MPCB in engine.py; 1.45 is the IEC I2/Iz coordination
+    factor, not the MPCB-specific I2/In input. The verified curve removes the
+    RMS bus-energy constraint in the engine. Thermal ampacity then governs at
+    10 mm²: 6 mm² gives corrected Iz=28.5 A below the 28.69 A requirement,
+    while 10 mm² gives Iz=39.7 A; the 1.27% voltage drop is below the 5% limit.
+    The standalone F-031b oracle remains a formula-level RMS fallback and is
+    not connected to the engine curve loader by this change.
     """
     gui_module = pytest.importorskip("lv_assist.gui")
     from lv_assist.catalog import CatalogRepository
@@ -203,13 +209,42 @@ def test_f01_formula_level_cross_check_with_shared_clearing_time_input():
         device_type=protection.device_type,
     )
 
-    assert oracle_result["phase_mm2"] == engine_result.selected_phase_mm2 == 35.0
-    assert oracle_result["pe_mm2"] == engine_result.selected_pe_mm2 == 35.0
+    assert engine_result.selected_phase_mm2 == 10.0
+    assert engine_result.selected_pe_mm2 == 10.0
+    assert engine_result.cable_derated_iz_a == pytest.approx(39.7)
+    assert engine_result.voltage_drop_percent == pytest.approx(1.27)
+    assert oracle_result["phase_mm2"] == oracle_result["pe_mm2"] == 35.0
+    assert oracle_result["fault_energy_source"] == "RMS Ik²t fallback"
+    assert "let-through curve 3RV2021-4EA10 @ 22.404 kA" in engine_result.pe_basis_str
+    assert "I2t=80,300 A2s -> S=2.46 mm2" in engine_result.pe_basis_str
     assert oracle_result["reason"] == "AUTO"
     assert oracle_result["neutral_mm2"] == 0.0
     assert oracle_result["selection_status"] == "PROVISIONAL"
     assert oracle_result["is_safety_recommendation"] is False
     assert any("Assumption impact" in warning for warning in oracle_result["warnings"])
+
+
+def test_f01_engine_keeps_35mm2_fallback_when_active_curve_file_is_empty(tmp_path):
+    gui_module = pytest.importorskip("lv_assist.gui")
+    from lv_assist.catalog import CatalogRepository
+    from lv_assist.engine import EngineeringEngine
+    from tools.i2t_curve_loader import I2tCurveLoader
+
+    empty_csv = tmp_path / "empty-curves.csv"
+    empty_csv.write_text(
+        "device_type,rated_a,ik_ka,i2t_a2s,verification_status\n",
+        encoding="utf-8",
+    )
+    project, feeders = gui_module.build_demo_project()
+    engine = EngineeringEngine(CatalogRepository.get_default_catalog())
+    engine._i2t_curve_loader = I2tCurveLoader(empty_csv)
+
+    outputs, _, _ = engine.process_project(project, feeders)
+    f01 = next(row for row in outputs if row.feeder_id == "F01")
+
+    assert f01.selected_phase_mm2 == 35.0
+    assert f01.selected_pe_mm2 == 35.0
+    assert "let-through curve" not in f01.pe_basis_str
 
 
 @pytest.mark.parametrize(
@@ -251,8 +286,12 @@ def test_invalid_energy_inputs_are_rejected(kwargs):
 def test_active_csv_contains_only_verified_ik_indexed_rows():
     with (ROOT / "tools" / "i2t_curves.csv").open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
-    assert rows == []
-    assert fault_oracle._load_curve_rows() == ()
+    assert len(rows) == 1
+    assert rows[0]["device_type"] == "MPCB_SIEMENS_3RV2021_4EA10"
+    assert rows[0]["verification_status"] == "VERIFIED"
+    assert fault_oracle._load_curve_rows() == tuple(rows)
+    from tools.i2t_curve_loader import I2tCurveLoader
+    assert I2tCurveLoader().get_letthrough_i2t("FUSE_GG_SIEMENS_5SE2", 32, 22.404) is None
 
 
 def test_oracle_has_no_lv_assist_imports():
