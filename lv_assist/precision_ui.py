@@ -105,7 +105,7 @@ class PrecisionShell:
         nav_identity = ctk.CTkLabel(nav, text='LV / IEC', text_color=('#39516A', '#A8C1DA'), font=('Consolas', 13))
         nav_identity.pack(pady=(16, 10))
 
-        # بلوک اول: پروژه فعال (ایندکس 0 تا 3)
+        # بلوک اول: پروژه فعال (ایندکس 0 تا 4)
         lbl_block1 = ctk.CTkLabel(
             nav, text=tr("sidebar_active_project"),
             font=(font, 11, 'bold'), text_color='#10B981',
@@ -114,7 +114,7 @@ class PrecisionShell:
         lbl_block1.pack(fill='x', padx=12, pady=(4, 2))
 
         self._nav_buttons = []
-        project_keys = self.NAV_KEYS[:4]
+        project_keys = self.NAV_KEYS[:5]
         for index, key in enumerate(project_keys):
             button = ctk.CTkButton(
                 nav,
@@ -131,7 +131,7 @@ class PrecisionShell:
         divider = ctk.CTkFrame(nav, height=2, fg_color=('#CAD5E2', '#34485E'))
         divider.pack(fill='x', padx=14, pady=10)
 
-        # بلوک دوم: مرکز اعتبارسنجی اسناد (ایندکس 4 به بعد)
+        # بلوک دوم: مرکز اعتبارسنجی اسناد (ایندکس 5 به بعد)
         lbl_block2 = ctk.CTkLabel(
             nav, text=tr("sidebar_validation_center"),
             font=(font, 11, 'bold'), text_color='#38BDF8',
@@ -139,9 +139,9 @@ class PrecisionShell:
         )
         lbl_block2.pack(fill='x', padx=12, pady=(2, 2))
 
-        validation_keys = self.NAV_KEYS[4:]
+        validation_keys = self.NAV_KEYS[5:]
         for index, key in enumerate(validation_keys):
-            abs_index = index + 4
+            abs_index = index + 5
             button = ctk.CTkButton(
                 nav,
                 text=textwrap.fill(tr(key), width=22, break_long_words=False),
@@ -175,9 +175,10 @@ class PrecisionShell:
         self._status_lbl.pack(fill='x', pady=(0, 4))
         workspace = ctk.CTkFrame(middle, fg_color='transparent')
         workspace.pack(fill='both', expand=True)
-        self.views = [ctk.CTkFrame(workspace, **card) for _ in range(6)]
+        self.views = [ctk.CTkFrame(workspace, **card) for _ in range(7)]
         for builder, view in zip((self._build_view_project, self._build_view_feeders,
                                   self._build_view_instruments, self._build_view_results,
+                                  self._build_view_motor_search,
                                   self._build_view_exports, self._build_view_catalog), self.views):
             builder(view)
         for name in ('tree_feeders', 'tree_results_tbl', 'tree_rules', 'tree_wires_preview', 'tree_inst', 'tree_catalog', 'tree_busbars'):

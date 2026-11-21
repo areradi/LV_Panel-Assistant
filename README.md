@@ -16,7 +16,7 @@ python -m venv .venv
 
 Alternatively, run `Run-PanelCalc.cmd` after installing dependencies. It launches a locally built EXE when present, otherwise the virtual environment or system Python.
 
-The SQLite catalog is created automatically from the included JSON seed files. Local databases and preferences are not committed. `config.example.json` documents the optional language/theme settings; copy it to `config.json` to use it.
+The SQLite catalog is created automatically from the included JSON seed files. Local databases and preferences are not committed. `config.example.json` documents the language, theme, and optional extracted-database path; copy it to `config.json` to use it.
 
 ## Current functionality
 
@@ -30,6 +30,16 @@ The SQLite catalog is created automatically from the included JSON seed files. L
 - Persian RTL layout, Latin calculation digits, EN/DE translations and light/dark appearance.
 
 DXF and the EPLAN import/macro packages remain disabled. The panel wireframe is a contextual preview, not a fabrication drawing. Results require engineering review and do not establish assembly certification.
+
+## Motor-based component search
+
+Run a catalog search for a 4 kW motor at 400 V with:
+
+```powershell
+python -m lv_assist.cli.motor_search --power 4.0 --voltage 400
+```
+
+The search uses `database_path` from `config.json` and estimates motor current as `power_kW × 2` only at 400 V. It displays source file and locator. Extracted records are marked **unverified — preview only**; results are not safety recommendations or approved device selections. Add `--verified-only` to restrict results to verified component and rating records. The current extracted database has no verified records, so that search currently returns no components.
 
 ## Repository layout
 
@@ -86,3 +96,5 @@ No project license has been selected. Third-party skill license notices are reta
 رابط فارسی راست‌چین است و نتایج محاسبات با ارقام لاتین نمایش داده می‌شوند. امکانات سناریوهای ویژه، نوع نصب محفظه، فیدرها، PLC، نتایج تجهیزات و شینه و خروجی‌های Excel/HTML/SVG در همین برنامه قرار دارند.
 
 دیتابیس از داده‌های همراه پروژه ساخته می‌شود. پوشه‌های ساخت، تنظیمات شخصی، دیتابیس محلی و لاگ‌ها وارد Git نمی‌شوند. خروجی PDF به مرورگر نصب‌شده وابسته است و موفقیت آن در محیط محدود تست تأیید نشده است. محدودیت‌های مهندسی در مستندات سناریوها آمده‌اند.
+
+برای جستجوی اولیه قطعه حفاظتی موتور، دستور `python -m lv_assist.cli.motor_search --power 4.0 --voltage 400` را اجرا کنید. رکوردهای استخراج‌شده فقط برای پیش‌نمایش هستند و پیشنهاد ایمنی محسوب نمی‌شوند؛ گزینهٔ `--verified-only` فقط داده‌های تأییدشده را جستجو می‌کند.

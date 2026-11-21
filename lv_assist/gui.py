@@ -44,6 +44,8 @@ from lv_assist.models import (
     CatalogDevice, DataQuality, EnclosureMounting, ScenarioInputs
 )
 from lv_assist.catalog import CatalogRepository
+from lv_assist.database.errors import DatabaseError
+from lv_assist.database.repositories import ComponentRepository
 from lv_assist.engine import EngineeringEngine, build_design_verification
 from lv_assist.exporters import ExcelExporter, PrintableReportExporter, DesignVerificationExporter
 from lv_assist.outputs import SldGenerator, TccGenerator, PdfExporter, EplanExporter, EplanPartsExporter
@@ -1241,7 +1243,10 @@ class WebSearchDialog(ctk.CTkToplevel):
 
 
 class LVAssistApp(PrecisionShell, ctk.CTk):
-    NAV_KEYS = ("nav_step1", "nav_step2", "nav_step3", "nav_step4", "nav_step5_merged", "nav_step7")
+    NAV_KEYS = (
+        "nav_step1", "nav_step2", "nav_step3", "nav_step4",
+        "nav_motor_search", "nav_step5_merged", "nav_step7",
+    )
 
     def __init__(self):
         super().__init__()
@@ -1292,15 +1297,15 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
             btn.configure(fg_color="#1763C0" if i == idx else ("#E7EEF6", "#203246"),
                           text_color="#FFFFFF" if i == idx else ("#203449", "#DFEAF6"))
         if hasattr(self, '_step_buttons'):
-            active_step = {0: 0, 1: 0, 2: 1, 3: 2, 4: 3, 5: 1}[idx]
+            active_step = {0: 0, 1: 0, 2: 1, 3: 2, 4: 0, 5: 3, 6: 1}[idx]
             if idx == 3:
                 active_step = 2 if self._results_tabs.get() == tr('tab_busbars') else 1
             for i, button in enumerate(self._step_buttons):
                 button.configure(fg_color='#1763C0' if i == active_step else ('#DEE9F4', '#24394F'),
                                  text_color='#FFFFFF' if i == active_step else ('#183B5D', '#E3F1FF'))
-        if idx == 4 and self.last_results and not self._stale:
+        if idx == 5 and self.last_results and not self._stale:
             self.action_refresh_schematic_preview()
-        if idx == 5:
+        if idx == 6:
             self._refresh_catalog_tree()
 
     # ================================================================= گام ۱: پروژه
@@ -1795,6 +1800,106 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                 f"{f.power_kw:g}", f"{f.cable_length_m or 0:g}", note))
 
     # ================================================================= گام ۳: ابزار دقیق
+    @staticmethod
+    def _format_motor_candidate(candidate) -> str:
+        """Format a search result while keeping provenance and safety status visible."""
+        lines = [
+            f"{candidate.manufacturer or '—'} | {candidate.part_number or '—'}",
+            f"{tr('motor_search_status')}: {candidate.record_status}",
+            f"{tr('motor_search_current')}: {candidate.estimated_motor_current_a:g} A",
+            f"{tr('motor_search_range')}: {candidate.rated_current_min_a:g}–"
+            f"{candidate.rated_current_max_a:g} {candidate.current_unit}",
+            f"{tr('motor_search_voltage_rating')}: {candidate.rated_voltage_v:g} {candidate.voltage_unit}",
+            f"{tr('motor_search_source_file')}: {candidate.source_file or '—'}",
+            f"{tr('motor_search_source_locator')}: {candidate.source_locator or '—'}",
+        ]
+        if candidate.preview_warning:
+            lines.append(tr("motor_search_preview_warning"))
+        if not candidate.is_safety_recommendation:
+            lines.append(tr("motor_search_not_safety"))
+        return "\n".join(lines)
+
+    def _build_view_motor_search(self, parent):
+        """Build the separate catalog-preview page for motor protection searches."""
+        font = i18n.font_family()
+        ctk.CTkLabel(
+            parent, text=tr("motor_search_title"),
+            font=ctk.CTkFont(family=font, size=17, weight="bold"),
+        ).pack(anchor="e" if i18n.direction() == "rtl" else "w", padx=16, pady=(14, 4))
+        ctk.CTkLabel(
+            parent, text=tr("motor_search_hint"), wraplength=900,
+            justify="right" if i18n.direction() == "rtl" else "left",
+            text_color=("#7C4A03", "#FBBF24"),
+        ).pack(fill="x", padx=16, pady=(0, 10))
+
+        controls = ctk.CTkFrame(parent, fg_color="transparent")
+        controls.pack(fill="x", padx=16, pady=4)
+        controls.grid_columnconfigure(1, weight=1)
+        controls.grid_columnconfigure(3, weight=1)
+        ctk.CTkLabel(controls, text=tr("motor_search_power_kw")).grid(
+            row=0, column=0, padx=6, pady=6, sticky="w"
+        )
+        self.motor_search_power_entry = ctk.CTkEntry(controls, width=130)
+        self.motor_search_power_entry.insert(0, "4.0")
+        self.motor_search_power_entry.grid(row=0, column=1, padx=6, pady=6, sticky="ew")
+        ctk.CTkLabel(controls, text=tr("motor_search_voltage_v")).grid(
+            row=0, column=2, padx=6, pady=6, sticky="w"
+        )
+        self.motor_search_voltage_entry = ctk.CTkEntry(controls, width=130)
+        self.motor_search_voltage_entry.insert(0, "400")
+        self.motor_search_voltage_entry.grid(row=0, column=3, padx=6, pady=6, sticky="ew")
+        self.motor_search_verified_only_var = tk.BooleanVar(master=parent, value=False)
+        ctk.CTkCheckBox(
+            controls, text=tr("motor_search_verified_only"),
+            variable=self.motor_search_verified_only_var,
+        ).grid(row=1, column=0, columnspan=2, padx=6, pady=6, sticky="w")
+        ctk.CTkButton(
+            controls, text=tr("motor_search_run"), command=self._run_motor_search,
+            fg_color="#1763C0", height=36,
+        ).grid(row=1, column=2, columnspan=2, padx=6, pady=6, sticky="e")
+
+        self.motor_search_status_label = ctk.CTkLabel(parent, text="", anchor="w")
+        self.motor_search_status_label.pack(fill="x", padx=16, pady=(4, 2))
+        self.motor_search_results_frame = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        self.motor_search_results_frame.pack(fill="both", expand=True, padx=12, pady=(4, 12))
+
+    def _run_motor_search(self):
+        """Read the form, query the extracted catalog, and show labeled results."""
+        for widget in self.motor_search_results_frame.winfo_children():
+            widget.destroy()
+        try:
+            power_kw = float(self.motor_search_power_entry.get().strip())
+            voltage_v = float(self.motor_search_voltage_entry.get().strip())
+            verified_only = bool(self.motor_search_verified_only_var.get())
+            results = ComponentRepository().find_components_for_motor(
+                power_kw, voltage_v, verified_only=verified_only
+            )
+        except (ValueError, TypeError, DatabaseError) as exc:
+            self.motor_search_status_label.configure(
+                text=f"{tr('motor_search_error')}: {exc}", text_color="#DC2626"
+            )
+            return
+
+        if not results:
+            key = "motor_search_no_verified" if verified_only else "motor_search_no_results"
+            self.motor_search_status_label.configure(text=tr(key), text_color="#64748B")
+            return
+
+        self.motor_search_status_label.configure(
+            text=tr("motor_search_results"), text_color=("#203449", "#DFEAF6")
+        )
+        for candidate in results:
+            color = "#F59E0B" if candidate.record_status == "extracted" else "#10B981"
+            card = ctk.CTkFrame(
+                self.motor_search_results_frame,
+                border_width=1, border_color=color, corner_radius=8,
+            )
+            card.pack(fill="x", padx=4, pady=4)
+            ctk.CTkLabel(
+                card, text=self._format_motor_candidate(candidate),
+                justify="left", anchor="w", wraplength=900,
+            ).pack(fill="x", padx=12, pady=10)
+
     def _build_view_instruments(self, parent):
         font = ctk.CTkFont(family=i18n.font_family(), size=12)
         ctk.CTkLabel(parent, text=tr("wiz_s3_hint"), font=font, wraplength=1050,
@@ -1939,7 +2044,7 @@ class LVAssistApp(PrecisionShell, ctk.CTk):
                              text_color='#FFFFFF' if index == active else ('#183B5D', '#E3F1FF'))
 
     def _show_workflow_step(self, step):
-        self._switch_view((1, 3, 3, 4)[step])
+        self._switch_view((1, 3, 3, 5)[step])
         if step in (1, 2):
             self._results_tabs.set(tr('tab_equipment' if step == 1 else 'tab_busbars'))
             self._results_tab_changed()
